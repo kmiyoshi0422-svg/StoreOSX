@@ -89,3 +89,40 @@ describe("cases.bulkImport CSV一括登録", () => {
     expect(result.inserted).toBe(2);
   });
 });
+
+describe("cases.monthlyReport 月次レポート", () => {
+  it("月次・店舗別集計を取得できる（構造を検証）", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const res = await caller.cases.monthlyReport();
+    expect(res).toHaveProperty("monthly");
+    expect(res).toHaveProperty("byStore");
+    expect(Array.isArray(res.monthly)).toBe(true);
+    expect(Array.isArray(res.byStore)).toBe(true);
+  });
+});
+
+describe("checklist.toggle 自動ステータス遷移", () => {
+  it("受付フェーズの全項目をチェックすると現調中に進む", { timeout: 30000 }, async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const created = await caller.cases.create({
+      requestNumber: `AUTO-${Date.now()}`,
+      brand: "ほっともっと",
+      storeName: "自動遷移テスト店",
+      categoryLarge: "電気",
+      categoryMedium: "コンセント",
+    });
+    const id = created.id;
+    const items = await caller.checklist.listByCase({ caseId: id });
+    const receptionItems = items.filter((i) => i.phase === "受付");
+    expect(receptionItems.length).toBeGreaterThan(0);
+    let lastResult: { success: boolean; autoAdvanced: { from: string; to: string } | null } | null = null;
+    for (const it of receptionItems) {
+      lastResult = await caller.checklist.toggle({ id: it.id, checked: true });
+    }
+    expect(lastResult?.autoAdvanced).not.toBeNull();
+    expect(lastResult?.autoAdvanced?.to).toBe("現調中");
+    const after = await caller.cases.get({ id });
+    expect(after?.status).toBe("現調中");
+    await caller.cases.delete({ id });
+  });
+});

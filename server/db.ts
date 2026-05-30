@@ -158,6 +158,17 @@ export async function createChecklistItems(items: InsertChecklistItem[]) {
   await db.insert(checklistItems).values(items);
 }
 
+export async function getChecklistItemById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select()
+    .from(checklistItems)
+    .where(eq(checklistItems.id, id))
+    .limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
 export async function updateChecklistItem(
   id: number,
   data: { checked?: boolean; checkedBy?: number | null; checkedAt?: Date | null; memo?: string | null }

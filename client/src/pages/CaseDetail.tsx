@@ -32,6 +32,7 @@ import {
   Download,
   Wallet,
   Users,
+  Camera,
 } from "lucide-react";
 import { generateQuotePDF, generateCompletionReportPDF } from "@/lib/documentPdf";
 import {
@@ -577,7 +578,12 @@ function ChecklistTab({
   onUpdated: () => void;
 }) {
   const toggleMutation = trpc.checklist.toggle.useMutation({
-    onSuccess: onUpdated,
+    onSuccess: (res) => {
+      if (res?.autoAdvanced) {
+        toast.success(`ステータスを「${res.autoAdvanced.from}」→「${res.autoAdvanced.to}」に自動更新しました`);
+      }
+      onUpdated();
+    },
   });
   const memoMutation = trpc.checklist.updateMemo.useMutation({ onSuccess: onUpdated });
 
@@ -711,13 +717,16 @@ function PhotosTab({
   onUpdated: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  type CamTag = "現調" | "施工前A" | "施工前B" | "施工後A" | "施工後B" | "設置状況" | "メーカー型番";
+  const [cameraPhotoType, setCameraPhotoType] = useState<CamTag>("施工前A");
 
   const uploadMutation = trpc.photos.upload.useMutation();
   const updateMutation = trpc.photos.update.useMutation({ onSuccess: onUpdated });
   const deleteMutation = trpc.photos.delete.useMutation({ onSuccess: onUpdated });
 
-  const handleFiles = async (files: FileList | null) => {
+  const handleFiles = async (files: FileList | null, photoType: CamTag = "現調") => {
     if (!files || files.length === 0) return;
     setUploading(true);
     try {
@@ -733,10 +742,10 @@ function PhotosTab({
           fileName: file.name,
           fileBase64: base64,
           mimeType: file.type || "image/jpeg",
-          photoType: "現調",
+          photoType,
         });
       }
-      toast.success(`${files.length}枚アップロードしました`);
+      toast.success(`${files.length}枚を「${photoType}」としてアップロードしました`);
       onUpdated();
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "アップロード失敗";
@@ -744,40 +753,73 @@ function PhotosTab({
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
+      if (cameraRef.current) cameraRef.current.value = "";
     }
   };
 
   return (
     <div className="space-y-4">
-      {/* Upload */}
+      {/* Camera + Upload */}
       <Card className="border-dashed">
-        <CardContent className="p-5">
+        <CardContent className="p-5 space-y-4">
           <input
             ref={fileRef}
             type="file"
             accept="image/*"
             multiple
             hidden
-            onChange={(e) => handleFiles(e.target.files)}
+            onChange={(e) => handleFiles(e.target.files, "現調")}
           />
-          <div className="flex flex-col md:flex-row items-center gap-3 justify-between">
-            <div>
-              <p className="font-medium text-sm">写真をアップロード</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                施工前A/B → 施工後A/B のセット撮影を推奨
-              </p>
-            </div>
+          <input
+            ref={cameraRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            hidden
+            onChange={(e) => handleFiles(e.target.files, cameraPhotoType)}
+          />
+          <div>
+            <p className="font-medium text-sm">現場直撮りモード（スマホ推奨）</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              撮影タグを選んでカメラを起動 → 撮影した写真は自動でタグ付けされて保存されます
+            </p>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {(["現調", "施工前A", "施工前B", "施工後A", "施工後B", "設置状況", "メーカー型番"] as const).map((t) => (
+              <Button
+                key={t}
+                variant={cameraPhotoType === t ? "default" : "outline"}
+                size="sm"
+                onClick={() => setCameraPhotoType(t)}
+                className={cameraPhotoType === t ? "" : "bg-background"}
+                disabled={uploading}
+              >
+                {t}
+              </Button>
+            ))}
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
             <Button
-              onClick={() => fileRef.current?.click()}
+              onClick={() => cameraRef.current?.click()}
               disabled={uploading}
               variant="default"
+              className="flex-1"
             >
               {uploading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <Upload className="h-4 w-4" />
+                <Camera className="h-4 w-4" />
               )}
-              {uploading ? "アップロード中..." : "写真を選択"}
+              {uploading ? "アップロード中..." : `「${cameraPhotoType}」をカメラで撮影`}
+            </Button>
+            <Button
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              variant="outline"
+              className="bg-background sm:w-40"
+            >
+              <Upload className="h-4 w-4" />
+              アルバムから選択
             </Button>
           </div>
         </CardContent>

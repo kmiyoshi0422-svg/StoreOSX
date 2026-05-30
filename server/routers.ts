@@ -172,6 +172,35 @@ export const appRouter = router({
         byStatus,
       };
     }),
+
+    // 月次レポート（月別・店舗別集計）
+    monthlyReport: protectedProcedure.query(async () => {
+      const cases = await listCases();
+      // 基準日：completedAt > constructionDate > surveyDate > createdAt
+      const monthly: Record<string, { yearMonth: string; count: number; completed: number; estimated: number; actual: number }> = {};
+      const byStore: Record<string, { storeName: string; count: number; completed: number; estimated: number; actual: number }> = {};
+      for (const c of cases) {
+        const base = c.completedAt ?? c.constructionDate ?? c.surveyDate ?? c.createdAt;
+        if (!base) continue;
+        const d = new Date(base);
+        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        if (!monthly[ym]) monthly[ym] = { yearMonth: ym, count: 0, completed: 0, estimated: 0, actual: 0 };
+        monthly[ym].count += 1;
+        if (c.status === "完了") monthly[ym].completed += 1;
+        monthly[ym].estimated += c.estimatedCost ?? 0;
+        monthly[ym].actual += c.actualCost ?? 0;
+
+        const sk = c.storeName ?? "(未設定)";
+        if (!byStore[sk]) byStore[sk] = { storeName: sk, count: 0, completed: 0, estimated: 0, actual: 0 };
+        byStore[sk].count += 1;
+        if (c.status === "完了") byStore[sk].completed += 1;
+        byStore[sk].estimated += c.estimatedCost ?? 0;
+        byStore[sk].actual += c.actualCost ?? 0;
+      }
+      const monthlyArr = Object.values(monthly).sort((a, b) => b.yearMonth.localeCompare(a.yearMonth));
+      const storeArr = Object.values(byStore).sort((a, b) => b.actual - a.actual);
+      return { monthly: monthlyArr, byStore: storeArr };
+    }),
   }),
 
   checklist: router({
@@ -187,7 +216,38 @@ export const appRouter = router({
           checkedAt: input.checked ? new Date() : null,
           checkedBy: input.checked ? ctx.user.id : null,
         });
-        return { success: true };
+        // ステータス自動遷移
+        let autoAdvanced: { from: string; to: string } | null = null;
+        try {
+          // このチェック項目の所属ケースとフェーズを特定
+          const items = await import("./db").then((m) => m.getChecklistItemById(input.id));
+          if (items && input.checked) {
+            const caseData = await getCaseById(items.caseId);
+            if (caseData) {
+              const all = await getChecklistByCaseId(items.caseId);
+              const phaseItems = all.filter((i) => i.phase === items.phase);
+              const allChecked = phaseItems.length > 0 && phaseItems.every((i) => i.checked);
+              if (allChecked) {
+                const phaseToNext: Record<string, string> = {
+                  受付: "現調中",
+                  現調: "見積中",
+                  施工: "完了",
+                  完了: "クローズ",
+                };
+                const next = phaseToNext[items.phase];
+                // 現在のステータスより進んだもののみ適用（逆行しない）
+                const order = ["受付", "現調中", "見積中", "施工待ち", "施工中", "完了", "クローズ"];
+                if (next && order.indexOf(next) > order.indexOf(caseData.status)) {
+                  await updateCase(items.caseId, { status: next as any });
+                  autoAdvanced = { from: caseData.status, to: next };
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("[autoAdvance] failed:", e);
+        }
+        return { success: true, autoAdvanced };
       }),
 
     updateMemo: protectedProcedure
