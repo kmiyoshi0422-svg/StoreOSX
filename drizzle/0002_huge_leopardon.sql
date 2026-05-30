@@ -1,0 +1,1 @@
+ALTER TABLE `cases` MODIFY COLUMN `urgency` enum('S','A','B','C') NOT NULL DEFAULT 'B';
