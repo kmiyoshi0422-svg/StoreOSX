@@ -10,9 +10,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { useLocation } from "wouter";
 import { useMemo, useState } from "react";
-import { Plus, Search, MapPin, Phone, Calendar, FileText, ChevronRight } from "lucide-react";
+import { Plus, Search, MapPin, Phone, Calendar, FileText, ChevronRight, User } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
   受付: "bg-slate-100 text-slate-700 border-slate-200",
@@ -40,16 +41,25 @@ const URGENCY_LABEL: Record<string, string> = {
 
 export default function CasesList() {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
   const { data: cases = [], isLoading } = trpc.cases.list.useQuery();
+  const { data: users = [] } = trpc.users.list.useQuery();
+  const userMap = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
 
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("all");
   const [urgency, setUrgency] = useState("all");
+  const [assignee, setAssignee] = useState("all"); // "all" | "mine" | "unassigned" | userId
 
   const filtered = useMemo(() => {
     return cases.filter((c) => {
       if (status !== "all" && c.status !== status) return false;
       if (urgency !== "all" && c.urgency !== urgency) return false;
+      if (assignee === "mine" && c.assigneeId !== user?.id) return false;
+      if (assignee === "unassigned" && c.assigneeId != null) return false;
+      if (assignee !== "all" && assignee !== "mine" && assignee !== "unassigned") {
+        if (c.assigneeId !== Number(assignee)) return false;
+      }
       if (q) {
         const keyword = q.toLowerCase();
         return (
@@ -62,7 +72,7 @@ export default function CasesList() {
       }
       return true;
     });
-  }, [cases, q, status, urgency]);
+  }, [cases, q, status, urgency, assignee, user?.id]);
 
   return (
     <div className="space-y-6">
@@ -124,6 +134,21 @@ export default function CasesList() {
             <SelectItem value="A">A 高</SelectItem>
             <SelectItem value="B">B 中</SelectItem>
             <SelectItem value="C">C 低</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={assignee} onValueChange={setAssignee}>
+          <SelectTrigger className="md:w-40">
+            <SelectValue placeholder="担当者" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全担当者</SelectItem>
+            <SelectItem value="mine">自分の案件</SelectItem>
+            <SelectItem value="unassigned">未割当</SelectItem>
+            {users.map((u) => (
+              <SelectItem key={u.id} value={String(u.id)}>
+                {u.name || u.email || `User #${u.id}`}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -205,6 +230,12 @@ export default function CasesList() {
                         {c.actualCost != null && (
                           <span className="font-mono text-emerald-700">
                             実績: ¥{c.actualCost.toLocaleString()}
+                          </span>
+                        )}
+                        {c.assigneeId && (
+                          <span className="flex items-center gap-1 text-primary">
+                            <User className="h-3 w-3" />
+                            {userMap.get(c.assigneeId)?.name || "担当者"}
                           </span>
                         )}
                       </div>

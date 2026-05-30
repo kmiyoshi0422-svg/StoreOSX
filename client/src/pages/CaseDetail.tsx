@@ -450,6 +450,18 @@ function InfoTab({
 
       <Card>
         <CardContent className="p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-serif-jp font-semibold flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              社内担当者
+            </h3>
+          </div>
+          <AssigneeSelect
+            caseId={caseData.id}
+            currentAssigneeId={caseData.assigneeId ?? null}
+            onUpdated={onUpdated}
+          />
+          <div className="border-t pt-4" />
           <h3 className="font-serif-jp font-semibold">取引先・店舗</h3>
           <dl className="space-y-2 text-sm">
             <Row label="協力会社" value={caseData.contractorName || "—"} />
@@ -480,6 +492,53 @@ function InfoTab({
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// 社内担当者選択コンポーネント
+function AssigneeSelect({
+  caseId,
+  currentAssigneeId,
+  onUpdated,
+}: {
+  caseId: number;
+  currentAssigneeId: number | null;
+  onUpdated: () => void;
+}) {
+  const { data: users = [] } = trpc.users.list.useQuery();
+  const updateMutation = trpc.cases.update.useMutation({
+    onSuccess: () => {
+      toast.success("担当者を更新しました");
+      onUpdated();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  return (
+    <div className="flex items-center gap-2">
+      <Select
+        value={currentAssigneeId ? String(currentAssigneeId) : "__none__"}
+        onValueChange={(v) => {
+          updateMutation.mutate({
+            id: caseId,
+            data: { assigneeId: v === "__none__" ? null : Number(v) },
+          });
+        }}
+        disabled={updateMutation.isPending}
+      >
+        <SelectTrigger className="flex-1">
+          <SelectValue placeholder="担当者を選択" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__none__">未割当</SelectItem>
+          {users.map((u) => (
+            <SelectItem key={u.id} value={String(u.id)}>
+              {u.name || u.email || `User #${u.id}`}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
