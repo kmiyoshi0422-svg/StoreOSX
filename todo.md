@@ -20,3 +20,15 @@
 - [x] 写真台帳印刷・PDF保存ボタン
 - [x] レスポンシブ対応（スマホ・タブレット・PC）
 - [x] vitestテスト（cases router・checklist template）
+
+## 追加機能（v2）
+
+- [x] DBスキーマ拡張：estimatedMaterialCost / estimatedLaborCost / actualCost / actualMaterialCost / actualLaborCost / invoiceNumber / surveyDate / constructionDate / completedAt
+- [x] CSV一括インポート機能（/cases/import）
+- [x] 見積書PDF出力（jsPDF + html2canvas）
+- [x] 完了報告書PDF出力（ステータス「完了」で有効化）
+- [x] 予実管理ページ（/budget）・予実サマリー・案件別一覧・予実編集ダイアログ
+- [x] ダッシュボード（Home）に予実サマリーを追加
+- [x] 案件一覧からワンクリックで写真台帳を開けるように
+- [x] vitest追加（summary, bulkImportの3テスト）、全テストPASS
+- [ ] （今回見送り）担当者割当機能・「自分の案件」フィルタ

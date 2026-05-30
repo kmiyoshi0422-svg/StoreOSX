@@ -10,6 +10,9 @@ import {
   Clock,
   ArrowUpRight,
   TrendingUp,
+  TrendingDown,
+  Wallet,
+  Minus,
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -39,6 +42,7 @@ const URGENCY_LABEL: Record<string, string> = {
 export default function Home() {
   const [, setLocation] = useLocation();
   const { data: cases = [], isLoading } = trpc.cases.list.useQuery();
+  const { data: summary } = trpc.cases.summary.useQuery();
 
   const total = cases.length;
   const inProgress = cases.filter((c) =>
@@ -90,6 +94,48 @@ export default function Home() {
           value={completed}
           accent="text-emerald-600"
         />
+      </div>
+
+      {/* 予実サマリー */}
+      <div>
+        <div className="flex items-end justify-between mb-4">
+          <div>
+            <h2 className="font-serif-jp text-xl font-semibold">予実サマリー</h2>
+            <p className="text-xs text-muted-foreground mt-1">見積（予算）と実績の差分を一目で確認</p>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => setLocation("/budget")}>
+            詳細を見る
+            <ArrowUpRight className="ml-1 h-3 w-3" />
+          </Button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
+          <BudgetCard
+            icon={<Wallet className="h-4 w-4" />}
+            label="見積合計"
+            value={`¥${(summary?.totalEstimated ?? 0).toLocaleString()}`}
+            accent="navy"
+          />
+          <BudgetCard
+            icon={<CheckCircle2 className="h-4 w-4" />}
+            label="実績合計"
+            value={`¥${(summary?.totalActual ?? 0).toLocaleString()}`}
+            accent="emerald"
+          />
+          <BudgetCard
+            icon={
+              (summary?.diff ?? 0) > 0 ? (
+                <TrendingUp className="h-4 w-4" />
+              ) : (summary?.diff ?? 0) < 0 ? (
+                <TrendingDown className="h-4 w-4" />
+              ) : (
+                <Minus className="h-4 w-4" />
+              )
+            }
+            label="差分「実績−見積」"
+            value={`${(summary?.diff ?? 0) >= 0 ? "+" : ""}¥${Math.abs(summary?.diff ?? 0).toLocaleString()}`}
+            accent={(summary?.diff ?? 0) > 0 ? "red" : (summary?.diff ?? 0) < 0 ? "emerald" : "gray"}
+          />
+        </div>
       </div>
 
       {/* Recent */}
@@ -168,6 +214,36 @@ export default function Home() {
         )}
       </div>
     </div>
+  );
+}
+
+function BudgetCard({
+  icon,
+  label,
+  value,
+  accent,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  accent: "navy" | "emerald" | "red" | "gray";
+}) {
+  const accents: Record<string, string> = {
+    navy: "border-l-4 border-l-[#1a2238]",
+    emerald: "border-l-4 border-l-emerald-600",
+    red: "border-l-4 border-l-red-600",
+    gray: "border-l-4 border-l-slate-300",
+  };
+  return (
+    <Card className={accents[accent]}>
+      <CardContent className="p-5">
+        <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-2">
+          {icon}
+          {label}
+        </div>
+        <p className="font-serif-jp text-xl md:text-2xl font-semibold">{value}</p>
+      </CardContent>
+    </Card>
   );
 }
 

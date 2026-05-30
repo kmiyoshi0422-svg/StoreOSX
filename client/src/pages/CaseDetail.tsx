@@ -29,7 +29,11 @@ import {
   Phone,
   MapPin,
   Save,
+  Download,
+  Wallet,
+  Users,
 } from "lucide-react";
+import { generateQuotePDF, generateCompletionReportPDF } from "@/lib/documentPdf";
 import {
   CATEGORY_LARGE_OPTIONS,
   CATEGORY_MEDIUM_OPTIONS,
@@ -131,14 +135,29 @@ export default function CaseDetail({ id }: { id: number }) {
               )}
             </div>
           </div>
-          <Button
-            onClick={() => setLocation(`/cases/${id}/ledger`)}
-            variant="outline"
-            className="shrink-0"
-          >
-            <FileText className="h-4 w-4" />
-            写真台帳
-          </Button>
+          <div className="flex gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => generateQuotePDF(caseData)}
+            >
+              <Download className="h-4 w-4" />
+              見積書
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => generateCompletionReportPDF(caseData)}
+              disabled={caseData.status !== "完了"}
+            >
+              <Download className="h-4 w-4" />
+              完了報告書
+            </Button>
+            <Button onClick={() => setLocation(`/cases/${id}/ledger`)} size="sm">
+              <FileText className="h-4 w-4" />
+              写真台帳
+            </Button>
+          </div>
         </div>
       </div>
 

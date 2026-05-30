@@ -45,3 +45,47 @@ describe("checklist template", () => {
     expect(DEFAULT_CHECKLIST.length).toBeGreaterThanOrEqual(30);
   });
 });
+
+describe("cases.summary 予実集計", () => {
+  it("予実サマリーAPIが数値フィールドを返す", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const result = await caller.cases.summary();
+    expect(result).toBeDefined();
+    expect(typeof result.totalEstimated).toBe("number");
+    expect(typeof result.totalActual).toBe("number");
+    expect(typeof result.diff).toBe("number");
+    // 差分 = 実績 - 見積
+    expect(result.diff).toBe(result.totalActual - result.totalEstimated);
+  });
+});
+
+describe("cases.bulkImport CSV一括登録", () => {
+  it("空配列を渡すとエラーになる（最低1件必要）", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(caller.cases.bulkImport({ rows: [] })).rejects.toThrow();
+  });
+
+  it("必須項目が揃っていれば一括登録できる", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const stamp = Date.now();
+    const result = await caller.cases.bulkImport({
+      rows: [
+        {
+          requestNumber: `TEST-${stamp}-1`,
+          storeName: "テスト店舗A",
+          brand: "ほっともっと",
+          status: "受付",
+          urgency: "B",
+        },
+        {
+          requestNumber: `TEST-${stamp}-2`,
+          storeName: "テスト店舗B",
+          brand: "やよい軒",
+          status: "受付",
+          urgency: "C",
+        },
+      ],
+    });
+    expect(result.inserted).toBe(2);
+  });
+});

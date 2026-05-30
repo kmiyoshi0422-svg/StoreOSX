@@ -61,9 +61,21 @@ export const cases = mysqlTable("cases", {
   urgency: mysqlEnum("urgency", ["S", "A", "B", "C"]).default("B").notNull(),
   // 担当者
   assigneeId: int("assigneeId"), // users.id
-  // 見積
-  estimatedCost: int("estimatedCost"), // 見積金額（円）
+  // 見積（予算）
+  estimatedCost: int("estimatedCost"), // 見積金額合計（円）
+  estimatedMaterialCost: int("estimatedMaterialCost"), // 見積：材料費
+  estimatedLaborCost: int("estimatedLaborCost"), // 見積：作業費
   is10mYen: boolean("is10mYen").default(false), // 10万円超フラグ
+  // 実績
+  actualCost: int("actualCost"), // 実績金額合計（円）
+  actualMaterialCost: int("actualMaterialCost"), // 実績：材料費
+  actualLaborCost: int("actualLaborCost"), // 実績：作業費
+  invoiceNumber: varchar("invoiceNumber", { length: 64 }), // 請求書番号
+  invoiceDate: timestamp("invoiceDate"), // 請求日
+  // 工期
+  surveyDate: timestamp("surveyDate"), // 現調日
+  constructionDate: timestamp("constructionDate"), // 施工日
+  completedAt: timestamp("completedAt"), // 完了日
   // メタ
   notes: text("notes"),
   createdBy: int("createdBy"),

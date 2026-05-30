@@ -12,7 +12,7 @@ import {
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { useMemo, useState } from "react";
-import { Plus, Search, MapPin, Phone, Calendar } from "lucide-react";
+import { Plus, Search, MapPin, Phone, Calendar, FileText, ChevronRight } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
   受付: "bg-slate-100 text-slate-700 border-slate-200",
@@ -74,10 +74,18 @@ export default function CasesList() {
             {filtered.length} / {cases.length} 件
           </p>
         </div>
-        <Button onClick={() => setLocation("/cases/new")} className="shadow-sm">
-          <Plus className="h-4 w-4" />
-          新規案件
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setLocation("/cases/import")}
+          >
+            CSVインポート
+          </Button>
+          <Button onClick={() => setLocation("/cases/new")} className="shadow-sm">
+            <Plus className="h-4 w-4" />
+            新規案件
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -132,16 +140,17 @@ export default function CasesList() {
       ) : (
         <div className="grid gap-3">
           {filtered.map((c) => (
-            <button
+            <Card
               key={c.id}
-              onClick={() => setLocation(`/cases/${c.id}`)}
-              className="text-left group"
+              className="hover:shadow-md hover:border-primary/40 transition-all duration-200"
             >
-              <Card className="hover:shadow-md hover:border-primary/40 transition-all duration-200">
-                <CardContent className="p-4 md:p-5">
-                  <div className="flex flex-col md:flex-row md:items-start gap-4">
-                    {/* Left: Badges + Title */}
-                    <div className="flex-1 min-w-0">
+              <CardContent className="p-4 md:p-5">
+                <div className="flex flex-col md:flex-row md:items-start gap-4">
+                  {/* Left: Badges + Title */}
+                  <div
+                    className="flex-1 min-w-0 cursor-pointer"
+                    onClick={() => setLocation(`/cases/${c.id}`)}
+                  >
                       <div className="flex flex-wrap items-center gap-2 mb-2">
                         <span
                           className={`inline-flex h-6 min-w-6 px-1.5 items-center justify-center rounded text-[10px] font-bold ${URGENCY_COLORS[c.urgency]}`}
@@ -161,40 +170,71 @@ export default function CasesList() {
                           {c.requestNumber}
                         </span>
                       </div>
-                      <h3 className="font-semibold text-base mb-1.5 truncate">
-                        {c.storeName}
-                      </h3>
-                      <div className="text-xs text-muted-foreground space-y-1">
-                        {c.address && (
-                          <div className="flex items-start gap-1.5">
-                            <MapPin className="h-3 w-3 mt-0.5 shrink-0" />
-                            <span className="truncate">{c.address}</span>
-                          </div>
-                        )}
-                        <div className="flex flex-wrap gap-x-3 gap-y-1">
-                          <span>
-                            <span className="text-muted-foreground/60">工事:</span>{" "}
-                            {c.categoryLarge || "—"} / {c.categoryMedium || "—"}
-                          </span>
-                          {c.requesterName && (
-                            <span className="flex items-center gap-1">
-                              <Phone className="h-3 w-3" />
-                              {c.requesterName}
-                            </span>
-                          )}
-                          {c.requestDate && (
-                            <span className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              {new Date(c.requestDate).toLocaleDateString("ja-JP")}
-                            </span>
-                          )}
+                    <h3 className="font-semibold text-base mb-1.5 truncate">
+                      {c.storeName}
+                    </h3>
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      {c.address && (
+                        <div className="flex items-start gap-1.5">
+                          <MapPin className="h-3 w-3 mt-0.5 shrink-0" />
+                          <span className="truncate">{c.address}</span>
                         </div>
+                      )}
+                      <div className="flex flex-wrap gap-x-3 gap-y-1">
+                        <span>
+                          <span className="text-muted-foreground/60">工事:</span>{" "}
+                          {c.categoryLarge || "—"} / {c.categoryMedium || "—"}
+                        </span>
+                        {c.requesterName && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="h-3 w-3" />
+                            {c.requesterName}
+                          </span>
+                        )}
+                        {c.requestDate && (
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            {new Date(c.requestDate).toLocaleDateString("ja-JP")}
+                          </span>
+                        )}
+                        {c.estimatedCost != null && (
+                          <span className="font-mono">
+                            見積: ¥{c.estimatedCost.toLocaleString()}
+                          </span>
+                        )}
+                        {c.actualCost != null && (
+                          <span className="font-mono text-emerald-700">
+                            実績: ¥{c.actualCost.toLocaleString()}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            </button>
+                  {/* Right: Actions */}
+                  <div className="flex md:flex-col gap-2 shrink-0 md:items-end">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setLocation(`/cases/${c.id}/ledger`);
+                      }}
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      写真台帳
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setLocation(`/cases/${c.id}`)}
+                    >
+                      詳細
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}

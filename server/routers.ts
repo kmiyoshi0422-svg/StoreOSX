@@ -52,7 +52,17 @@ const caseInputSchema = z.object({
   urgency: z.enum(["S", "A", "B", "C"]).default("B"),
   assigneeId: z.number().int().nullish(),
   estimatedCost: z.number().int().nullish(),
+  estimatedMaterialCost: z.number().int().nullish(),
+  estimatedLaborCost: z.number().int().nullish(),
   is10mYen: z.boolean().default(false),
+  actualCost: z.number().int().nullish(),
+  actualMaterialCost: z.number().int().nullish(),
+  actualLaborCost: z.number().int().nullish(),
+  invoiceNumber: z.string().nullish(),
+  invoiceDate: z.date().nullish(),
+  surveyDate: z.date().nullish(),
+  constructionDate: z.date().nullish(),
+  completedAt: z.date().nullish(),
   notes: z.string().nullish(),
 });
 
@@ -108,6 +118,60 @@ export const appRouter = router({
         await deleteCase(input.id);
         return { success: true };
       }),
+
+    // CSV一括インポート
+    bulkImport: protectedProcedure
+      .input(z.object({ rows: z.array(caseInputSchema).min(1, "最低1件必要です") }))
+      .mutation(async ({ ctx, input }) => {
+        const results: { requestNumber: string; ok: boolean; error?: string }[] = [];
+        let inserted = 0;
+        let failed = 0;
+        for (const row of input.rows) {
+          try {
+            const id = await createCase({ ...row, createdBy: ctx.user.id });
+            const items = DEFAULT_CHECKLIST.map((tpl) => ({
+              caseId: id,
+              phase: tpl.phase,
+              orderNo: tpl.orderNo,
+              title: tpl.title,
+              description: tpl.description,
+            }));
+            await createChecklistItems(items);
+            results.push({ requestNumber: row.requestNumber, ok: true });
+            inserted++;
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : "エラー";
+            results.push({ requestNumber: row.requestNumber, ok: false, error: msg });
+            failed++;
+          }
+        }
+        return { results, inserted, failed };
+      }),
+
+    // 予実サマリー
+    summary: protectedProcedure.query(async () => {
+      const cases = await listCases();
+      const total = cases.length;
+      const totalEstimated = cases.reduce((s, c) => s + (c.estimatedCost ?? 0), 0);
+      const totalActual = cases.reduce((s, c) => s + (c.actualCost ?? 0), 0);
+      const completed = cases.filter((c) => c.status === "完了").length;
+      const inProgress = cases.filter((c) =>
+        ["現調中", "見積中", "施工待ち", "施工中"].includes(c.status)
+      ).length;
+      const byStatus = cases.reduce<Record<string, number>>((acc, c) => {
+        acc[c.status] = (acc[c.status] ?? 0) + 1;
+        return acc;
+      }, {});
+      return {
+        total,
+        completed,
+        inProgress,
+        totalEstimated,
+        totalActual,
+        diff: totalActual - totalEstimated,
+        byStatus,
+      };
+    }),
   }),
 
   checklist: router({

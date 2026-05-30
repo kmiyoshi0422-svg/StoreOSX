@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, FilePlus, ClipboardList } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, FilePlus, ClipboardList, Upload, Wallet } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -31,6 +31,8 @@ const menuItems = [
   { icon: LayoutDashboard, label: "ダッシュボード", path: "/" },
   { icon: ClipboardList, label: "案件一覧", path: "/cases" },
   { icon: FilePlus, label: "案件登録", path: "/cases/new" },
+  { icon: Upload, label: "CSVインポート", path: "/cases/import" },
+  { icon: Wallet, label: "予実管理", path: "/budget" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
