@@ -33,6 +33,8 @@ import {
   Wallet,
   Users,
   Camera,
+  Briefcase,
+  Smartphone,
 } from "lucide-react";
 import { generateQuotePDF, generateCompletionReportPDF } from "@/lib/documentPdf";
 import {
@@ -463,7 +465,17 @@ function InfoTab({
             onUpdated={onUpdated}
           />
           <div className="border-t pt-4" />
-          <h3 className="font-serif-jp font-semibold">取引先・店舗</h3>
+          <h3 className="font-serif-jp font-semibold flex items-center gap-2">
+            <Briefcase className="h-4 w-4" />
+            協力会社（マスタ連携）
+          </h3>
+          <PartnerSelect
+            caseId={caseData.id}
+            currentPartnerId={caseData.partnerId ?? null}
+            onUpdated={onUpdated}
+          />
+          <div className="border-t pt-4" />
+          <h3 className="font-serif-jp font-semibold">システム記載の取引先</h3>
           <dl className="space-y-2 text-sm">
             <Row label="協力会社" value={caseData.contractorName || "—"} />
             <Row label="担当者" value={caseData.contractorPic || "—"} />
@@ -493,6 +505,99 @@ function InfoTab({
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// 協力会社選択コンポーネント
+function PartnerSelect({
+  caseId,
+  currentPartnerId,
+  onUpdated,
+}: {
+  caseId: number;
+  currentPartnerId: number | null;
+  onUpdated: () => void;
+}) {
+  const { data: partners = [] } = trpc.partners.list.useQuery();
+  const current = currentPartnerId
+    ? partners.find((p) => p.id === currentPartnerId)
+    : undefined;
+  const updateMutation = trpc.cases.update.useMutation({
+    onSuccess: () => {
+      toast.success("協力会社を更新しました");
+      onUpdated();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const telHref = (phone: string | null | undefined): string | null => {
+    if (!phone) return null;
+    const trimmed = phone.replace(/[^\d+]/g, "");
+    return trimmed.length > 0 ? `tel:${trimmed}` : null;
+  };
+
+  return (
+    <div className="space-y-3">
+      <Select
+        value={currentPartnerId ? String(currentPartnerId) : "__none__"}
+        onValueChange={(v) => {
+          updateMutation.mutate({
+            id: caseId,
+            data: { partnerId: v === "__none__" ? null : Number(v) },
+          });
+        }}
+        disabled={updateMutation.isPending}
+      >
+        <SelectTrigger className="w-full">
+          <SelectValue placeholder="協力会社を選択" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__none__">未選択</SelectItem>
+          {partners.filter((p) => p.isActive).map((p) => (
+            <SelectItem key={p.id} value={String(p.id)}>
+              [{p.category}] {p.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {current ? (
+        <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant="outline" className="text-xs">{current.category}</Badge>
+            <span className="font-medium text-sm">{current.name}</span>
+          </div>
+          {current.pic && (
+            <p className="text-xs text-muted-foreground">
+              担当：{current.pic}
+            </p>
+          )}
+          <div className="grid gap-1.5">
+            {telHref(current.phone) && (
+              <a href={telHref(current.phone)!}>
+                <Button variant="outline" size="sm" className="w-full justify-start bg-background">
+                  <Phone className="h-3.5 w-3.5" />
+                  <span className="font-mono text-xs">{current.phone}</span>
+                  <span className="ml-auto text-[10px] text-muted-foreground">代表</span>
+                </Button>
+              </a>
+            )}
+            {telHref(current.picPhone) && (
+              <a href={telHref(current.picPhone)!}>
+                <Button variant="outline" size="sm" className="w-full justify-start bg-background">
+                  <Smartphone className="h-3.5 w-3.5" />
+                  <span className="font-mono text-xs">{current.picPhone}</span>
+                  <span className="ml-auto text-[10px] text-muted-foreground">担当者</span>
+                </Button>
+              </a>
+            )}
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          協力会社マスタから選択するとワンタップで電話発信できます。
+        </p>
+      )}
     </div>
   );
 }

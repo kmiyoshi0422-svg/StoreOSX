@@ -44,10 +44,11 @@ export const cases = mysqlTable("cases", {
   categoryLarge: varchar("categoryLarge", { length: 128 }), // 内外装・サッシ・建築 等
   categoryMedium: varchar("categoryMedium", { length: 128 }), // サッシ・自動ドア 等
   categorySmall: varchar("categorySmall", { length: 128 }), // 修理交換 等
-  // 取引先
+  // 取引先・協力会社
   contractorName: varchar("contractorName", { length: 255 }),
   contractorPic: varchar("contractorPic", { length: 128 }),
   contractorPhone: varchar("contractorPhone", { length: 32 }),
+  partnerId: int("partnerId"), // partners.id 協力会社マスタへのリンク
   // 進捗管理
   status: mysqlEnum("status", [
     "受付",       // 依頼受付
@@ -141,3 +142,38 @@ export const photos = mysqlTable("photos", {
 
 export type Photo = typeof photos.$inferSelect;
 export type InsertPhoto = typeof photos.$inferInsert;
+
+/**
+ * 協力会社マスタ
+ */
+export const partners = mysqlTable("partners", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(), // 会社名
+  category: mysqlEnum("category", [
+    "電気",
+    "給排水",
+    "空調",
+    "厨房設備",
+    "排気・換気",
+    "内装",
+    "床",
+    "看板",
+    "外壁",
+    "建具",
+    "防水",
+    "その他",
+  ]).default("その他").notNull(),
+  phone: varchar("phone", { length: 32 }), // 代表電話
+  pic: varchar("pic", { length: 128 }), // 担当者名
+  picPhone: varchar("picPhone", { length: 32 }), // 担当者携帯
+  email: varchar("email", { length: 320 }),
+  address: text("address"),
+  area: varchar("area", { length: 128 }), // 対応エリア
+  notes: text("notes"),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Partner = typeof partners.$inferSelect;
+export type InsertPartner = typeof partners.$inferInsert;

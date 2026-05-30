@@ -13,6 +13,7 @@ import PhotoLedger from "./pages/PhotoLedger";
 import CsvImport from "./pages/CsvImport";
 import BudgetActual from "./pages/BudgetActual";
 import MonthlyReport from "./pages/MonthlyReport";
+import Partners from "./pages/Partners";
 
 function Router() {
   return (
@@ -24,6 +25,7 @@ function Router() {
         <Route path={"/cases/import"} component={CsvImport} />
         <Route path={"/budget"} component={BudgetActual} />
         <Route path={"/reports/monthly"} component={MonthlyReport} />
+        <Route path={"/partners"} component={Partners} />
         <Route path={"/cases/:id/ledger"}>
           {(params) => <PhotoLedger id={Number(params.id)} />}
         </Route>

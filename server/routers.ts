@@ -4,17 +4,22 @@ import { z } from "zod";
 import {
   createCase,
   createChecklistItems,
+  createPartner,
   createPhoto,
   deleteCase,
+  deletePartner,
   deletePhoto,
   getAllUsers,
   getCaseById,
   getChecklistByCaseId,
+  getPartnerById,
   getPhotoById,
   getPhotosByCaseId,
   listCases,
+  listPartners,
   updateCase,
   updateChecklistItem,
+  updatePartner,
   updatePhoto,
 } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -46,6 +51,7 @@ const caseInputSchema = z.object({
   contractorName: z.string().nullish(),
   contractorPic: z.string().nullish(),
   contractorPhone: z.string().nullish(),
+  partnerId: z.number().int().nullish(),
   status: z
     .enum(["受付", "現調中", "見積中", "施工待ち", "施工中", "完了", "クローズ"])
     .default("受付"),
@@ -82,6 +88,64 @@ export const appRouter = router({
 
   users: router({
     list: protectedProcedure.query(() => getAllUsers()),
+  }),
+
+  partners: router({
+    list: protectedProcedure.query(() => listPartners()),
+    get: protectedProcedure.input(z.object({ id: z.number() })).query(({ input }) => getPartnerById(input.id)),
+    create: protectedProcedure
+      .input(
+        z.object({
+          name: z.string().min(1),
+          category: z
+            .enum(["電気", "給排水", "空調", "厨房設備", "排気・換気", "内装", "床", "看板", "外壁", "建具", "防水", "その他"])
+            .default("その他"),
+          phone: z.string().nullish(),
+          pic: z.string().nullish(),
+          picPhone: z.string().nullish(),
+          email: z.string().nullish(),
+          address: z.string().nullish(),
+          area: z.string().nullish(),
+          notes: z.string().nullish(),
+          isActive: z.boolean().default(true),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const id = await createPartner(input);
+        return { id };
+      }),
+    update: protectedProcedure
+      .input(
+        z.object({
+          id: z.number(),
+          data: z
+            .object({
+              name: z.string().min(1).optional(),
+              category: z
+                .enum(["電気", "給排水", "空調", "厨房設備", "排気・換気", "内装", "床", "看板", "外壁", "建具", "防水", "その他"])
+                .optional(),
+              phone: z.string().nullish(),
+              pic: z.string().nullish(),
+              picPhone: z.string().nullish(),
+              email: z.string().nullish(),
+              address: z.string().nullish(),
+              area: z.string().nullish(),
+              notes: z.string().nullish(),
+              isActive: z.boolean().optional(),
+            })
+            .partial(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        await updatePartner(input.id, input.data);
+        return { success: true } as const;
+      }),
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deletePartner(input.id);
+        return { success: true } as const;
+      }),
   }),
 
   cases: router({

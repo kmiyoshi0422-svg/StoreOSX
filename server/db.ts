@@ -5,8 +5,10 @@ import {
   checklistItems,
   InsertCase,
   InsertChecklistItem,
+  InsertPartner,
   InsertPhoto,
   InsertUser,
+  partners,
   photos,
   users,
 } from "../drizzle/schema";
@@ -218,4 +220,39 @@ export async function getPhotoById(id: number) {
   if (!db) return undefined;
   const result = await db.select().from(photos).where(eq(photos.id, id)).limit(1);
   return result.length > 0 ? result[0] : undefined;
+}
+
+// ============================================================
+// Partners (協力会社マスタ)
+// ============================================================
+export async function listPartners() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(partners).orderBy(desc(partners.isActive), partners.category, partners.name);
+}
+
+export async function getPartnerById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(partners).where(eq(partners.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function createPartner(data: InsertPartner) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(partners).values(data).$returningId();
+  return result[0].id;
+}
+
+export async function updatePartner(id: number, data: Partial<InsertPartner>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(partners).set(data).where(eq(partners.id, id));
+}
+
+export async function deletePartner(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(partners).where(eq(partners.id, id));
 }
