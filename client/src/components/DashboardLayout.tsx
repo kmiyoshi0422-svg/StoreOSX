@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, FilePlus, ClipboardList, Upload, Wallet, BarChart3, Briefcase } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, FilePlus, ClipboardList, Upload, Wallet, BarChart3, Briefcase, FileSearch, Users } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -32,8 +32,10 @@ const menuItems: MenuItem[] = [
   { icon: LayoutDashboard, label: "ダッシュボード", path: "/" },
   { icon: ClipboardList, label: "案件一覧", path: "/cases" },
   { icon: FilePlus, label: "案件登録", path: "/cases/new" },
+  { icon: FileSearch, label: "PDFから案件登録", path: "/cases/import-pdf" },
   { icon: Upload, label: "CSVインポート", path: "/cases/import" },
   { icon: Briefcase, label: "協力会社", path: "/partners" },
+  { icon: Users, label: "協力会社取込", path: "/partners/import" },
   { icon: Wallet, label: "予実管理", path: "/budget", adminOnly: true },
   { icon: BarChart3, label: "月次レポート", path: "/reports/monthly", adminOnly: true },
 ];

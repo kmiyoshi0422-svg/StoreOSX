@@ -267,3 +267,11 @@ export async function listCasesByPartner(partnerId: number) {
     .where(eq(cases.partnerId, partnerId))
     .orderBy(desc(cases.createdAt));
 }
+
+// 依頼番号で案件を検索（重複チェック用）
+export async function getCaseByRequestNumber(requestNumber: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(cases).where(eq(cases.requestNumber, requestNumber)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}

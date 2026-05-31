@@ -76,3 +76,11 @@
 ## アプリ名変更（v7） ✅完了
 
 - [x] アプリ名を「Store OSX」に変更（client/index.html title・ログイン画面・サイドバーヘッダ・Homeヒーロー）
+
+## 追加機能（v8） ✅完了
+
+- [x] 提供されたPDF（修理依頼システム）構造を解析、抽出フィールドを確定
+- [x] PDFからの案件自動登録：アップロード→LLM抽出→プレビュー編集→登録（/cases/import-pdf）
+- [x] 協力会社マスタのインポート：写真（OCR）・Excel・PDFから一括登録（/partners/import）
+- [x] partners.bulkCreate / cases.uploadPdf テスト追加
+- [x] 全テストPASS（22件）

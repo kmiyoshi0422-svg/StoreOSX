@@ -259,3 +259,52 @@ describe("予算75%計算と管理者ガード", () => {
     expect(Math.abs((result.totalBudget ?? 0) - expected)).toBeLessThanOrEqual(1);
   });
 });
+
+describe("v8: partners.bulkCreate 一括登録", () => {
+  it("空配列はエラー（1件以上必要）", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(caller.partners.bulkCreate({ rows: [] as any })).rejects.toThrow();
+  });
+
+  it("複数件の協力会社を一括登録できる", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const stamp = Date.now();
+    const res = await caller.partners.bulkCreate({
+      rows: [
+        { name: `テスト電気${stamp}A`, category: "電気" },
+        { name: `テスト給排水${stamp}B`, category: "給排水", phone: "03-0000-0000" },
+      ],
+    });
+    expect(res.inserted).toBe(2);
+    expect(res.results.every((r) => r.ok)).toBe(true);
+  });
+});
+
+describe("v8: cases.uploadPdf / partners.uploadFile 入力バリデーション", () => {
+  it("uploadPdf の返り値に fileKey と url が含まれる", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    // 1ピクセルのダミーバイトをbase64化
+    const tinyPng = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]).toString("base64");
+    const res = await caller.cases.uploadPdf({
+      fileName: "test.pdf",
+      fileBase64: tinyPng,
+      mimeType: "application/pdf",
+    });
+    expect(res.fileKey).toMatch(/^imports\//);
+    expect(res.url).toMatch(/^\/manus-storage\//);
+  });
+
+  it("partners.extractFromFile は fileKey を要求する", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(
+      caller.partners.extractFromFile({ fileKey: "" as any, mimeType: "image/png" })
+    ).rejects.toThrow();
+  });
+
+  it("cases.extractFromPdf は fileKey を要求する", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(caller.cases.extractFromPdf({ fileKey: "" as any })).rejects.toThrow();
+  });
+});
