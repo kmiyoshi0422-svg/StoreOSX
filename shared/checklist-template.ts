@@ -80,3 +80,66 @@ export const CATEGORY_MEDIUM_OPTIONS: Record<string, string[]> = {
   "看板・サイン": ["看板照明", "看板破損", "サイン色褪せ"],
   その他: ["その他"],
 };
+
+/**
+ * 案件の大項目（categoryLarge）から、推薦すべき協力会社カテゴリ（partner.category）へのマッピング
+ */
+export const CATEGORY_TO_PARTNER_CATEGORIES: Record<string, string[]> = {
+  "内外装・サッシ・建築": ["内装", "建具", "外壁", "床", "防水"],
+  電気: ["電気"],
+  給排水: ["給排水"],
+  "空調・冷凍": ["空調", "排気・換気"],
+  厨房機器: ["厨房設備", "排気・換気"],
+  "看板・サイン": ["看板"],
+  その他: ["その他"],
+};
+
+/**
+ * 中項目（categoryMedium）から協力会社カテゴリへの細分マッピング
+ */
+export const MEDIUM_TO_PARTNER_CATEGORIES: Record<string, string[]> = {
+  "サッシ・自動ドア": ["建具"],
+  クロス補修: ["内装"],
+  床補修: ["床"],
+  外壁補修: ["外壁"],
+  建具: ["建具"],
+  防水: ["防水"],
+  グリストラップ: ["給排水"],
+  排水詰まり: ["給排水"],
+  漏水修理: ["給排水"],
+  給湯器: ["給排水"],
+  蛇口: ["給排水"],
+  エアコン: ["空調"],
+  冷蔵庫: ["空調"],
+  冷凍庫: ["空調"],
+  製氷機: ["空調"],
+  フライヤー: ["厨房設備"],
+  ガスコンロ: ["厨房設備"],
+  スチームコンベクション: ["厨房設備"],
+  ライスボイラー: ["厨房設備"],
+  炊飯器: ["厨房設備"],
+  看板照明: ["看板", "電気"],
+  看板破損: ["看板"],
+  サイン色褪せ: ["看板"],
+  コンセント: ["電気"],
+  照明: ["電気"],
+  分電盤: ["電気"],
+  漏電調査: ["電気"],
+  LED化: ["電気"],
+};
+
+/**
+ * 案件の大項目・中項目から推薦する協力会社カテゴリ配列を返す（中項目優先、なければ大項目）
+ */
+export function recommendPartnerCategories(
+  categoryLarge?: string | null,
+  categoryMedium?: string | null
+): string[] {
+  if (categoryMedium && MEDIUM_TO_PARTNER_CATEGORIES[categoryMedium]) {
+    return MEDIUM_TO_PARTNER_CATEGORIES[categoryMedium];
+  }
+  if (categoryLarge && CATEGORY_TO_PARTNER_CATEGORIES[categoryLarge]) {
+    return CATEGORY_TO_PARTNER_CATEGORIES[categoryLarge];
+  }
+  return [];
+}

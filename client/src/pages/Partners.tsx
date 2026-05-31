@@ -34,6 +34,7 @@ import { trpc } from "@/lib/trpc";
 import type { Partner } from "../../../drizzle/schema";
 import {
   Briefcase,
+  History,
   Loader2,
   Phone,
   Pencil,
@@ -44,6 +45,7 @@ import {
   Mail,
   MapPin,
 } from "lucide-react";
+import { Link } from "wouter";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -414,7 +416,9 @@ export default function Partners() {
                           <Badge variant="outline" className="text-xs">休止</Badge>
                         )}
                       </div>
-                      <h3 className="font-serif text-lg mt-2 truncate">{p.name}</h3>
+                      <Link href={`/partners/${p.id}`}>
+                        <h3 className="font-serif text-lg mt-2 truncate hover:underline cursor-pointer">{p.name}</h3>
+                      </Link>
                       {p.area && (
                         <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                           <MapPin className="h-3 w-3" />{p.area}
@@ -422,6 +426,11 @@ export default function Partners() {
                       )}
                     </div>
                     <div className="flex flex-col gap-1">
+                      <Link href={`/partners/${p.id}`}>
+                        <Button size="icon" variant="ghost" className="h-8 w-8" title="発注履歴">
+                          <History className="h-3.5 w-3.5" />
+                        </Button>
+                      </Link>
                       <Button
                         size="icon"
                         variant="ghost"

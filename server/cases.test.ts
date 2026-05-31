@@ -161,3 +161,69 @@ describe("partners router 協力会社マスタ", () => {
     expect(afterDelete.length).toBe(beforeCount);
   }, 30000);
 });
+
+describe("v5: 業種自動推薦", () => {
+  it("大項目「電気」から推薦カテゴリ「電気」が返る", async () => {
+    const { recommendPartnerCategories } = await import("../shared/checklist-template");
+    expect(recommendPartnerCategories("電気", null)).toEqual(["電気"]);
+  });
+
+  it("中項目「グリストラップ」を優先して給排水を返す", async () => {
+    const { recommendPartnerCategories } = await import("../shared/checklist-template");
+    expect(recommendPartnerCategories("内外装・サッシ・建築", "グリストラップ")).toEqual(["給排水"]);
+  });
+
+  it("マッピングがない大項目は空配列を返す", async () => {
+    const { recommendPartnerCategories } = await import("../shared/checklist-template");
+    expect(recommendPartnerCategories(null, null)).toEqual([]);
+    expect(recommendPartnerCategories("不明", null)).toEqual([]);
+  });
+});
+
+describe("v5: partners.history 発注履歴", () => {
+  it("協力会社の累計サマリーが集計される", { timeout: 30000 }, async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const stamp = Date.now();
+    const created = await caller.partners.create({
+      name: `履歴テスト${stamp}`,
+      category: "電気",
+      isActive: true,
+    });
+    // 案件を2件作成して紐付け
+    const c1 = await caller.cases.create({
+      requestNumber: `HIST-${stamp}-1`,
+      brand: "ほっともっと",
+      storeName: "履歴テスト店",
+      workType: "修理",
+      costBearer: "店舗",
+      status: "受付",
+      urgency: "B",
+      partnerId: created.id,
+      estimatedCost: 50000,
+      actualCost: 48000,
+    });
+    await caller.cases.create({
+      requestNumber: `HIST-${stamp}-2`,
+      brand: "ほっともっと",
+      storeName: "履歴テスト店",
+      workType: "修理",
+      costBearer: "店舗",
+      status: "完了",
+      urgency: "C",
+      partnerId: created.id,
+      estimatedCost: 30000,
+      actualCost: 31000,
+    });
+
+    const result = await caller.partners.history({ partnerId: created.id });
+    expect(result.partner?.id).toBe(created.id);
+    expect(result.summary.totalCases).toBeGreaterThanOrEqual(2);
+    expect(result.summary.totalEstimated).toBeGreaterThanOrEqual(80000);
+    expect(result.summary.totalActual).toBeGreaterThanOrEqual(79000);
+    expect(typeof result.summary.statusCounts).toBe("object");
+
+    // クリーンアップ
+    await caller.cases.delete({ id: c1.id });
+    // 紐付けが残るので、削除前にpartnerId外す手間は省略しpartner deleteへ
+  });
+});

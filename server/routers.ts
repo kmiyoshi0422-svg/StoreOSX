@@ -16,6 +16,7 @@ import {
   getPhotoById,
   getPhotosByCaseId,
   listCases,
+  listCasesByPartner,
   listPartners,
   updateCase,
   updateChecklistItem,
@@ -145,6 +146,33 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         await deletePartner(input.id);
         return { success: true } as const;
+      }),
+    // 協力会社の発注履歴・累計金額
+    history: protectedProcedure
+      .input(z.object({ partnerId: z.number() }))
+      .query(async ({ input }) => {
+        const partner = await getPartnerById(input.partnerId);
+        const list = await listCasesByPartner(input.partnerId);
+        const totalCases = list.length;
+        const completedCases = list.filter((c) => c.status === "完了" || c.status === "クローズ").length;
+        const totalEstimated = list.reduce((sum, c) => sum + (c.estimatedCost ?? 0), 0);
+        const totalActual = list.reduce((sum, c) => sum + (c.actualCost ?? 0), 0);
+        // ステータス別サマリー
+        const statusCounts: Record<string, number> = {};
+        for (const c of list) {
+          statusCounts[c.status] = (statusCounts[c.status] ?? 0) + 1;
+        }
+        return {
+          partner,
+          cases: list,
+          summary: {
+            totalCases,
+            completedCases,
+            totalEstimated,
+            totalActual,
+            statusCounts,
+          },
+        };
       }),
   }),
 

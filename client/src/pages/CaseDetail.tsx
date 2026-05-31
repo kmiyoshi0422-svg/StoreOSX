@@ -40,6 +40,7 @@ import { generateQuotePDF, generateCompletionReportPDF } from "@/lib/documentPdf
 import {
   CATEGORY_LARGE_OPTIONS,
   CATEGORY_MEDIUM_OPTIONS,
+  recommendPartnerCategories,
 } from "../../../shared/checklist-template";
 import type { Case, ChecklistItem, Photo } from "../../../drizzle/schema";
 
@@ -472,6 +473,8 @@ function InfoTab({
           <PartnerSelect
             caseId={caseData.id}
             currentPartnerId={caseData.partnerId ?? null}
+            categoryLarge={caseData.categoryLarge ?? null}
+            categoryMedium={caseData.categoryMedium ?? null}
             onUpdated={onUpdated}
           />
           <div className="border-t pt-4" />
@@ -509,17 +512,32 @@ function InfoTab({
   );
 }
 
-// 協力会社選択コンポーネント
+// 協力会社選択コンポーネント・業種推薦付き
 function PartnerSelect({
   caseId,
   currentPartnerId,
+  categoryLarge,
+  categoryMedium,
   onUpdated,
 }: {
   caseId: number;
   currentPartnerId: number | null;
+  categoryLarge: string | null;
+  categoryMedium: string | null;
   onUpdated: () => void;
 }) {
   const { data: partners = [] } = trpc.partners.list.useQuery();
+  const [onlyRecommended, setOnlyRecommended] = useState(true);
+  const recommendedCategories = useMemo(
+    () => recommendPartnerCategories(categoryLarge, categoryMedium),
+    [categoryLarge, categoryMedium]
+  );
+  const hasRecommendation = recommendedCategories.length > 0;
+  const visiblePartners = useMemo(() => {
+    const active = partners.filter((p) => p.isActive);
+    if (!hasRecommendation || !onlyRecommended) return active;
+    return active.filter((p) => recommendedCategories.includes(p.category));
+  }, [partners, hasRecommendation, onlyRecommended, recommendedCategories]);
   const current = currentPartnerId
     ? partners.find((p) => p.id === currentPartnerId)
     : undefined;
@@ -554,13 +572,33 @@ function PartnerSelect({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="__none__">未選択</SelectItem>
-          {partners.filter((p) => p.isActive).map((p) => (
+          {visiblePartners.map((p) => (
             <SelectItem key={p.id} value={String(p.id)}>
               [{p.category}] {p.name}
             </SelectItem>
           ))}
+          {visiblePartners.length === 0 && (
+            <div className="px-2 py-3 text-xs text-muted-foreground">
+              推薦業種の業者がありません。「推薦だけ表示」をオフにすると全業者を選べます。
+            </div>
+          )}
         </SelectContent>
       </Select>
+      {hasRecommendation && (
+        <div className="flex items-center justify-between gap-2 text-xs bg-amber-50/50 border border-amber-200 rounded px-2 py-1.5">
+          <span className="text-amber-900">
+            推薦業種：
+            <span className="font-medium">{recommendedCategories.join("・")}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setOnlyRecommended((v) => !v)}
+            className="text-amber-700 underline underline-offset-2 hover:text-amber-900 whitespace-nowrap"
+          >
+            {onlyRecommended ? "全業者表示" : "推薦だけ表示"}
+          </button>
+        </div>
+      )}
       {current ? (
         <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
           <div className="flex items-center gap-2 flex-wrap">

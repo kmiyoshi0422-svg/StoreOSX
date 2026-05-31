@@ -256,3 +256,14 @@ export async function deletePartner(id: number) {
   if (!db) throw new Error("Database not available");
   await db.delete(partners).where(eq(partners.id, id));
 }
+
+// 指定協力会社に紐付く案件一覧（新しい順）
+export async function listCasesByPartner(partnerId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(cases)
+    .where(eq(cases.partnerId, partnerId))
+    .orderBy(desc(cases.createdAt));
+}
