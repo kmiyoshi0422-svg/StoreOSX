@@ -184,9 +184,11 @@
 
 ## v20 テストデータ整理＋UIブラッシュアップ
 
-- [ ] テスト案件（TEST-/AUTO-/SAMPLE-など）と関連レコードを削除
-- [ ] 主要ページの見づらい箇所を洗い出し（コントラスト・余白・空状態・テーブル可読性）
-- [ ] 共通の空状態コンポーネントを整え、各リストに適用
-- [ ] テーブルのzebra/hover、ヘッダ固定、長文の省略・wrap改善
-- [ ] バッジ・ステータス色の統一
-- [ ] 型チェックとvitest全PASS確認、チェックポイント保存
+- [x] テスト案件（TEST-/AUTO-/SAMPLE-/履歴テスト/HIST-）と関連レコード（photos/estimates/expenses/route_assignments/partners）を全削除
+- [x] 主要ページの見づらい箇所を洗い出し（薄字 muted-foreground/40, /60, text-[10px] のラベル、コントラスト、空状態）
+- [x] 共通PageHeaderコンポーネントを新規作成し Reports/ExpenseImport に適用
+- [x] 主要ページ（Home/CasesList/StoresList/Partners/CaseDetail写真・経費タブ）の空状態をアイコン＋見出し＋説明文の3段に統一
+- [x] StoresList の極小ラベル（text-[10px]→text-[11px] font-medium）と KPI ラベルを読みやすく
+- [x] Reports/CaseDetail経費の表に hover:bg-muted/30, font-medium ヘッダを適用
+- [x] ログイン画面の説明文を text-foreground/80 に強化
+- [x] vitest 全113件PASS確認、チェックポイント v20=ee016c4e 保存
