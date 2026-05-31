@@ -112,3 +112,13 @@
 - [x] サイドバーに「店舗一覧」リンクを追加
 - [x] 検索/ソート/タブ（全店舗/複数案件/進行中あり）対応
 - [x] vitest 追加・全テストPASS（38件）
+
+## 追加機能（v12）担当2名の最適ルート提案＋編集可能スケジュール盤 ✅完了
+
+- [x] route_assignments テーブルを追加（cases.lat/lngも追加・マイグレーション適用済）（caseId, team(A/B), date, sequence, taskType(survey/construction), notes, assigneeId）
+- [x] サーバー: routes.suggest（推進スコアリング→チーム振分け→近接順ツアー→日付スケジューリング）（候補案件→住所ジオコード→2チーム振り分け+巡回順最適化→提案返却）
+- [x] サーバー: routes.list / upsert / remove / applySuggestion（割り当て編集API）
+- [x] サーバー: routes.geocodeMissing 案件の住所→緯度経度キャッシュ（cases.lat/lng列追加）
+- [x] フロント: ScheduleBoardをHomeに追加
+- [x] 提案一括反映・行単位編集・追加ボタン
+- [x] vitest: route-planner 11件追加、全テストPASS（49件）

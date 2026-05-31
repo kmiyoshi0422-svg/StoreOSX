@@ -9,9 +9,11 @@ import {
   InsertEstimate,
   InsertPartner,
   InsertPhoto,
+  InsertRouteAssignment,
   InsertUser,
   partners,
   photos,
+  routeAssignments,
   users,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -322,4 +324,58 @@ export async function setCasePartnerToken(caseId: number, token: string) {
   const db = await getDb();
   if (!db) return;
   await db.update(cases).set({ partnerToken: token }).where(eq(cases.id, caseId));
+}
+
+
+// ============================================================
+// Route Assignments (v12)
+// ============================================================
+export async function listRouteAssignmentsByDateRange(start: string, end: string) {
+  const db = await getDb();
+  if (!db) return [];
+  // YYYY-MM-DD 文字列の単純比較で範囲取得
+  const all = await db.select().from(routeAssignments);
+  return all.filter((r) => r.scheduledDate >= start && r.scheduledDate <= end);
+}
+
+export async function listRouteAssignmentsForCase(caseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(routeAssignments).where(eq(routeAssignments.caseId, caseId));
+}
+
+export async function createRouteAssignment(data: InsertRouteAssignment) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const result = await db.insert(routeAssignments).values(data);
+  const insertId = (result as unknown as { insertId: number }).insertId;
+  return insertId;
+}
+
+export async function updateRouteAssignment(
+  id: number,
+  data: Partial<InsertRouteAssignment>
+) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(routeAssignments).set(data).where(eq(routeAssignments.id, id));
+}
+
+export async function deleteRouteAssignment(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.delete(routeAssignments).where(eq(routeAssignments.id, id));
+}
+
+export async function clearRouteAssignmentsInRange(start: string, end: string) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const all = await db.select().from(routeAssignments);
+  const ids = all
+    .filter((r) => r.scheduledDate >= start && r.scheduledDate <= end)
+    .map((r) => r.id);
+  for (const id of ids) {
+    await db.delete(routeAssignments).where(eq(routeAssignments.id, id));
+  }
+  return ids.length;
 }

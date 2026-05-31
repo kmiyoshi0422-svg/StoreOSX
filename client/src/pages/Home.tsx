@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useLocation } from "wouter";
+import ScheduleBoard from "@/components/ScheduleBoard";
 import {
   ClipboardList,
   AlertCircle,
@@ -153,6 +154,9 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* v12: ルート推進＆スケジュール盤 */}
+      <ScheduleBoard />
 
       {/* Recent */}
       <div>

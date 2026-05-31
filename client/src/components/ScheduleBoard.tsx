@@ -1,0 +1,547 @@
+import { useMemo, useState } from "react";
+import { useLocation } from "wouter";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
+import {
+  Route,
+  Sparkles,
+  CheckCircle2,
+  Trash2,
+  Plus,
+  RefreshCw,
+  ArrowUpRight,
+  MapPin,
+  Hammer,
+  Search,
+} from "lucide-react";
+import { toast } from "sonner";
+
+type Team = "A" | "B";
+type TaskType = "survey" | "construction";
+
+const URGENCY_COLORS: Record<string, string> = {
+  S: "bg-red-600 text-white",
+  A: "bg-orange-500 text-white",
+  B: "bg-yellow-500 text-white",
+  C: "bg-emerald-500 text-white",
+};
+
+function fmtYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function addDays(d: Date, n: number): Date {
+  const r = new Date(d);
+  r.setDate(r.getDate() + n);
+  return r;
+}
+
+function dayLabel(ymd: string): string {
+  const d = new Date(ymd);
+  const wk = ["日", "月", "火", "水", "木", "金", "土"];
+  return `${d.getMonth() + 1}/${d.getDate()} (${wk[d.getDay()]})`;
+}
+
+export default function ScheduleBoard() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const [, setLocation] = useLocation();
+
+  const [start] = useState(() => fmtYmd(new Date()));
+  const [end] = useState(() => fmtYmd(addDays(new Date(), 14)));
+
+  const utils = trpc.useUtils();
+  const suggest = trpc.routes.suggest.useQuery();
+  const list = trpc.routes.list.useQuery({ start, end });
+  const cases = trpc.cases.list.useQuery();
+  const apply = trpc.routes.applySuggestion.useMutation({
+    onSuccess: () => {
+      toast.success("提案スケジュールを反映しました");
+      utils.routes.list.invalidate();
+    },
+    onError: (e) => toast.error(`反映に失敗: ${e.message}`),
+  });
+  const upsert = trpc.routes.upsert.useMutation({
+    onSuccess: () => utils.routes.list.invalidate(),
+  });
+  const remove = trpc.routes.remove.useMutation({
+    onSuccess: () => utils.routes.list.invalidate(),
+  });
+  const geocode = trpc.routes.geocodeMissing.useMutation({
+    onSuccess: (r) => {
+      toast.success(`${r.updated}/${r.total} 件の住所を地図情報化しました`);
+      utils.routes.suggest.invalidate();
+    },
+    onError: (e) => toast.error(`住所変換失敗: ${e.message}`),
+  });
+
+  // 反映済みスケジュールを team x date でグループ化
+  const grouped = useMemo(() => {
+    const items = list.data ?? [];
+    const map = new Map<string, typeof items>();
+    for (const r of items) {
+      const key = `${r.team}|${r.scheduledDate}`;
+      const arr = map.get(key) ?? [];
+      arr.push(r);
+      arr.sort((a, b) => a.sequence - b.sequence);
+      map.set(key, arr);
+    }
+    return map;
+  }, [list.data]);
+
+  // 全日付の昇順リスト（A,B両方の日を網羅）
+  const allDates = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of list.data ?? []) set.add(r.scheduledDate);
+    return Array.from(set).sort();
+  }, [list.data]);
+
+  const caseById = useMemo(() => {
+    const m = new Map<number, typeof cases.data extends Array<infer T> ? T : never>();
+    for (const c of cases.data ?? []) m.set(c.id, c as never);
+    return m;
+  }, [cases.data]);
+
+  const handleApply = () => {
+    if (!suggest.data) return;
+    const all = [
+      ...suggest.data.teamA.map((t) => ({ ...t, team: "A" as Team })),
+      ...suggest.data.teamB.map((t) => ({ ...t, team: "B" as Team })),
+    ];
+    if (all.length === 0) {
+      toast.info("提案できる案件がありません");
+      return;
+    }
+    apply.mutate({
+      start,
+      end,
+      assignments: all.map((a) => ({
+        caseId: a.caseId,
+        team: a.team,
+        taskType: a.taskType,
+        scheduledDate: a.scheduledDate,
+        sequence: a.sequence,
+        notes: a.reason,
+      })),
+    });
+  };
+
+  const totalSuggested =
+    (suggest.data?.teamA.length ?? 0) + (suggest.data?.teamB.length ?? 0);
+  const totalScheduled = list.data?.length ?? 0;
+
+  return (
+    <Card className="border-l-4 border-l-primary/70 overflow-hidden">
+      <CardContent className="p-0">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-primary/5 to-amber-50 px-5 py-4 border-b">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground mb-1">
+                <Route className="h-3.5 w-3.5" />
+                Route Planner
+              </div>
+              <h2 className="font-serif-jp text-xl font-semibold">
+                最適ルート提案 ＆ スケジュール盤
+              </h2>
+              <p className="text-xs text-muted-foreground mt-1">
+                推進ロジック：緊急度 → 進捗ステージ → 滞留日数 → 近接性。担当2名（A/B）に均等配分。
+              </p>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant="outline" className="bg-white">
+                提案 {totalSuggested} 件
+              </Badge>
+              <Badge variant="outline" className="bg-white">
+                確定 {totalScheduled} 件
+              </Badge>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => geocode.mutate()}
+                disabled={geocode.isPending}
+                title="未ジオコード住所を一括変換"
+              >
+                <MapPin className="h-3.5 w-3.5 mr-1" />
+                住所→地図
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  utils.routes.suggest.invalidate();
+                  utils.routes.list.invalidate();
+                }}
+              >
+                <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                再計算
+              </Button>
+              {isAdmin && (
+                <Button size="sm" onClick={handleApply} disabled={apply.isPending}>
+                  <Sparkles className="h-3.5 w-3.5 mr-1" />
+                  提案を反映
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Suggested top picks */}
+        {suggest.data && (suggest.data.teamA.length > 0 || suggest.data.teamB.length > 0) && (
+          <div className="px-5 py-3 border-b bg-muted/30">
+            <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
+              次にやるべきタスク（提案・上位）
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <TeamSuggestList team="A" tasks={suggest.data.teamA.slice(0, 5)} />
+              <TeamSuggestList team="B" tasks={suggest.data.teamB.slice(0, 5)} />
+            </div>
+          </div>
+        )}
+
+        {/* Scheduled board */}
+        <div className="px-5 py-4">
+          <div className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider flex items-center justify-between">
+            <span>確定スケジュール（{start} 〜 {end}）</span>
+            {isAdmin && <AddAssignmentInline />}
+          </div>
+
+          {list.isLoading ? (
+            <div className="text-sm text-muted-foreground py-6 text-center">読み込み中...</div>
+          ) : allDates.length === 0 ? (
+            <div className="text-sm text-muted-foreground py-8 text-center border border-dashed rounded">
+              まだ確定スケジュールがありません。「提案を反映」または右上「+追加」でスタート。
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {allDates.map((date) => (
+                <div key={date} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {(["A", "B"] as Team[]).map((team) => {
+                    const items = grouped.get(`${team}|${date}`) ?? [];
+                    return (
+                      <div
+                        key={`${date}-${team}`}
+                        className="border rounded-lg overflow-hidden bg-card"
+                      >
+                        <div
+                          className={`px-3 py-2 text-xs font-semibold flex items-center justify-between ${
+                            team === "A"
+                              ? "bg-blue-50 text-blue-900"
+                              : "bg-purple-50 text-purple-900"
+                          }`}
+                        >
+                          <span>
+                            チーム{team} · {dayLabel(date)}
+                          </span>
+                          <span className="text-[10px] opacity-70">
+                            {items.length}件
+                          </span>
+                        </div>
+                        <div className="divide-y">
+                          {items.length === 0 ? (
+                            <div className="px-3 py-3 text-xs text-muted-foreground italic">
+                              タスクなし
+                            </div>
+                          ) : (
+                            items.map((item, idx) => {
+                              const c = caseById.get(item.caseId) as
+                                | { requestNumber: string; storeName: string; address: string | null; urgency: string; progressStage: string }
+                                | undefined;
+                              return (
+                                <div
+                                  key={item.id}
+                                  className="px-3 py-2 flex items-start gap-2 hover:bg-muted/30"
+                                >
+                                  <span className="text-xs font-bold text-muted-foreground w-5 text-center pt-0.5">
+                                    {idx + 1}
+                                  </span>
+                                  <button
+                                    onClick={() =>
+                                      setLocation(`/cases/${item.caseId}`)
+                                    }
+                                    className="flex-1 text-left min-w-0"
+                                  >
+                                    <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                                      {c && (
+                                        <span
+                                          className={`inline-flex h-4 min-w-4 px-1 items-center justify-center rounded text-[9px] font-bold ${URGENCY_COLORS[c.urgency]}`}
+                                        >
+                                          {c.urgency}
+                                        </span>
+                                      )}
+                                      <Badge
+                                        variant="outline"
+                                        className={`text-[9px] px-1 py-0 h-4 ${
+                                          item.taskType === "survey"
+                                            ? "bg-amber-50 text-amber-700 border-amber-300"
+                                            : "bg-emerald-50 text-emerald-700 border-emerald-300"
+                                        }`}
+                                      >
+                                        {item.taskType === "survey" ? (
+                                          <>
+                                            <Search className="h-2.5 w-2.5 mr-0.5" />
+                                            現調
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Hammer className="h-2.5 w-2.5 mr-0.5" />
+                                            工事
+                                          </>
+                                        )}
+                                      </Badge>
+                                      <span className="text-[10px] text-muted-foreground font-mono">
+                                        {c?.requestNumber}
+                                      </span>
+                                    </div>
+                                    <div className="text-sm font-semibold truncate">
+                                      {c?.storeName ?? `案件 #${item.caseId}`}
+                                    </div>
+                                    <div className="text-[10px] text-muted-foreground truncate">
+                                      {c?.address || "住所未登録"}
+                                    </div>
+                                  </button>
+                                  {isAdmin && (
+                                    <div className="flex items-center gap-1">
+                                      <Select
+                                        value={item.team}
+                                        onValueChange={(v) =>
+                                          upsert.mutate({
+                                            id: item.id,
+                                            caseId: item.caseId,
+                                            team: v as Team,
+                                            taskType: item.taskType,
+                                            scheduledDate: item.scheduledDate,
+                                            sequence: item.sequence,
+                                            notes: item.notes,
+                                          })
+                                        }
+                                      >
+                                        <SelectTrigger className="h-6 w-12 text-[10px] px-1">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="A">A</SelectItem>
+                                          <SelectItem value="B">B</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                      <Input
+                                        type="date"
+                                        value={item.scheduledDate}
+                                        onChange={(e) =>
+                                          upsert.mutate({
+                                            id: item.id,
+                                            caseId: item.caseId,
+                                            team: item.team,
+                                            taskType: item.taskType,
+                                            scheduledDate: e.target.value,
+                                            sequence: item.sequence,
+                                            notes: item.notes,
+                                          })
+                                        }
+                                        className="h-6 text-[10px] w-32 px-1"
+                                      />
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6"
+                                        onClick={() => remove.mutate({ id: item.id })}
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TeamSuggestList({
+  team,
+  tasks,
+}: {
+  team: Team;
+  tasks: Array<{
+    caseId: number;
+    requestNumber: string;
+    storeName: string;
+    taskType: TaskType;
+    urgency: string;
+    progressStage: string;
+    staleDays: number;
+    priorityScore: number;
+    reason: string;
+    scheduledDate: string;
+    sequence: number;
+  }>;
+}) {
+  const [, setLocation] = useLocation();
+  return (
+    <div
+      className={`border rounded-lg overflow-hidden ${
+        team === "A" ? "border-blue-200" : "border-purple-200"
+      }`}
+    >
+      <div
+        className={`px-3 py-1.5 text-xs font-bold ${
+          team === "A" ? "bg-blue-100 text-blue-900" : "bg-purple-100 text-purple-900"
+        }`}
+      >
+        チーム{team}（{tasks.length}件）
+      </div>
+      <div className="divide-y">
+        {tasks.length === 0 ? (
+          <div className="px-3 py-3 text-xs text-muted-foreground italic">
+            提案案件なし
+          </div>
+        ) : (
+          tasks.map((t, i) => (
+            <button
+              key={`${t.caseId}-${i}`}
+              onClick={() => setLocation(`/cases/${t.caseId}`)}
+              className="w-full px-3 py-2 text-left hover:bg-muted/40 flex items-center gap-2"
+            >
+              <span className="text-xs font-mono text-muted-foreground w-5 text-center">
+                {i + 1}
+              </span>
+              <span
+                className={`inline-flex h-4 min-w-4 px-1 items-center justify-center rounded text-[9px] font-bold ${URGENCY_COLORS[t.urgency]}`}
+              >
+                {t.urgency}
+              </span>
+              <Badge
+                variant="outline"
+                className={`text-[9px] px-1 py-0 h-4 ${
+                  t.taskType === "survey"
+                    ? "bg-amber-50 text-amber-700 border-amber-300"
+                    : "bg-emerald-50 text-emerald-700 border-emerald-300"
+                }`}
+              >
+                {t.taskType === "survey" ? "現調" : "工事"}
+              </Badge>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">{t.storeName}</div>
+                <div className="text-[10px] text-muted-foreground truncate">
+                  {t.reason} · 滞留{t.staleDays}日
+                </div>
+              </div>
+              <span className="text-[10px] text-muted-foreground">
+                {t.scheduledDate.slice(5)}
+              </span>
+              <ArrowUpRight className="h-3 w-3 text-muted-foreground" />
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AddAssignmentInline() {
+  const utils = trpc.useUtils();
+  const cases = trpc.cases.list.useQuery();
+  const [open, setOpen] = useState(false);
+  const [caseId, setCaseId] = useState<string>("");
+  const [team, setTeam] = useState<Team>("A");
+  const [taskType, setTaskType] = useState<TaskType>("survey");
+  const [date, setDate] = useState<string>(fmtYmd(addDays(new Date(), 1)));
+  const upsert = trpc.routes.upsert.useMutation({
+    onSuccess: () => {
+      utils.routes.list.invalidate();
+      toast.success("追加しました");
+      setOpen(false);
+      setCaseId("");
+    },
+    onError: (e) => toast.error(`追加失敗: ${e.message}`),
+  });
+
+  if (!open) {
+    return (
+      <Button size="sm" variant="ghost" onClick={() => setOpen(true)} className="h-7">
+        <Plus className="h-3.5 w-3.5 mr-1" />
+        追加
+      </Button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <Select value={caseId} onValueChange={setCaseId}>
+        <SelectTrigger className="h-7 text-xs w-48">
+          <SelectValue placeholder="案件を選択" />
+        </SelectTrigger>
+        <SelectContent>
+          {(cases.data ?? []).map((c) => (
+            <SelectItem key={c.id} value={String(c.id)}>
+              {c.requestNumber} · {c.storeName}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select value={team} onValueChange={(v) => setTeam(v as Team)}>
+        <SelectTrigger className="h-7 text-xs w-16">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="A">A</SelectItem>
+          <SelectItem value="B">B</SelectItem>
+        </SelectContent>
+      </Select>
+      <Select value={taskType} onValueChange={(v) => setTaskType(v as TaskType)}>
+        <SelectTrigger className="h-7 text-xs w-20">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="survey">現調</SelectItem>
+          <SelectItem value="construction">工事</SelectItem>
+        </SelectContent>
+      </Select>
+      <Input
+        type="date"
+        value={date}
+        onChange={(e) => setDate(e.target.value)}
+        className="h-7 text-xs w-36"
+      />
+      <Button
+        size="sm"
+        className="h-7"
+        disabled={!caseId || upsert.isPending}
+        onClick={() =>
+          upsert.mutate({
+            caseId: Number(caseId),
+            team,
+            taskType,
+            scheduledDate: date,
+            sequence: 0,
+          })
+        }
+      >
+        <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+        確定
+      </Button>
+      <Button size="sm" variant="ghost" className="h-7" onClick={() => setOpen(false)}>
+        ×
+      </Button>
+    </div>
+  );
+}

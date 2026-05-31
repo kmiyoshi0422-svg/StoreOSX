@@ -24,12 +24,22 @@ import {
   listCasesByPartner,
   listEstimatesByCase,
   listPartners,
+  listRouteAssignmentsByDateRange,
+  createRouteAssignment,
+  updateRouteAssignment,
+  deleteRouteAssignment,
+  clearRouteAssignmentsInRange,
   setCasePartnerToken,
   updateCase,
   updateChecklistItem,
   updatePartner,
   updatePhoto,
 } from "./db";
+import { makeRequest } from "./_core/map";
+import {
+  buildSchedule,
+  type PlannerCase,
+} from "../shared/route-planner";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { storagePut, storageGetSignedUrl } from "./storage";
 import { systemRouter } from "./_core/systemRouter";
@@ -1004,6 +1014,147 @@ export const appRouter = router({
           totalPartnerAmount,
           estimates: partnerEstimates,
         };
+      }),
+  }),
+
+  // ============================================================
+  // v12: ルート推進＆スケジュール盤
+  // ============================================================
+  routes: router({
+    suggest: protectedProcedure.query(async () => {
+      const list = await listCases();
+      const today = new Date();
+      const planner: PlannerCase[] = list.map((c) => ({
+        id: c.id,
+        requestNumber: c.requestNumber,
+        storeName: c.storeName,
+        address: c.address,
+        latitude: c.latitude ? Number(c.latitude) : null,
+        longitude: c.longitude ? Number(c.longitude) : null,
+        urgency: c.urgency,
+        progressStage: c.progressStage,
+        status: c.status,
+        requestDate: c.requestDate,
+        surveyDate: c.surveyDate,
+        constructionDate: c.constructionDate,
+      }));
+      const schedule = buildSchedule(planner, today);
+      return schedule;
+    }),
+
+    // 住所をジオコードし cases.lat/lng を更新（抽出）
+    geocodeMissing: protectedProcedure.mutation(async () => {
+      const list = await listCases();
+      const targets = list.filter(
+        (c) => c.address && (!c.latitude || !c.longitude)
+      );
+      let updated = 0;
+      for (const c of targets) {
+        try {
+          const r = await makeRequest<{
+            status: string;
+            results: Array<{ geometry: { location: { lat: number; lng: number } } }>;
+          }>("/maps/api/geocode/json", { address: c.address!, language: "ja", region: "jp" });
+          if (r.status === "OK" && r.results[0]) {
+            const loc = r.results[0].geometry.location;
+            await updateCase(c.id, {
+              latitude: String(loc.lat),
+              longitude: String(loc.lng),
+            });
+            updated++;
+          }
+        } catch (err) {
+          console.warn("[geocode] failed", c.id, err);
+        }
+      }
+      return { updated, total: targets.length };
+    }),
+
+    list: protectedProcedure
+      .input(z.object({ start: z.string(), end: z.string() }))
+      .query(async ({ input }) => {
+        const items = await listRouteAssignmentsByDateRange(input.start, input.end);
+        return items;
+      }),
+
+    upsert: protectedProcedure
+      .input(
+        z.object({
+          id: z.number().optional(),
+          caseId: z.number(),
+          team: z.enum(["A", "B"]),
+          taskType: z.enum(["survey", "construction"]),
+          scheduledDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          sequence: z.number().int().min(0).default(0),
+          assigneeId: z.number().nullish(),
+          notes: z.string().nullish(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        if (input.id) {
+          await updateRouteAssignment(input.id, {
+            team: input.team,
+            taskType: input.taskType,
+            scheduledDate: input.scheduledDate,
+            sequence: input.sequence,
+            assigneeId: input.assigneeId ?? null,
+            notes: input.notes ?? null,
+          });
+          return { id: input.id };
+        }
+        const id = await createRouteAssignment({
+          caseId: input.caseId,
+          team: input.team,
+          taskType: input.taskType,
+          scheduledDate: input.scheduledDate,
+          sequence: input.sequence,
+          assigneeId: input.assigneeId ?? null,
+          notes: input.notes ?? null,
+          createdBy: ctx.user.id,
+        });
+        return { id };
+      }),
+
+    remove: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteRouteAssignment(input.id);
+        return { ok: true };
+      }),
+
+    // 提案を一括反映（期間クリアしてインサート）
+    applySuggestion: adminProcedure
+      .input(
+        z.object({
+          start: z.string(),
+          end: z.string(),
+          assignments: z.array(
+            z.object({
+              caseId: z.number(),
+              team: z.enum(["A", "B"]),
+              taskType: z.enum(["survey", "construction"]),
+              scheduledDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+              sequence: z.number().int().min(0),
+              notes: z.string().nullish(),
+            })
+          ),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        await clearRouteAssignmentsInRange(input.start, input.end);
+        for (const a of input.assignments) {
+          await createRouteAssignment({
+            caseId: a.caseId,
+            team: a.team,
+            taskType: a.taskType,
+            scheduledDate: a.scheduledDate,
+            sequence: a.sequence,
+            assigneeId: null,
+            notes: a.notes ?? null,
+            createdBy: ctx.user.id,
+          });
+        }
+        return { count: input.assignments.length };
       }),
   }),
 

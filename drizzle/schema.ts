@@ -30,6 +30,8 @@ export const cases = mysqlTable("cases", {
   storeCode: varchar("storeCode", { length: 64 }), // 店舗コード
   shopId: varchar("shopId", { length: 64 }), // SHOP-ID
   address: text("address"), // 住所
+  latitude: varchar("latitude", { length: 32 }), // ジオコーディング編度
+  longitude: varchar("longitude", { length: 32 }), // ジオコーディング経度
   storePhone: varchar("storePhone", { length: 32 }), // 店舗電話
   businessHours: varchar("businessHours", { length: 64 }), // 営業時間
   // 依頼内容
@@ -211,3 +213,23 @@ export const estimates = mysqlTable("estimates", {
 
 export type Estimate = typeof estimates.$inferSelect;
 export type InsertEstimate = typeof estimates.$inferInsert;
+
+/**
+ * ルート割り振り（2チーム制の現調・工事スケジュール）
+ */
+export const routeAssignments = mysqlTable("route_assignments", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("caseId").notNull(),
+  team: mysqlEnum("team", ["A", "B"]).notNull(),
+  taskType: mysqlEnum("taskType", ["survey", "construction"]).notNull(), // 現調 or 工事
+  scheduledDate: varchar("scheduledDate", { length: 10 }).notNull(), // YYYY-MM-DD
+  sequence: int("sequence").default(0).notNull(), // 同一チーム/同一日の訪問順
+  assigneeId: int("assigneeId"), // users.id
+  notes: text("notes"),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type RouteAssignment = typeof routeAssignments.$inferSelect;
+export type InsertRouteAssignment = typeof routeAssignments.$inferInsert;
