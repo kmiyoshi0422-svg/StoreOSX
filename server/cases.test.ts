@@ -503,3 +503,65 @@ describe("v13: teamSettings router", () => {
     ).rejects.toThrow();
   });
 });
+
+
+// ============================================================
+// v14: スケジュール盤 ドラッグ＆ドロップ移動（routes.upsertで実現）
+// ============================================================
+describe("v14: routes.upsert によるDnD移動", () => {
+  it("認証されていない場合、routes.upsert は拒否される", async () => {
+    const caller = appRouter.createCaller({
+      user: null,
+      req: { protocol: "https", headers: {} } as never,
+      res: {} as never,
+    } as never);
+    await expect(
+      caller.routes.upsert({
+        caseId: 1,
+        team: "A",
+        taskType: "survey",
+        scheduledDate: "2026-06-01",
+        sequence: 0,
+      })
+    ).rejects.toThrow();
+  });
+
+  it("scheduledDate のフォーマット不正は拒否される（YYYY-MM-DDのみ）", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(
+      caller.routes.upsert({
+        caseId: 1,
+        team: "A",
+        taskType: "survey",
+        scheduledDate: "2026/06/01" as never,
+        sequence: 0,
+      })
+    ).rejects.toThrow();
+  });
+
+  it("不正な team 値（C等）は拒否される", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(
+      caller.routes.upsert({
+        caseId: 1,
+        team: "C" as never,
+        taskType: "survey",
+        scheduledDate: "2026-06-01",
+        sequence: 0,
+      })
+    ).rejects.toThrow();
+  });
+
+  it("不正な taskType（meeting等）は拒否される", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(
+      caller.routes.upsert({
+        caseId: 1,
+        team: "A",
+        taskType: "meeting" as never,
+        scheduledDate: "2026-06-01",
+        sequence: 0,
+      })
+    ).rejects.toThrow();
+  });
+});

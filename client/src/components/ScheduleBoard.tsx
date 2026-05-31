@@ -168,6 +168,66 @@ export default function ScheduleBoard() {
     (suggest.data?.teamA.length ?? 0) + (suggest.data?.teamB.length ?? 0);
   const totalScheduled = list.data?.length ?? 0;
 
+  // ── Drag & Drop ──
+  const [dragId, setDragId] = useState<number | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null); // "A|2026-05-31"
+
+  function handleDragStart(e: React.DragEvent, id: number) {
+    if (!isAdmin) return;
+    setDragId(id);
+    e.dataTransfer.effectAllowed = "move";
+    try {
+      e.dataTransfer.setData("text/plain", String(id));
+    } catch {
+      /* noop */
+    }
+  }
+  function handleDragOver(e: React.DragEvent, key: string) {
+    if (!isAdmin) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dropTarget !== key) setDropTarget(key);
+  }
+  function handleDragLeave(key: string) {
+    if (dropTarget === key) setDropTarget(null);
+  }
+  function handleDragEnd() {
+    setDragId(null);
+    setDropTarget(null);
+  }
+  function handleDrop(e: React.DragEvent, team: Team, date: string) {
+    if (!isAdmin) return;
+    e.preventDefault();
+    const idStr = e.dataTransfer.getData("text/plain") || (dragId != null ? String(dragId) : "");
+    const id = Number(idStr);
+    setDragId(null);
+    setDropTarget(null);
+    if (!id) return;
+    const item = (list.data ?? []).find((r) => r.id === id);
+    if (!item) return;
+    if (item.team === team && item.scheduledDate === date) return;
+    // ドロップ先の末尾にsequenceを振る
+    const targetItems = (list.data ?? []).filter((r) => r.team === team && r.scheduledDate === date);
+    const nextSeq = targetItems.length > 0 ? Math.max(...targetItems.map((t) => t.sequence)) + 1 : 0;
+    upsert.mutate(
+      {
+        id: item.id,
+        caseId: item.caseId,
+        team,
+        taskType: item.taskType,
+        scheduledDate: date,
+        sequence: nextSeq,
+        notes: item.notes,
+        assigneeId: item.assigneeId,
+      },
+      {
+        onSuccess: () =>
+          toast.success(`チーム${team} / ${dayLabel(date)} に移動しました`),
+        onError: (err) => toast.error(`移動失敗: ${err.message}`),
+      },
+    );
+  }
+
   return (
     <Card className="border-l-4 border-l-primary/70 overflow-hidden">
       <CardContent className="p-0">
@@ -263,10 +323,17 @@ export default function ScheduleBoard() {
                     const leadUser = teamSetting?.primaryUserId
                       ? userById.get(teamSetting.primaryUserId)
                       : undefined;
+                    const dropKey = `${team}|${date}`;
+                    const isDropOver = dropTarget === dropKey;
                     return (
                       <div
                         key={`${date}-${team}`}
-                        className="border rounded-lg overflow-hidden bg-card"
+                        onDragOver={(e) => handleDragOver(e, dropKey)}
+                        onDragLeave={() => handleDragLeave(dropKey)}
+                        onDrop={(e) => handleDrop(e, team, date)}
+                        className={`border rounded-lg overflow-hidden bg-card transition-all ${
+                          isDropOver ? "ring-2 ring-primary ring-offset-1 bg-primary/5" : ""
+                        }`}
                       >
                         <div
                           className={`px-3 py-2 text-xs font-semibold flex items-center justify-between gap-2 ${
@@ -313,12 +380,19 @@ export default function ScheduleBoard() {
                               const assignee = item.assigneeId
                                 ? userById.get(item.assigneeId)
                                 : undefined;
+                              const isDragging = dragId === item.id;
                               return (
                                 <div
                                   key={item.id}
-                                  className="px-3 py-2 flex items-start gap-2 hover:bg-muted/30"
+                                  draggable={isAdmin}
+                                  onDragStart={(e) => handleDragStart(e, item.id)}
+                                  onDragEnd={handleDragEnd}
+                                  className={`px-3 py-2 flex items-start gap-2 hover:bg-muted/30 ${
+                                    isAdmin ? "cursor-grab active:cursor-grabbing" : ""
+                                  } ${isDragging ? "opacity-40" : ""}`}
+                                  title={isAdmin ? "ドラッグしてチーム/日付を変更" : undefined}
                                 >
-                                  <span className="text-xs font-bold text-muted-foreground w-5 text-center pt-0.5">
+                                  <span className="text-xs font-bold text-muted-foreground w-5 text-center pt-0.5 select-none">
                                     {idx + 1}
                                   </span>
                                   <button
