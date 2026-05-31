@@ -23,6 +23,7 @@ import {
   Search,
   Users,
   UserCog,
+  Navigation,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -69,6 +70,55 @@ function dayLabel(ymd: string): string {
   const d = new Date(ymd);
   const wk = ["日", "月", "火", "水", "木", "金", "土"];
   return `${d.getMonth() + 1}/${d.getDate()} (${wk[d.getDay()]})`;
+}
+
+// Haversine公式で km 計算
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const toRad = (v: number) => (v * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+/** 順序付きタスクの総移動距離と未地図化件数を計算 */
+function computeRouteDistance(
+  items: Array<{ caseId: number }>,
+  caseLatLng: Map<number, { lat: number | null; lng: number | null }>,
+): { km: number; missing: number; usable: number } {
+  const pts: Array<{ lat: number; lng: number }> = [];
+  let missing = 0;
+  for (const it of items) {
+    const c = caseLatLng.get(it.caseId);
+    if (c?.lat != null && c?.lng != null) {
+      pts.push({ lat: c.lat, lng: c.lng });
+    } else {
+      missing++;
+    }
+  }
+  let km = 0;
+  for (let i = 1; i < pts.length; i++) {
+    km += haversineKm(pts[i - 1].lat, pts[i - 1].lng, pts[i].lat, pts[i].lng);
+  }
+  return { km, missing, usable: pts.length };
+}
+
+/** 車で街中平均25km/h ・ 訪問1件あたり30分件換h で概算 */
+function estimateDurationMin(km: number, visits: number): number {
+  const driveMin = (km / 25) * 60;
+  const visitMin = visits * 30;
+  return Math.round(driveMin + visitMin);
+}
+
+function fmtDuration(min: number): string {
+  if (min < 60) return `${min}分`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m === 0 ? `${h}h` : `${h}h${m}m`;
 }
 
 export default function ScheduleBoard() {
@@ -139,6 +189,25 @@ export default function ScheduleBoard() {
     for (const c of cases.data ?? []) m.set(c.id, c as never);
     return m;
   }, [cases.data]);
+
+  const caseLatLng = useMemo(() => {
+    const m = new Map<number, { lat: number | null; lng: number | null }>();
+    for (const c of cases.data ?? []) {
+      const cc = c as unknown as { id: number; lat: number | null; lng: number | null };
+      m.set(cc.id, { lat: cc.lat, lng: cc.lng });
+    }
+    return m;
+  }, [cases.data]);
+
+  // 日付×チームごとの距離・所要時間を可視化用に集計
+  const totalDistanceKm = useMemo(() => {
+    let total = 0;
+    grouped.forEach((arr) => {
+      const r = computeRouteDistance(arr, caseLatLng);
+      total += r.km;
+    });
+    return total;
+  }, [grouped, caseLatLng]);
 
   const handleApply = () => {
     if (!suggest.data) return;
@@ -253,6 +322,12 @@ export default function ScheduleBoard() {
               <Badge variant="outline" className="bg-white">
                 確定 {totalScheduled} 件
               </Badge>
+              {totalDistanceKm > 0 && (
+                <Badge variant="outline" className="bg-white border-emerald-300 text-emerald-700">
+                  <Navigation className="h-3 w-3 mr-1" />
+                  総距離 {totalDistanceKm.toFixed(1)} km
+                </Badge>
+              )}
               <Button
                 size="sm"
                 variant="outline"
@@ -367,6 +442,36 @@ export default function ScheduleBoard() {
                             {items.length}件
                           </span>
                         </div>
+                        {(() => {
+                          if (items.length === 0) return null;
+                          const r = computeRouteDistance(items, caseLatLng);
+                          const dur = estimateDurationMin(r.km, r.usable);
+                          return (
+                            <div
+                              className={`px-3 py-1.5 text-[10px] flex items-center justify-between gap-2 border-b ${
+                                team === "A" ? "bg-blue-50/50" : "bg-purple-50/50"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 text-muted-foreground">
+                                <span className="flex items-center gap-1">
+                                  <Navigation className="h-3 w-3" />
+                                  {r.usable >= 2 ? `${r.km.toFixed(1)} km` : "距離計算不可"}
+                                </span>
+                                {r.usable >= 1 && (
+                                  <span className="text-muted-foreground/80">・ 所要約 {fmtDuration(dur)}</span>
+                                )}
+                              </div>
+                              {r.missing > 0 && (
+                                <span
+                                  className="text-amber-700 font-medium"
+                                  title="住所が未ジオコードのため距離に含められません"
+                                >
+                                  {r.missing}件未地図化
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                         <div className="divide-y">
                           {items.length === 0 ? (
                             <div className="px-3 py-3 text-xs text-muted-foreground italic">
