@@ -122,3 +122,11 @@
 - [x] フロント: ScheduleBoardをHomeに追加
 - [x] 提案一括反映・行単位編集・追加ボタン
 - [x] vitest: route-planner 11件追加、全テストPASS（49件）
+
+## 追加機能（v13）チーム担当者の割り当て ✅完了
+
+- [x] team_settingsテーブル追加とマイグレーション
+- [x] サーバー: teamSettings.list / upsert
+- [x] applySuggestionでチームの代表担当者を自動でassigneeIdに設定
+- [x] ScheduleBoardにチーム設定ダイアログ・チームヘッダアバター・タスク担当アバター・個別Select
+- [x] vitest 4件追加・全テストPASS（53件）

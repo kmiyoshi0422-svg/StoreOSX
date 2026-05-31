@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import {
@@ -18,8 +21,26 @@ import {
   MapPin,
   Hammer,
   Search,
+  Users,
+  UserCog,
 } from "lucide-react";
 import { toast } from "sonner";
+
+const NULL_USER_VALUE = "__none__";
+
+function colorFromName(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
+  return `hsl(${h}, 60%, 45%)`;
+}
+
+function initials(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return "?";
+  const parts = trimmed.split(/\s+/);
+  if (parts.length === 1) return trimmed.slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 type Team = "A" | "B";
 type TaskType = "survey" | "construction";
@@ -62,6 +83,15 @@ export default function ScheduleBoard() {
   const suggest = trpc.routes.suggest.useQuery();
   const list = trpc.routes.list.useQuery({ start, end });
   const cases = trpc.cases.list.useQuery();
+  const usersQ = trpc.users.list.useQuery();
+  const teamSettingsQ = trpc.teamSettings.list.useQuery();
+  const userById = useMemo(() => {
+    const m = new Map<number, { id: number; name: string }>();
+    for (const u of usersQ.data ?? []) {
+      m.set(u.id, { id: u.id, name: u.name ?? `ユーザー#${u.id}` });
+    }
+    return m;
+  }, [usersQ.data]);
   const apply = trpc.routes.applySuggestion.useMutation({
     onSuccess: () => {
       toast.success("提案スケジュールを反映しました");
@@ -185,6 +215,9 @@ export default function ScheduleBoard() {
                 再計算
               </Button>
               {isAdmin && (
+                <TeamSettingsDialog />
+              )}
+              {isAdmin && (
                 <Button size="sm" onClick={handleApply} disabled={apply.isPending}>
                   <Sparkles className="h-3.5 w-3.5 mr-1" />
                   提案を反映
@@ -226,22 +259,44 @@ export default function ScheduleBoard() {
                 <div key={date} className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {(["A", "B"] as Team[]).map((team) => {
                     const items = grouped.get(`${team}|${date}`) ?? [];
+                    const teamSetting = team === "A" ? teamSettingsQ.data?.A : teamSettingsQ.data?.B;
+                    const leadUser = teamSetting?.primaryUserId
+                      ? userById.get(teamSetting.primaryUserId)
+                      : undefined;
                     return (
                       <div
                         key={`${date}-${team}`}
                         className="border rounded-lg overflow-hidden bg-card"
                       >
                         <div
-                          className={`px-3 py-2 text-xs font-semibold flex items-center justify-between ${
+                          className={`px-3 py-2 text-xs font-semibold flex items-center justify-between gap-2 ${
                             team === "A"
                               ? "bg-blue-50 text-blue-900"
                               : "bg-purple-50 text-purple-900"
                           }`}
                         >
-                          <span>
-                            チーム{team} · {dayLabel(date)}
-                          </span>
-                          <span className="text-[10px] opacity-70">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="shrink-0">チーム{team}</span>
+                            {leadUser ? (
+                              <div className="flex items-center gap-1 min-w-0">
+                                <Avatar className="h-4 w-4">
+                                  <AvatarFallback
+                                    className="text-[8px] text-white"
+                                    style={{ backgroundColor: colorFromName(leadUser.name) }}
+                                  >
+                                    {initials(leadUser.name)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span className="truncate text-[11px] font-normal opacity-90">
+                                  {leadUser.name}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] font-normal opacity-60 italic">担当者未設定</span>
+                            )}
+                            <span className="text-[10px] font-normal opacity-70">· {dayLabel(date)}</span>
+                          </div>
+                          <span className="text-[10px] opacity-70 shrink-0">
                             {items.length}件
                           </span>
                         </div>
@@ -255,6 +310,9 @@ export default function ScheduleBoard() {
                               const c = caseById.get(item.caseId) as
                                 | { requestNumber: string; storeName: string; address: string | null; urgency: string; progressStage: string }
                                 | undefined;
+                              const assignee = item.assigneeId
+                                ? userById.get(item.assigneeId)
+                                : undefined;
                               return (
                                 <div
                                   key={item.id}
@@ -307,9 +365,53 @@ export default function ScheduleBoard() {
                                     <div className="text-[10px] text-muted-foreground truncate">
                                       {c?.address || "住所未登録"}
                                     </div>
+                                    <div className="flex items-center gap-1 mt-1">
+                                      {assignee ? (
+                                        <>
+                                          <Avatar className="h-4 w-4">
+                                            <AvatarFallback
+                                              className="text-[8px] text-white"
+                                              style={{ backgroundColor: colorFromName(assignee.name) }}
+                                            >
+                                              {initials(assignee.name)}
+                                            </AvatarFallback>
+                                          </Avatar>
+                                          <span className="text-[10px] font-medium">{assignee.name}</span>
+                                        </>
+                                      ) : (
+                                        <span className="text-[10px] text-muted-foreground italic">担当未割り当て</span>
+                                      )}
+                                    </div>
                                   </button>
                                   {isAdmin && (
                                     <div className="flex items-center gap-1">
+                                      <Select
+                                        value={item.assigneeId ? String(item.assigneeId) : NULL_USER_VALUE}
+                                        onValueChange={(v) =>
+                                          upsert.mutate({
+                                            id: item.id,
+                                            caseId: item.caseId,
+                                            team: item.team,
+                                            taskType: item.taskType,
+                                            scheduledDate: item.scheduledDate,
+                                            sequence: item.sequence,
+                                            notes: item.notes,
+                                            assigneeId: v === NULL_USER_VALUE ? null : Number(v),
+                                          })
+                                        }
+                                      >
+                                        <SelectTrigger className="h-6 w-24 text-[10px] px-1">
+                                          <SelectValue placeholder="担当" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value={NULL_USER_VALUE}>未割り当て</SelectItem>
+                                          {(usersQ.data ?? []).map((u) => (
+                                            <SelectItem key={u.id} value={String(u.id)}>
+                                              {u.name ?? `ユーザー#${u.id}`}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
                                       <Select
                                         value={item.team}
                                         onValueChange={(v) =>
@@ -321,6 +423,7 @@ export default function ScheduleBoard() {
                                             scheduledDate: item.scheduledDate,
                                             sequence: item.sequence,
                                             notes: item.notes,
+                                            assigneeId: item.assigneeId,
                                           })
                                         }
                                       >
@@ -344,6 +447,7 @@ export default function ScheduleBoard() {
                                             scheduledDate: e.target.value,
                                             sequence: item.sequence,
                                             notes: item.notes,
+                                            assigneeId: item.assigneeId,
                                           })
                                         }
                                         className="h-6 text-[10px] w-32 px-1"
@@ -543,5 +647,124 @@ function AddAssignmentInline() {
         ×
       </Button>
     </div>
+  );
+}
+
+
+function TeamSettingsDialog() {
+  const utils = trpc.useUtils();
+  const settingsQ = trpc.teamSettings.list.useQuery();
+  const usersQ = trpc.users.list.useQuery();
+  const upsert = trpc.teamSettings.upsert.useMutation({
+    onSuccess: () => {
+      utils.teamSettings.list.invalidate();
+    },
+    onError: (e) => toast.error(`保存失敗: ${e.message}`),
+  });
+  const [open, setOpen] = useState(false);
+  const [aUser, setAUser] = useState<string>(NULL_USER_VALUE);
+  const [bUser, setBUser] = useState<string>(NULL_USER_VALUE);
+  const [aLabel, setALabel] = useState<string>("");
+  const [bLabel, setBLabel] = useState<string>("");
+
+  // ダイアログを開いた瞬間に現状値で初期化
+  function handleOpen(v: boolean) {
+    if (v) {
+      const a = settingsQ.data?.A;
+      const b = settingsQ.data?.B;
+      setAUser(a?.primaryUserId ? String(a.primaryUserId) : NULL_USER_VALUE);
+      setBUser(b?.primaryUserId ? String(b.primaryUserId) : NULL_USER_VALUE);
+      setALabel(a?.label ?? "");
+      setBLabel(b?.label ?? "");
+    }
+    setOpen(v);
+  }
+
+  async function handleSave() {
+    await upsert.mutateAsync({
+      team: "A",
+      primaryUserId: aUser === NULL_USER_VALUE ? null : Number(aUser),
+      label: aLabel || null,
+    });
+    await upsert.mutateAsync({
+      team: "B",
+      primaryUserId: bUser === NULL_USER_VALUE ? null : Number(bUser),
+      label: bLabel || null,
+    });
+    toast.success("チーム担当者を保存しました");
+    setOpen(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline">
+          <UserCog className="h-3.5 w-3.5 mr-1" />
+          チーム担当者
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            チーム担当者を割り当て
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          {(["A", "B"] as const).map((team) => {
+            const value = team === "A" ? aUser : bUser;
+            const setValue = team === "A" ? setAUser : setBUser;
+            const label = team === "A" ? aLabel : bLabel;
+            const setLabel = team === "A" ? setALabel : setBLabel;
+            return (
+              <div
+                key={team}
+                className={`p-3 rounded-lg border ${
+                  team === "A" ? "bg-blue-50/40 border-blue-200" : "bg-purple-50/40 border-purple-200"
+                }`}
+              >
+                <div className="text-sm font-semibold mb-2">チーム{team}</div>
+                <div className="space-y-2">
+                  <div>
+                    <Label className="text-xs">代表担当者</Label>
+                    <Select value={value} onValueChange={setValue}>
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue placeholder="ユーザーを選択" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NULL_USER_VALUE}>未設定</SelectItem>
+                        {(usersQ.data ?? []).map((u) => (
+                          <SelectItem key={u.id} value={String(u.id)}>
+                            {u.name ?? `ユーザー#${u.id}`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">チーム名（任意）</Label>
+                    <Input
+                      value={label}
+                      onChange={(e) => setLabel(e.target.value)}
+                      placeholder="例：東京エリア担当"
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            キャンセル
+          </Button>
+          <Button onClick={handleSave} disabled={upsert.isPending}>
+            <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+            保存
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -464,3 +464,42 @@ describe("店舗一覧集計（v11）", () => {
     await expect(caller.stores.list()).rejects.toThrow();
   });
 });
+
+
+// ============================================================
+// v13: チーム担当者割り当て
+// ============================================================
+describe("v13: teamSettings router", () => {
+  it("teamSettings.list は A/B 両チームを返す", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const result = await caller.teamSettings.list();
+    expect(result).toHaveProperty("A");
+    expect(result).toHaveProperty("B");
+    expect(result.A.team).toBe("A");
+    expect(result.B.team).toBe("B");
+  });
+
+  it("一般ユーザーは teamSettings.upsert を呼び出せない（FORBIDDEN）", async () => {
+    const caller = appRouter.createCaller(createAuthContext("user"));
+    await expect(
+      caller.teamSettings.upsert({ team: "A", primaryUserId: null })
+    ).rejects.toThrow();
+  });
+
+  it("管理者は teamSettings.upsert で担当者を更新できる（同じteamで2回呼んでも追加されない）", async () => {
+    const caller = appRouter.createCaller(createAdminContext());
+    await caller.teamSettings.upsert({ team: "A", primaryUserId: null, label: "テストA" });
+    const before = await caller.teamSettings.list();
+    expect(before.A.label).toBe("テストA");
+    await caller.teamSettings.upsert({ team: "A", primaryUserId: null, label: "テストA2" });
+    const after = await caller.teamSettings.list();
+    expect(after.A.label).toBe("テストA2");
+  });
+
+  it("teamSettings.upsert は不正な team 値を拒否する", async () => {
+    const caller = appRouter.createCaller(createAdminContext());
+    await expect(
+      caller.teamSettings.upsert({ team: "C" as never, primaryUserId: null })
+    ).rejects.toThrow();
+  });
+});

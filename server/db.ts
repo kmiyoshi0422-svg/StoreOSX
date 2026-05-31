@@ -10,10 +10,12 @@ import {
   InsertPartner,
   InsertPhoto,
   InsertRouteAssignment,
+  InsertTeamSetting,
   InsertUser,
   partners,
   photos,
   routeAssignments,
+  teamSettings,
   users,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -378,4 +380,30 @@ export async function clearRouteAssignmentsInRange(start: string, end: string) {
     await db.delete(routeAssignments).where(eq(routeAssignments.id, id));
   }
   return ids.length;
+}
+
+
+// ============================================================
+// Team Settings (v13)
+// ============================================================
+export async function listTeamSettings() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(teamSettings);
+}
+
+export async function upsertTeamSetting(data: InsertTeamSetting) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const all = await db.select().from(teamSettings).where(eq(teamSettings.team, data.team));
+  if (all.length > 0) {
+    await db.update(teamSettings).set({
+      primaryUserId: data.primaryUserId ?? null,
+      label: data.label ?? null,
+      color: data.color ?? null,
+    }).where(eq(teamSettings.id, all[0].id));
+    return all[0].id;
+  }
+  const result = await db.insert(teamSettings).values(data);
+  return (result as unknown as { insertId: number }).insertId;
 }

@@ -43,6 +43,13 @@
       "when": 1780206104540,
       "tag": "0005_stormy_warstar",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1780206918441,
+      "tag": "0006_skinny_tarot",
+      "breakpoints": true
     }
   ]
 }

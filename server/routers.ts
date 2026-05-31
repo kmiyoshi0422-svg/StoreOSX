@@ -29,6 +29,8 @@ import {
   updateRouteAssignment,
   deleteRouteAssignment,
   clearRouteAssignmentsInRange,
+  listTeamSettings,
+  upsertTeamSetting,
   setCasePartnerToken,
   updateCase,
   updateChecklistItem,
@@ -1142,6 +1144,12 @@ export const appRouter = router({
       )
       .mutation(async ({ input, ctx }) => {
         await clearRouteAssignmentsInRange(input.start, input.end);
+        // チーム設定から代表担当者を取得
+        const teams = await listTeamSettings();
+        const teamUser: Record<"A" | "B", number | null> = {
+          A: teams.find((t) => t.team === "A")?.primaryUserId ?? null,
+          B: teams.find((t) => t.team === "B")?.primaryUserId ?? null,
+        };
         for (const a of input.assignments) {
           await createRouteAssignment({
             caseId: a.caseId,
@@ -1149,12 +1157,44 @@ export const appRouter = router({
             taskType: a.taskType,
             scheduledDate: a.scheduledDate,
             sequence: a.sequence,
-            assigneeId: null,
+            assigneeId: teamUser[a.team],
             notes: a.notes ?? null,
             createdBy: ctx.user.id,
           });
         }
         return { count: input.assignments.length };
+      }),
+  }),
+
+  // チーム設定（v13）
+  teamSettings: router({
+    list: protectedProcedure.query(async () => {
+      const items = await listTeamSettings();
+      // 未設定チームもデフォルトで返す
+      const teamA = items.find((t) => t.team === "A");
+      const teamB = items.find((t) => t.team === "B");
+      return {
+        A: teamA ?? { team: "A" as const, primaryUserId: null, label: null, color: null },
+        B: teamB ?? { team: "B" as const, primaryUserId: null, label: null, color: null },
+      };
+    }),
+    upsert: adminProcedure
+      .input(
+        z.object({
+          team: z.enum(["A", "B"]),
+          primaryUserId: z.number().nullish(),
+          label: z.string().max(64).nullish(),
+          color: z.string().max(16).nullish(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const id = await upsertTeamSetting({
+          team: input.team,
+          primaryUserId: input.primaryUserId ?? null,
+          label: input.label ?? null,
+          color: input.color ?? null,
+        });
+        return { id };
       }),
   }),
 

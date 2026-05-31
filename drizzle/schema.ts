@@ -233,3 +233,20 @@ export const routeAssignments = mysqlTable("route_assignments", {
 
 export type RouteAssignment = typeof routeAssignments.$inferSelect;
 export type InsertRouteAssignment = typeof routeAssignments.$inferInsert;
+
+/**
+ * チーム設定（v13: チームA/Bの担当者割り振り）
+ * 全システムで全グローバルシングルトンとして保持（1行/チーム）
+ */
+export const teamSettings = mysqlTable("team_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  team: mysqlEnum("team", ["A", "B"]).notNull(),
+  primaryUserId: int("primaryUserId"), // 代表担当者
+  label: varchar("label", { length: 64 }), // チーム名（例：×街×チーム）
+  color: varchar("color", { length: 16 }), // 表示色 hex
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TeamSetting = typeof teamSettings.$inferSelect;
+export type InsertTeamSetting = typeof teamSettings.$inferInsert;
