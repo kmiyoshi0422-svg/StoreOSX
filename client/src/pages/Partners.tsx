@@ -385,14 +385,17 @@ export default function Partners() {
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : filtered.length === 0 ? (
-        <Card>
-          <CardContent className="py-20 text-center">
-            <Briefcase className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-            <p className="text-muted-foreground">
+        <Card className="border-dashed">
+          <CardContent className="py-16 text-center flex flex-col items-center gap-3">
+            <Briefcase className="h-10 w-10 text-muted-foreground/70" />
+            <p className="font-medium">
               {partners && partners.length > 0
                 ? "条件に一致する協力会社がありません"
-                : "協力会社が未登録です。右上の「新規登録」から追加してください"}
+                : "協力会社が未登録です"}
             </p>
+            {(!partners || partners.length === 0) && (
+              <p className="text-sm text-muted-foreground max-w-sm">右上の「新規登録」ボタンから、または「CSV一括取込」ページから追加してください。</p>
+            )}
           </CardContent>
         </Card>
       ) : (

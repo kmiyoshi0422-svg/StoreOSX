@@ -113,7 +113,7 @@ export default function StoresList() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>
           <CardContent className="p-4">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 font-medium">
               登録店舗数
             </p>
             <p className="font-serif-jp text-2xl font-semibold">{totalStats.totalStores}</p>
@@ -121,7 +121,7 @@ export default function StoresList() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 font-medium">
               複数案件の店舗
             </p>
             <p className="font-serif-jp text-2xl font-semibold text-amber-700">
@@ -131,7 +131,7 @@ export default function StoresList() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 font-medium">
               緊急案件あり店舗
             </p>
             <p className="font-serif-jp text-2xl font-semibold text-red-700">
@@ -141,7 +141,7 @@ export default function StoresList() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 font-medium">
               累計実績コスト
             </p>
             <p className="font-serif-jp text-2xl font-semibold font-mono">
@@ -189,9 +189,10 @@ export default function StoresList() {
         <div className="text-sm text-muted-foreground py-8 text-center">読み込み中...</div>
       ) : filtered.length === 0 ? (
         <Card className="border-dashed">
-          <CardContent className="py-16 text-center">
-            <Building2 className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">該当する店舗がありません</p>
+          <CardContent className="py-16 text-center flex flex-col items-center gap-3">
+            <Building2 className="h-10 w-10 text-muted-foreground/70" />
+            <p className="font-medium">該当する店舗がありません</p>
+            <p className="text-sm text-muted-foreground max-w-sm">検索キーワードやタブ（複数案件・進行中あり）を切り替えてもう一度お試しください。</p>
           </CardContent>
         </Card>
       ) : (
@@ -260,46 +261,46 @@ export default function StoresList() {
                     {/* Stats Grid */}
                     <div className="grid grid-cols-4 md:grid-cols-4 gap-3 md:gap-5 md:min-w-[420px]">
                       <div className="text-center">
-                        <p className="text-[10px] text-muted-foreground mb-0.5">案件数</p>
+                        <p className="text-[11px] text-muted-foreground mb-1 font-medium">案件数</p>
                         <p className="font-serif-jp text-xl font-semibold">{s.caseCount}</p>
-                        <p className="text-[10px] text-muted-foreground">
+                        <p className="text-[11px] text-muted-foreground">
                           進行 {s.openCount} / 完了 {s.completedCount}
                         </p>
                       </div>
                       <div className="text-center">
-                        <p className="text-[10px] text-muted-foreground mb-0.5 flex items-center justify-center gap-0.5">
-                          <Receipt className="h-2.5 w-2.5" />
+                        <p className="text-[11px] text-muted-foreground mb-1 flex items-center justify-center gap-1 font-medium">
+                          <Receipt className="h-3 w-3" />
                           見積累計
                         </p>
                         <p className="font-mono text-sm font-semibold tabular-nums">
                           ¥{(s.totalEstimated / 1000).toLocaleString()}k
                         </p>
-                        <p className="text-[10px] text-muted-foreground">
+                        <p className="text-[11px] text-muted-foreground tabular-nums">
                           ¥{s.totalEstimated.toLocaleString()}
                         </p>
                       </div>
                       <div className="text-center">
-                        <p className="text-[10px] text-muted-foreground mb-0.5 flex items-center justify-center gap-0.5">
-                          <TrendingUp className="h-2.5 w-2.5" />
+                        <p className="text-[11px] text-muted-foreground mb-1 flex items-center justify-center gap-1 font-medium">
+                          <TrendingUp className="h-3 w-3" />
                           実績累計
                         </p>
                         <p className="font-mono text-sm font-semibold tabular-nums text-emerald-700">
                           ¥{(s.totalActual / 1000).toLocaleString()}k
                         </p>
-                        <p className="text-[10px] text-muted-foreground">
+                        <p className="text-[11px] text-muted-foreground tabular-nums">
                           ¥{s.totalActual.toLocaleString()}
                         </p>
                       </div>
                       <div className="text-center">
-                        <p className="text-[10px] text-muted-foreground mb-0.5 flex items-center justify-center gap-0.5">
-                          <Calendar className="h-2.5 w-2.5" />
+                        <p className="text-[11px] text-muted-foreground mb-1 flex items-center justify-center gap-1 font-medium">
+                          <Calendar className="h-3 w-3" />
                           最終依頼
                         </p>
                         <p className="text-xs font-semibold">{fmtDate(s.latestRequestAt)}</p>
                         {s.latestStage && (
                           <Badge
                             variant="outline"
-                            className={`text-[9px] mt-0.5 ${STAGE_BADGE[s.latestStage] ?? ""}`}
+                            className={`text-[10px] mt-1 ${STAGE_BADGE[s.latestStage] ?? ""}`}
                           >
                             {s.latestStage}
                           </Badge>

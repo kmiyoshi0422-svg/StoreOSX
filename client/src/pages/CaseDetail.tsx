@@ -1017,9 +1017,10 @@ function PhotosTab({
       {/* Photos */}
       {photos.length === 0 ? (
         <Card className="border-dashed">
-          <CardContent className="py-12 text-center">
-            <ImageIcon className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">まだ写真がありません</p>
+          <CardContent className="py-14 text-center flex flex-col items-center gap-3">
+            <ImageIcon className="h-10 w-10 text-muted-foreground/70" />
+            <p className="font-medium">まだ写真がありません</p>
+            <p className="text-sm text-muted-foreground max-w-sm">現地写真をアップロードすると、現調・施工写真として台帳に反映されます。</p>
           </CardContent>
         </Card>
       ) : (
@@ -1642,17 +1643,20 @@ function ExpensesTab({ caseId }: { caseId: number }) {
           </div>
 
           {expenses.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-8 text-center border rounded-md">
-              この案件に紐付く経費はまだ登録されていません。<br />
-              <a href="/expenses/import" className="text-primary underline">
-                経費取込ページ
-              </a>
-              から領収書/請求書をアップロードしてください。
+            <div className="py-12 text-center border border-dashed rounded-md flex flex-col items-center gap-3">
+              <Receipt className="h-9 w-9 text-muted-foreground/70" />
+              <p className="font-medium">この案件の経費はまだありません</p>
+              <p className="text-sm text-muted-foreground max-w-md">
+                <a href="/expenses/import" className="text-primary underline underline-offset-4">
+                  経費取込ページ
+                </a>
+                から領収書・請求書をアップロードすると、依頼番号や店舗名から自動でこの案件に振り分けられます。
+              </p>
             </div>
           ) : (
-            <div className="border rounded-md overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/40">
+            <div className="border rounded-md overflow-x-auto">
+              <table className="w-full text-sm min-w-[640px]">
+                <thead className="bg-muted/60 text-foreground/80">
                   <tr>
                     <th className="text-left px-3 py-2 font-medium">日付</th>
                     <th className="text-left px-3 py-2 font-medium">業者</th>
@@ -1664,7 +1668,7 @@ function ExpensesTab({ caseId }: { caseId: number }) {
                 </thead>
                 <tbody>
                   {expenses.map((e) => (
-                    <tr key={e.id} className="border-t">
+                    <tr key={e.id} className="border-t hover:bg-muted/30 transition-colors">
                       <td className="px-3 py-2 tabular-nums">
                         {e.expenseDate
                           ? new Date(e.expenseDate as any).toLocaleDateString()

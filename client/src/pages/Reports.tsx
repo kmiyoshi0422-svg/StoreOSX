@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { useState } from "react";
+import PageHeader from "@/components/PageHeader";
 import {
   TrendingUp,
   Calendar,
@@ -11,6 +12,7 @@ import {
   Loader2,
   BarChart3,
   Wallet,
+  Inbox,
 } from "lucide-react";
 import {
   Bar,
@@ -34,24 +36,22 @@ export default function Reports() {
   const byAssignee = trpc.reports.byAssignee.useQuery();
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <TrendingUp className="h-6 w-6" /> 実績レポート
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          月別の売上・原価・粗利と、担当者別の成績を可視化します。売上は見積金額×75%、原価は登録された経費合計です。
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Reports"
+        title="実績レポート"
+        icon={<TrendingUp className="h-7 w-7 text-primary" />}
+        description="月別の売上・原価・粗利、および担当者別の成績を可視化します。売上は見積金額×75%、原価は登録された経費の合計です。"
+      />
 
-      <Tabs defaultValue="monthly" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="monthly">
-            <Calendar className="h-3.5 w-3.5" />
+      <Tabs defaultValue="monthly" className="space-y-5">
+        <TabsList className="grid grid-cols-2 w-full md:w-auto md:inline-flex">
+          <TabsTrigger value="monthly" className="gap-1.5">
+            <Calendar className="h-4 w-4" />
             月別実績
           </TabsTrigger>
-          <TabsTrigger value="assignee">
-            <Users className="h-3.5 w-3.5" />
+          <TabsTrigger value="assignee" className="gap-1.5">
+            <Users className="h-4 w-4" />
             担当者別成績
           </TabsTrigger>
         </TabsList>
@@ -74,8 +74,19 @@ export default function Reports() {
 
           {monthly.isLoading ? (
             <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
-                <Loader2 className="h-6 w-6 mx-auto animate-spin" />
+              <CardContent className="py-16 text-center text-muted-foreground flex flex-col items-center gap-2">
+                <Loader2 className="h-6 w-6 animate-spin" />
+                <span className="text-sm">集計中…</span>
+              </CardContent>
+            </Card>
+          ) : !monthly.data || monthly.data.rows.every((r) => r.caseCount === 0) ? (
+            <Card className="border-dashed">
+              <CardContent className="py-16 text-center text-muted-foreground flex flex-col items-center gap-3">
+                <Inbox className="h-10 w-10 opacity-60" />
+                <div className="font-medium text-foreground">該当期間の実績がまだありません</div>
+                <div className="text-sm max-w-sm">
+                  案件を登録し、見積・経費を入力すると、月ごとの売上・原価・粗利が自動で集計されます。
+                </div>
               </CardContent>
             </Card>
           ) : !monthly.data ? null : (
@@ -185,9 +196,9 @@ export default function Reports() {
                   <CardTitle className="text-base">月別明細</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="border rounded-md overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted/40">
+                  <div className="border rounded-md overflow-x-auto">
+                    <table className="w-full text-sm min-w-[640px]">
+                      <thead className="bg-muted/60 text-foreground/80">
                         <tr>
                           <th className="text-left px-3 py-2 font-medium">月</th>
                           <th className="text-right px-3 py-2 font-medium">件数</th>
@@ -200,7 +211,7 @@ export default function Reports() {
                       </thead>
                       <tbody>
                         {monthly.data.rows.map((r) => (
-                          <tr key={r.key} className="border-t">
+                          <tr key={r.key} className="border-t hover:bg-muted/30 transition-colors">
                             <td className="px-3 py-2 font-medium">{r.key}</td>
                             <td className="px-3 py-2 text-right tabular-nums">
                               {r.caseCount}
@@ -244,9 +255,13 @@ export default function Reports() {
               </CardContent>
             </Card>
           ) : !byAssignee.data?.rows.length ? (
-            <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
-                担当者が割り当てられた案件がまだありません。
+            <Card className="border-dashed">
+              <CardContent className="py-16 text-center text-muted-foreground flex flex-col items-center gap-3">
+                <Users className="h-10 w-10 opacity-60" />
+                <div className="font-medium text-foreground">担当者別データがまだありません</div>
+                <div className="text-sm max-w-sm">
+                  案件に担当者をアサインすると、ここに個人別の売上・粗利・粗利率が表示されます。
+                </div>
               </CardContent>
             </Card>
           ) : (
@@ -293,9 +308,9 @@ export default function Reports() {
                   <CardTitle className="text-base">担当者別明細</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="border rounded-md overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted/40">
+                  <div className="border rounded-md overflow-x-auto">
+                    <table className="w-full text-sm min-w-[640px]">
+                      <thead className="bg-muted/60 text-foreground/80">
                         <tr>
                           <th className="text-left px-3 py-2 font-medium">担当者</th>
                           <th className="text-right px-3 py-2 font-medium">件数</th>
@@ -308,7 +323,7 @@ export default function Reports() {
                       </thead>
                       <tbody>
                         {byAssignee.data.rows.map((r) => (
-                          <tr key={r.userId} className="border-t">
+                          <tr key={r.userId} className="border-t hover:bg-muted/30 transition-colors">
                             <td className="px-3 py-2">
                               <div className="font-medium">{r.name}</div>
                               <div className="text-xs text-muted-foreground">
@@ -361,17 +376,21 @@ function KpiCard({
   value: string;
   hue: "blue" | "amber" | "violet" | "red" | "emerald";
 }) {
-  const palette: Record<string, string> = {
-    blue: "bg-blue-50 border-blue-200 text-blue-700",
-    amber: "bg-amber-50 border-amber-200 text-amber-700",
-    violet: "bg-violet-50 border-violet-200 text-violet-700",
-    red: "bg-red-50 border-red-200 text-red-700",
-    emerald: "bg-emerald-50 border-emerald-200 text-emerald-700",
+  const palette: Record<string, { bg: string; border: string; label: string; bar: string }> = {
+    blue:    { bg: "bg-blue-50/60",    border: "border-blue-200",    label: "text-blue-700",    bar: "bg-blue-500" },
+    amber:   { bg: "bg-amber-50/60",   border: "border-amber-200",   label: "text-amber-700",   bar: "bg-amber-500" },
+    violet:  { bg: "bg-violet-50/60",  border: "border-violet-200",  label: "text-violet-700",  bar: "bg-violet-500" },
+    red:     { bg: "bg-red-50/60",     border: "border-red-200",     label: "text-red-700",     bar: "bg-red-500" },
+    emerald: { bg: "bg-emerald-50/60", border: "border-emerald-200", label: "text-emerald-700", bar: "bg-emerald-500" },
   };
+  const p = palette[hue];
   return (
-    <div className={`rounded-md border p-3 ${palette[hue]}`}>
-      <div className="text-xs mb-1">{label}</div>
-      <div className="text-xl font-semibold tracking-tight text-foreground">
+    <div className={`relative overflow-hidden rounded-lg border ${p.bg} ${p.border} p-4`}>
+      <div className={`absolute left-0 top-0 h-full w-1 ${p.bar}`} aria-hidden />
+      <div className={`text-[11px] uppercase tracking-wider font-medium ${p.label} mb-1.5 pl-1`}>
+        {label}
+      </div>
+      <div className="font-serif-jp text-xl md:text-2xl font-semibold tracking-tight text-foreground pl-1">
         {value}
       </div>
     </div>

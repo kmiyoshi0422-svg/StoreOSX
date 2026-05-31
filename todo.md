@@ -181,3 +181,12 @@
 - [x] reports.byAssignee：担当者別 件数 / 売上 / 原価 / 粗利 / 粗利率
 - [x] /reports ページ（月別タブ＋担当者別タブ・BarChart/LineChart）＋サイドバー追加
 - [x] vitest 13件追加（expense-router・reports.monthly・reports.byAssignee・集計ロジック）、全113件PASS
+
+## v20 テストデータ整理＋UIブラッシュアップ
+
+- [ ] テスト案件（TEST-/AUTO-/SAMPLE-など）と関連レコードを削除
+- [ ] 主要ページの見づらい箇所を洗い出し（コントラスト・余白・空状態・テーブル可読性）
+- [ ] 共通の空状態コンポーネントを整え、各リストに適用
+- [ ] テーブルのzebra/hover、ヘッダ固定、長文の省略・wrap改善
+- [ ] バッジ・ステータス色の統一
+- [ ] 型チェックとvitest全PASS確認、チェックポイント保存

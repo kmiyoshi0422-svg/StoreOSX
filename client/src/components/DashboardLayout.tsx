@@ -71,16 +71,16 @@ export default function DashboardLayout({
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen px-4">
         <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
-          <div className="flex flex-col items-center gap-6">
-            <h1 className="font-serif-jp text-3xl font-semibold tracking-tight text-center">
+          <div className="flex flex-col items-center gap-3">
+            <h1 className="font-serif-jp text-4xl font-semibold tracking-tight text-center text-foreground">
               Store OSX
             </h1>
-            <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground -mt-2">
+            <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground font-medium">
               Plenus Site Operations
             </p>
-            <p className="text-sm text-muted-foreground text-center max-w-sm">
+            <p className="text-sm text-foreground/80 text-center max-w-sm leading-relaxed mt-3">
               ログインして案件管理を開始してください。チームメンバー全員でリアルタイムに進捗を共有できます。
             </p>
           </div>

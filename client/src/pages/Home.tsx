@@ -177,13 +177,16 @@ export default function Home() {
           <div className="text-sm text-muted-foreground py-8 text-center">読み込み中...</div>
         ) : recent.length === 0 ? (
           <Card className="border-dashed">
-            <CardContent className="py-12 text-center">
-              <TrendingUp className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">まだ案件がありません</p>
+            <CardContent className="py-14 text-center flex flex-col items-center gap-3">
+              <ClipboardList className="h-10 w-10 text-muted-foreground/70" />
+              <p className="font-medium">まだ案件がありません</p>
+              <p className="text-sm text-muted-foreground max-w-sm">
+                最初の依頼を登録すると、ここに最近の案件が並びます。PDF取込やCSV一括取込もご利用いただけます。
+              </p>
               <Button
                 variant="outline"
                 size="sm"
-                className="mt-4"
+                className="mt-1"
                 onClick={() => setLocation("/cases/new")}
               >
                 最初の案件を登録
@@ -214,7 +217,7 @@ export default function Home() {
                           {c.status}
                         </Badge>
                       </div>
-                      <ArrowUpRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-primary transition-colors" />
+                      <ArrowUpRight className="h-4 w-4 text-muted-foreground/70 group-hover:text-primary transition-colors" />
                     </div>
                     <p className="text-xs text-muted-foreground mb-1 font-mono">
                       {c.requestNumber}
@@ -223,8 +226,8 @@ export default function Home() {
                     <p className="text-xs text-muted-foreground mt-1 truncate">
                       {c.categoryLarge || "—"} / {c.categoryMedium || "—"}
                     </p>
-                    <p className="text-xs text-muted-foreground/80 line-clamp-2 mt-2 min-h-[2rem]">
-                      {c.requestContent || "依頼内容未記入"}
+                    <p className="text-xs text-muted-foreground line-clamp-2 mt-2 min-h-[2rem] leading-relaxed">
+                      {c.requestContent || <span className="italic text-muted-foreground/70">依頼内容未記入</span>}
                     </p>
                   </CardContent>
                 </Card>

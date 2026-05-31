@@ -319,8 +319,10 @@ export default function CasesList() {
         <div className="text-sm text-muted-foreground py-8 text-center">読み込み中...</div>
       ) : filtered.length === 0 ? (
         <Card className="border-dashed">
-          <CardContent className="py-16 text-center">
-            <p className="text-sm text-muted-foreground">該当する案件がありません</p>
+          <CardContent className="py-14 text-center flex flex-col items-center gap-3">
+            <Folder className="h-10 w-10 text-muted-foreground/70" />
+            <p className="font-medium">該当する案件がありません</p>
+            <p className="text-sm text-muted-foreground max-w-sm">タブや検索キーワード、担当者・緊急度フィルタを切り替えてもう一度お試しください。</p>
           </CardContent>
         </Card>
       ) : (
@@ -385,7 +387,7 @@ export default function CasesList() {
                         )}
                         <div className="flex flex-wrap gap-x-3 gap-y-1">
                           <span>
-                            <span className="text-muted-foreground/60">工事:</span>{" "}
+                            <span className="text-muted-foreground font-medium">工事</span>{" "}
                             {c.categoryLarge || "—"} / {c.categoryMedium || "—"}
                           </span>
                           {c.requesterName && (

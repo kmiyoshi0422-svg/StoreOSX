@@ -2,6 +2,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import PageHeader from "@/components/PageHeader";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -204,50 +206,46 @@ export default function ExpenseImport() {
   }
 
   const cases = allCases.data ?? [];
-  const yen = (n: number | null | undefined) =>
-    n != null ? `¥${Math.round(n).toLocaleString()}` : "—";
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold flex items-center gap-2">
-            <Receipt className="h-6 w-6" /> 経費取込
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            領収書・請求書（PDF/画像）を一括投入。AIが金額・支払先・関連案件を抽出し、案件の実績原価に自動反映します。
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <input
-            ref={fileRef}
-            type="file"
-            multiple
-            accept="application/pdf,image/*"
-            className="hidden"
-            onChange={(e) => {
-              if (e.target.files && e.target.files.length > 0) {
-                handleFiles(e.target.files);
-                e.target.value = "";
-              }
-            }}
-          />
-          <Button onClick={() => fileRef.current?.click()} variant="outline">
-            <Upload className="h-4 w-4 mr-2" /> ファイル追加
-          </Button>
-          <Button
-            onClick={handleBulkSave}
-            disabled={readyRows.length === 0 || bulkSaveMutation.isPending}
-          >
-            {bulkSaveMutation.isPending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4 mr-2" />
-            )}
-            一括登録（{readyRows.length}件）
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-5">
+      <input
+        ref={fileRef}
+        type="file"
+        multiple
+        accept="application/pdf,image/*"
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            handleFiles(e.target.files);
+            e.target.value = "";
+          }
+        }}
+      />
+      <PageHeader
+        eyebrow="Expense Import"
+        title="経費取込"
+        icon={<Receipt className="h-7 w-7 text-primary" />}
+        description="領収書・請求書（PDF / 画像）をドラッグ＆ドロップすると、AI が金額・支払先・関連案件を抽出し、案件の実績原価に自動反映します。"
+        actions={
+          <>
+            <Button onClick={() => fileRef.current?.click()} variant="outline">
+              <Upload className="h-4 w-4 mr-2" /> ファイル追加
+            </Button>
+            <Button
+              onClick={handleBulkSave}
+              disabled={readyRows.length === 0 || bulkSaveMutation.isPending}
+            >
+              {bulkSaveMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-2" />
+              )}
+              一括登録（{readyRows.length}件）
+            </Button>
+          </>
+        }
+      />
 
       <div
         data-testid="expense-dropzone"
@@ -294,40 +292,42 @@ export default function ExpenseImport() {
             toast.success(`${accepted.length}件のファイルを追加しました`);
           }
         }}
-        className={`rounded-md border-2 border-dashed transition-colors ${
+        className={`rounded-lg border-2 border-dashed transition-all duration-200 ${
           isDragging
-            ? "border-primary bg-primary/5"
-            : "border-muted-foreground/25 hover:border-muted-foreground/40"
+            ? "border-primary bg-primary/5 shadow-inner"
+            : "border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/30"
         }`}
       >
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
-          className="w-full py-8 text-center cursor-pointer"
+          className="w-full py-10 md:py-12 text-center cursor-pointer"
         >
-          <Upload
-            className={`h-8 w-8 mx-auto mb-2 ${
-              isDragging ? "text-primary" : "text-muted-foreground"
+          <div
+            className={`mx-auto mb-3 inline-flex h-14 w-14 items-center justify-center rounded-full ${
+              isDragging ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
             }`}
-          />
-          <div className="font-medium text-sm">
+          >
+            <Upload className="h-7 w-7" />
+          </div>
+          <div className="font-semibold text-base">
             {isDragging
               ? "ここにドロップしてください"
-              : "ファイルをドラッグ＆ドロップ または クリックして選択"}
+              : "ファイルをドラッグ＆ドロップ"}
           </div>
-          <div className="text-xs text-muted-foreground mt-1">
-            領収書・請求書（PDF / 画像）複数同時可
+          <div className="text-sm text-muted-foreground mt-1">
+            またはクリックして選択・PDF / 画像を複数同時可
           </div>
         </button>
       </div>
 
       {rows.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <Sparkles className="h-10 w-10 mx-auto mb-3 opacity-60" />
+        <Card className="border-dashed">
+          <CardContent className="py-14 text-center flex flex-col items-center gap-3">
+            <Sparkles className="h-10 w-10 opacity-60 text-muted-foreground" />
             <div className="font-medium">まだファイルがありません</div>
-            <div className="text-xs mt-1">
-              上のエリアにドロップするか、ファイル追加ボタンから投入してください。
+            <div className="text-sm text-muted-foreground max-w-sm">
+              上のエリアにドロップするか、「ファイル追加」ボタンから投入してください。複数ファイル同時可、AI が順次解析します。
             </div>
           </CardContent>
         </Card>
@@ -340,7 +340,7 @@ export default function ExpenseImport() {
             {rows.map((r) => (
               <div
                 key={r.localId}
-                className="rounded-md border p-3 space-y-2"
+                className="rounded-lg border bg-card p-3 md:p-4 space-y-3 hover:shadow-sm transition-shadow"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
@@ -387,30 +387,37 @@ export default function ExpenseImport() {
                 </div>
 
                 {r.status === "ready" && (
-                  <div className="grid md:grid-cols-2 gap-3 text-xs">
-                    <div className="space-y-2">
+                  <div className="grid md:grid-cols-2 gap-4 text-sm">
+                    <div className="space-y-3">
                       <div>
-                        <div className="text-muted-foreground mb-1">
-                          AI抽出情報
-                        </div>
-                        <div className="rounded-sm border bg-muted/30 p-2 space-y-0.5">
-                          <div>
-                            支払先: <b>{r.vendorName || "—"}</b>
+                        <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
+                          AI 抽出情報
+                        </Label>
+                        <div className="rounded-md border bg-muted/40 p-3 space-y-1 text-sm">
+                          <div className="flex justify-between gap-2">
+                            <span className="text-muted-foreground">支払先</span>
+                            <span className="font-medium truncate">{r.vendorName || "—"}</span>
                           </div>
-                          <div>
-                            依頼番号:{" "}
-                            <b>{r.extractedRequestNumber ?? "—"}</b>
+                          <div className="flex justify-between gap-2">
+                            <span className="text-muted-foreground">依頼番号</span>
+                            <span className="font-mono">{r.extractedRequestNumber ?? "—"}</span>
                           </div>
-                          <div>店舗: {r.extractedStoreName ?? "—"}</div>
+                          <div className="flex justify-between gap-2">
+                            <span className="text-muted-foreground">店舗</span>
+                            <span className="truncate">{r.extractedStoreName ?? "—"}</span>
+                          </div>
                           {r.extractedCaseHint && (
-                            <div>ヒント: {r.extractedCaseHint}</div>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-muted-foreground">ヒント</span>
+                              <span className="truncate">{r.extractedCaseHint}</span>
+                            </div>
                           )}
                         </div>
                       </div>
                       <div>
-                        <div className="text-muted-foreground mb-1">
+                        <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
                           紐付け案件
-                        </div>
+                        </Label>
                         <Select
                           value={r.caseId ? String(r.caseId) : ""}
                           onValueChange={(v) =>
@@ -443,13 +450,14 @@ export default function ExpenseImport() {
                         </Select>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <div className="text-muted-foreground mb-1">
+                        <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
                           金額（税込・円）
-                        </div>
+                        </Label>
                         <Input
                           type="number"
+                          inputMode="numeric"
                           value={r.amount ?? ""}
                           onChange={(e) =>
                             updateRow(r.localId, {
@@ -458,13 +466,13 @@ export default function ExpenseImport() {
                                 : null,
                             })
                           }
-                          className="h-8"
+                          className="h-9 font-mono text-right"
                         />
                       </div>
                       <div>
-                        <div className="text-muted-foreground mb-1">
+                        <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
                           支払日
-                        </div>
+                        </Label>
                         <Input
                           type="date"
                           value={r.expenseDate}
@@ -473,18 +481,18 @@ export default function ExpenseImport() {
                               expenseDate: e.target.value,
                             })
                           }
-                          className="h-8"
+                          className="h-9"
                         />
                       </div>
                       <div>
-                        <div className="text-muted-foreground mb-1">区分</div>
+                        <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">区分</Label>
                         <Select
                           value={r.category}
                           onValueChange={(v) =>
                             updateRow(r.localId, { category: v as Category })
                           }
                         >
-                          <SelectTrigger className="h-8">
+                          <SelectTrigger className="h-9">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -497,11 +505,12 @@ export default function ExpenseImport() {
                         </Select>
                       </div>
                       <div>
-                        <div className="text-muted-foreground mb-1">
+                        <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
                           消費税
-                        </div>
+                        </Label>
                         <Input
                           type="number"
+                          inputMode="numeric"
                           value={r.taxAmount ?? ""}
                           onChange={(e) =>
                             updateRow(r.localId, {
@@ -510,17 +519,17 @@ export default function ExpenseImport() {
                                 : null,
                             })
                           }
-                          className="h-8"
+                          className="h-9 font-mono text-right"
                         />
                       </div>
                       <div className="col-span-2">
-                        <div className="text-muted-foreground mb-1">摘要</div>
+                        <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">摘要</Label>
                         <Input
                           value={r.note}
                           onChange={(e) =>
                             updateRow(r.localId, { note: e.target.value })
                           }
-                          className="h-8"
+                          className="h-9"
                           placeholder="メモ（任意）"
                         />
                       </div>
@@ -533,8 +542,8 @@ export default function ExpenseImport() {
         </Card>
       )}
 
-      <div className="text-xs text-muted-foreground">
-        登録すると、紐付けた案件の実績原価が自動で再計算されます（actualCost = 経費合計）。
+      <div className="text-xs text-muted-foreground border-t border-border/60 pt-3">
+        ・ 登録すると、紐付けた案件の実績原価が自動で再計算されます（actualCost = 経費合計）。
       </div>
     </div>
   );
