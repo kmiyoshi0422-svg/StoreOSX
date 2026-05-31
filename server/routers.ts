@@ -26,7 +26,8 @@ import {
 import { getSessionCookieOptions } from "./_core/cookies";
 import { storagePut } from "./storage";
 import { systemRouter } from "./_core/systemRouter";
-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { BUDGET_RATIO, calcBudget } from "../shared/budget";
 
 // ============================================================
 // Zod schemas
@@ -240,11 +241,12 @@ export const appRouter = router({
         return { results, inserted, failed };
       }),
 
-    // 予実サマリー
-    summary: protectedProcedure.query(async () => {
+    // 予実サマリー（管理者のみ・予算 = 見積 × 75%）
+    summary: adminProcedure.query(async () => {
       const cases = await listCases();
       const total = cases.length;
       const totalEstimated = cases.reduce((s, c) => s + (c.estimatedCost ?? 0), 0);
+      const totalBudget = calcBudget(totalEstimated);
       const totalActual = cases.reduce((s, c) => s + (c.actualCost ?? 0), 0);
       const completed = cases.filter((c) => c.status === "完了").length;
       const inProgress = cases.filter((c) =>
@@ -259,14 +261,16 @@ export const appRouter = router({
         completed,
         inProgress,
         totalEstimated,
+        totalBudget,
+        budgetRatio: BUDGET_RATIO,
         totalActual,
-        diff: totalActual - totalEstimated,
+        diff: totalActual - totalBudget,
         byStatus,
       };
     }),
 
-    // 月次レポート（月別・店舗別集計）
-    monthlyReport: protectedProcedure.query(async () => {
+    // 月次レポート（月別・店舗別集計、管理者のみ）
+    monthlyReport: adminProcedure.query(async () => {
       const cases = await listCases();
       // 基準日：completedAt > constructionDate > surveyDate > createdAt
       const monthly: Record<string, { yearMonth: string; count: number; completed: number; estimated: number; actual: number }> = {};
@@ -289,9 +293,13 @@ export const appRouter = router({
         byStore[sk].estimated += c.estimatedCost ?? 0;
         byStore[sk].actual += c.actualCost ?? 0;
       }
-      const monthlyArr = Object.values(monthly).sort((a, b) => b.yearMonth.localeCompare(a.yearMonth));
-      const storeArr = Object.values(byStore).sort((a, b) => b.actual - a.actual);
-      return { monthly: monthlyArr, byStore: storeArr };
+      const monthlyArr = Object.values(monthly)
+        .map((m) => ({ ...m, budget: calcBudget(m.estimated), diff: m.actual - calcBudget(m.estimated) }))
+        .sort((a, b) => b.yearMonth.localeCompare(a.yearMonth));
+      const storeArr = Object.values(byStore)
+        .map((s) => ({ ...s, budget: calcBudget(s.estimated), diff: s.actual - calcBudget(s.estimated) }))
+        .sort((a, b) => b.actual - a.actual);
+      return { monthly: monthlyArr, byStore: storeArr, budgetRatio: BUDGET_RATIO };
     }),
   }),
 

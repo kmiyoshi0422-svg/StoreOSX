@@ -31,17 +31,20 @@ function downloadCsv(filename: string, rows: (string | number)[][]) {
 export default function MonthlyReport() {
   const { data, isLoading } = trpc.cases.monthlyReport.useQuery();
 
+  const ratioPct = data ? Math.round((data.budgetRatio ?? 0.75) * 100) : 75;
+
   const exportMonthlyCsv = () => {
     if (!data) return;
     const rows: (string | number)[][] = [
-      ["年月", "案件数", "完了数", "見積合計", "実績合計", "差分"],
+      ["年月", "案件数", "完了数", "見積合計", `予算（見積×${ratioPct}%）`, "実績合計", "予算差"],
       ...data.monthly.map((m) => [
         m.yearMonth,
         m.count,
         m.completed,
         m.estimated,
+        m.budget,
         m.actual,
-        m.actual - m.estimated,
+        m.diff,
       ]),
     ];
     downloadCsv(`月次レポート_${new Date().toISOString().slice(0, 10)}.csv`, rows);
@@ -51,14 +54,15 @@ export default function MonthlyReport() {
   const exportStoreCsv = () => {
     if (!data) return;
     const rows: (string | number)[][] = [
-      ["店舗名", "案件数", "完了数", "見積合計", "実績合計", "差分"],
+      ["店舗名", "案件数", "完了数", "見積合計", `予算（見積×${ratioPct}%）`, "実績合計", "予算差"],
       ...data.byStore.map((s) => [
         s.storeName,
         s.count,
         s.completed,
         s.estimated,
+        s.budget,
         s.actual,
-        s.actual - s.estimated,
+        s.diff,
       ]),
     ];
     downloadCsv(`店舗別レポート_${new Date().toISOString().slice(0, 10)}.csv`, rows);
@@ -157,19 +161,21 @@ export default function MonthlyReport() {
                         <th className="text-right py-2 px-2">案件数</th>
                         <th className="text-right py-2 px-2">完了数</th>
                         <th className="text-right py-2 px-2">見積合計</th>
+                        <th className="text-right py-2 px-2">予算<span className="block text-[10px] text-muted-foreground font-normal">見積×{ratioPct}%</span></th>
                         <th className="text-right py-2 px-2">実績合計</th>
-                        <th className="text-right py-2 px-2">差分</th>
+                        <th className="text-right py-2 px-2">予算差</th>
                       </tr>
                     </thead>
                     <tbody>
                       {monthly.map((m) => {
-                        const diff = m.actual - m.estimated;
+                        const diff = m.diff;
                         return (
                           <tr key={m.yearMonth} className="border-b last:border-0 hover:bg-muted/30">
                             <td className="py-2 px-2 font-medium">{m.yearMonth}</td>
                             <td className="py-2 px-2 text-right">{m.count}</td>
                             <td className="py-2 px-2 text-right text-muted-foreground">{m.completed}</td>
                             <td className="py-2 px-2 text-right">{yen(m.estimated)}</td>
+                            <td className="py-2 px-2 text-right text-muted-foreground">{yen(m.budget)}</td>
                             <td className="py-2 px-2 text-right">{yen(m.actual)}</td>
                             <td className={`py-2 px-2 text-right ${diff > 0 ? "text-destructive" : "text-emerald-700"}`}>
                               {yen(diff)}
@@ -205,19 +211,21 @@ export default function MonthlyReport() {
                         <th className="text-right py-2 px-2">案件数</th>
                         <th className="text-right py-2 px-2">完了数</th>
                         <th className="text-right py-2 px-2">見積合計</th>
+                        <th className="text-right py-2 px-2">予算<span className="block text-[10px] text-muted-foreground font-normal">見積×{ratioPct}%</span></th>
                         <th className="text-right py-2 px-2">実績合計</th>
-                        <th className="text-right py-2 px-2">差分</th>
+                        <th className="text-right py-2 px-2">予算差</th>
                       </tr>
                     </thead>
                     <tbody>
                       {byStore.map((s) => {
-                        const diff = s.actual - s.estimated;
+                        const diff = s.diff;
                         return (
                           <tr key={s.storeName} className="border-b last:border-0 hover:bg-muted/30">
                             <td className="py-2 px-2 font-medium">{s.storeName}</td>
                             <td className="py-2 px-2 text-right">{s.count}</td>
                             <td className="py-2 px-2 text-right text-muted-foreground">{s.completed}</td>
                             <td className="py-2 px-2 text-right">{yen(s.estimated)}</td>
+                            <td className="py-2 px-2 text-right text-muted-foreground">{yen(s.budget)}</td>
                             <td className="py-2 px-2 text-right">{yen(s.actual)}</td>
                             <td className={`py-2 px-2 text-right ${diff > 0 ? "text-destructive" : "text-emerald-700"}`}>
                               {yen(diff)}

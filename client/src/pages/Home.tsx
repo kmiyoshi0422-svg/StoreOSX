@@ -2,6 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { useLocation } from "wouter";
 import {
   ClipboardList,
@@ -41,8 +42,10 @@ const URGENCY_LABEL: Record<string, string> = {
 
 export default function Home() {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const { data: cases = [], isLoading } = trpc.cases.list.useQuery();
-  const { data: summary } = trpc.cases.summary.useQuery();
+  const { data: summary } = trpc.cases.summary.useQuery(undefined, { enabled: isAdmin });
 
   const total = cases.length;
   const inProgress = cases.filter((c) =>
@@ -96,47 +99,60 @@ export default function Home() {
         />
       </div>
 
-      {/* 予実サマリー */}
-      <div>
-        <div className="flex items-end justify-between mb-4">
-          <div>
-            <h2 className="font-serif-jp text-xl font-semibold">予実サマリー</h2>
-            <p className="text-xs text-muted-foreground mt-1">見積（予算）と実績の差分を一目で確認</p>
+      {/* 予実サマリー（管理者のみ） */}
+      {isAdmin && (
+        <div>
+          <div className="flex items-end justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div>
+                <h2 className="font-serif-jp text-xl font-semibold">予実サマリー</h2>
+                <p className="text-xs text-muted-foreground mt-1">
+                  予算 = 見積×75%。予算と実績の差分を一目で確認できます。
+                </p>
+              </div>
+              <Badge variant="outline" className="border-amber-300 text-amber-700 bg-amber-50">管理者限定</Badge>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setLocation("/budget")}>
+              詳細を見る
+              <ArrowUpRight className="ml-1 h-3 w-3" />
+            </Button>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => setLocation("/budget")}>
-            詳細を見る
-            <ArrowUpRight className="ml-1 h-3 w-3" />
-          </Button>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+            <BudgetCard
+              icon={<Wallet className="h-4 w-4" />}
+              label="見積合計"
+              value={`¥${(summary?.totalEstimated ?? 0).toLocaleString()}`}
+              accent="navy"
+            />
+            <BudgetCard
+              icon={<Wallet className="h-4 w-4" />}
+              label="予算（見積×75%）"
+              value={`¥${(summary?.totalBudget ?? 0).toLocaleString()}`}
+              accent="navy"
+            />
+            <BudgetCard
+              icon={<CheckCircle2 className="h-4 w-4" />}
+              label="実績合計"
+              value={`¥${(summary?.totalActual ?? 0).toLocaleString()}`}
+              accent="emerald"
+            />
+            <BudgetCard
+              icon={
+                (summary?.diff ?? 0) > 0 ? (
+                  <TrendingUp className="h-4 w-4" />
+                ) : (summary?.diff ?? 0) < 0 ? (
+                  <TrendingDown className="h-4 w-4" />
+                ) : (
+                  <Minus className="h-4 w-4" />
+                )
+              }
+              label="差分「実績−予算」"
+              value={`${(summary?.diff ?? 0) >= 0 ? "+" : ""}¥${Math.abs(summary?.diff ?? 0).toLocaleString()}`}
+              accent={(summary?.diff ?? 0) > 0 ? "red" : (summary?.diff ?? 0) < 0 ? "emerald" : "gray"}
+            />
+          </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
-          <BudgetCard
-            icon={<Wallet className="h-4 w-4" />}
-            label="見積合計"
-            value={`¥${(summary?.totalEstimated ?? 0).toLocaleString()}`}
-            accent="navy"
-          />
-          <BudgetCard
-            icon={<CheckCircle2 className="h-4 w-4" />}
-            label="実績合計"
-            value={`¥${(summary?.totalActual ?? 0).toLocaleString()}`}
-            accent="emerald"
-          />
-          <BudgetCard
-            icon={
-              (summary?.diff ?? 0) > 0 ? (
-                <TrendingUp className="h-4 w-4" />
-              ) : (summary?.diff ?? 0) < 0 ? (
-                <TrendingDown className="h-4 w-4" />
-              ) : (
-                <Minus className="h-4 w-4" />
-              )
-            }
-            label="差分「実績−見積」"
-            value={`${(summary?.diff ?? 0) >= 0 ? "+" : ""}¥${Math.abs(summary?.diff ?? 0).toLocaleString()}`}
-            accent={(summary?.diff ?? 0) > 0 ? "red" : (summary?.diff ?? 0) < 0 ? "emerald" : "gray"}
-          />
-        </div>
-      </div>
+      )}
 
       {/* Recent */}
       <div>

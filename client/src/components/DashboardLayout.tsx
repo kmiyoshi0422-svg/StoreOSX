@@ -27,14 +27,15 @@ import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
-const menuItems = [
+type MenuItem = { icon: typeof LayoutDashboard; label: string; path: string; adminOnly?: boolean };
+const menuItems: MenuItem[] = [
   { icon: LayoutDashboard, label: "ダッシュボード", path: "/" },
   { icon: ClipboardList, label: "案件一覧", path: "/cases" },
   { icon: FilePlus, label: "案件登録", path: "/cases/new" },
   { icon: Upload, label: "CSVインポート", path: "/cases/import" },
-  { icon: Wallet, label: "予実管理", path: "/budget" },
-  { icon: BarChart3, label: "月次レポート", path: "/reports/monthly" },
   { icon: Briefcase, label: "協力会社", path: "/partners" },
+  { icon: Wallet, label: "予実管理", path: "/budget", adminOnly: true },
+  { icon: BarChart3, label: "月次レポート", path: "/reports/monthly", adminOnly: true },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -117,7 +118,9 @@ function DashboardLayoutContent({
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = menuItems.find(item => item.path === location);
+  const isAdmin = user?.role === "admin";
+  const visibleMenuItems = menuItems.filter(item => !item.adminOnly || isAdmin);
+  const activeMenuItem = visibleMenuItems.find(item => item.path === location);
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -185,7 +188,7 @@ function DashboardLayoutContent({
 
           <SidebarContent className="gap-0">
             <SidebarMenu className="px-2 py-1">
-              {menuItems.map(item => {
+              {visibleMenuItems.map(item => {
                 const isActive = location === item.path;
                 return (
                   <SidebarMenuItem key={item.path}>

@@ -14,6 +14,7 @@ import CsvImport from "./pages/CsvImport";
 import BudgetActual from "./pages/BudgetActual";
 import MonthlyReport from "./pages/MonthlyReport";
 import Partners from "./pages/Partners";
+import AdminOnly from "./components/AdminOnly";
 import PartnerDetail from "./pages/PartnerDetail";
 
 function Router() {
@@ -24,8 +25,12 @@ function Router() {
         <Route path={"/cases"} component={CasesList} />
         <Route path={"/cases/new"} component={CaseNew} />
         <Route path={"/cases/import"} component={CsvImport} />
-        <Route path={"/budget"} component={BudgetActual} />
-        <Route path={"/reports/monthly"} component={MonthlyReport} />
+        <Route path={"/budget"}>
+          <AdminOnly><BudgetActual /></AdminOnly>
+        </Route>
+        <Route path={"/reports/monthly"}>
+          <AdminOnly><MonthlyReport /></AdminOnly>
+        </Route>
         <Route path={"/partners"} component={Partners} />
         <Route path={"/partners/:id"}>
           {(params) => <PartnerDetail id={Number(params.id)} />}

@@ -5,14 +5,14 @@ import { DEFAULT_CHECKLIST } from "../shared/checklist-template";
 
 type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
 
-function createAuthContext(): TrpcContext {
+function createAuthContext(role: "user" | "admin" = "user"): TrpcContext {
   const user: AuthenticatedUser = {
     id: 1,
     openId: "test-user",
     email: "test@example.com",
     name: "Test User",
     loginMethod: "manus",
-    role: "user",
+    role,
     createdAt: new Date(),
     updatedAt: new Date(),
     lastSignedIn: new Date(),
@@ -22,6 +22,10 @@ function createAuthContext(): TrpcContext {
     req: { protocol: "https", headers: {} } as TrpcContext["req"],
     res: {} as TrpcContext["res"],
   };
+}
+
+function createAdminContext(): TrpcContext {
+  return createAuthContext("admin");
 }
 
 describe("cases router", () => {
@@ -47,15 +51,15 @@ describe("checklist template", () => {
 });
 
 describe("cases.summary 予実集計", () => {
-  it("予実サマリーAPIが数値フィールドを返す", async () => {
-    const caller = appRouter.createCaller(createAuthContext());
+  it("予実サマリーAPIが数値フィールドを返す（管理者のみ）", async () => {
+    const caller = appRouter.createCaller(createAdminContext());
     const result = await caller.cases.summary();
     expect(result).toBeDefined();
     expect(typeof result.totalEstimated).toBe("number");
     expect(typeof result.totalActual).toBe("number");
     expect(typeof result.diff).toBe("number");
-    // 差分 = 実績 - 見積
-    expect(result.diff).toBe(result.totalActual - result.totalEstimated);
+    // 差分 = 実績 - 予算（見積×75%）
+    expect(result.diff).toBe(result.totalActual - result.totalBudget);
   });
 });
 
@@ -91,8 +95,8 @@ describe("cases.bulkImport CSV一括登録", () => {
 });
 
 describe("cases.monthlyReport 月次レポート", () => {
-  it("月次・店舗別集計を取得できる（構造を検証）", async () => {
-    const caller = appRouter.createCaller(createAuthContext());
+  it("月次・店舗別集計を取得できる（管理者のみ）", async () => {
+    const caller = appRouter.createCaller(createAdminContext());
     const res = await caller.cases.monthlyReport();
     expect(res).toHaveProperty("monthly");
     expect(res).toHaveProperty("byStore");
@@ -225,5 +229,33 @@ describe("v5: partners.history 発注履歴", () => {
     // クリーンアップ
     await caller.cases.delete({ id: c1.id });
     // 紐付けが残るので、削除前にpartnerId外す手間は省略しpartner deleteへ
+  });
+});
+
+describe("予算75%計算と管理者ガード", () => {
+  it("calcBudgetは見積金額の75%を返す", async () => {
+    const { calcBudget, BUDGET_RATIO } = await import("../shared/budget");
+    expect(BUDGET_RATIO).toBe(0.75);
+    expect(calcBudget(100000)).toBe(75000);
+    expect(calcBudget(0)).toBe(0);
+    expect(calcBudget(null)).toBe(0);
+    expect(calcBudget(undefined)).toBe(0);
+  });
+
+  it("一般ユーザーはcases.summaryを呼び出せない（FORBIDDEN）", async () => {
+    const caller = appRouter.createCaller(createAuthContext("user"));
+    await expect(caller.cases.summary()).rejects.toThrow();
+  });
+
+  it("一般ユーザーはcases.monthlyReportを呼び出せない（FORBIDDEN）", async () => {
+    const caller = appRouter.createCaller(createAuthContext("user"));
+    await expect(caller.cases.monthlyReport()).rejects.toThrow();
+  });
+
+  it("summaryのtotalBudgetは見積合計の75%相当である", async () => {
+    const caller = appRouter.createCaller(createAdminContext());
+    const result = await caller.cases.summary();
+    const expected = Math.round((result.totalEstimated ?? 0) * 0.75);
+    expect(Math.abs((result.totalBudget ?? 0) - expected)).toBeLessThanOrEqual(1);
   });
 });

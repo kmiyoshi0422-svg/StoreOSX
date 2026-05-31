@@ -11,6 +11,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
+import { calcBudget, BUDGET_RATIO } from "@shared/budget";
 import { useState, useMemo, useEffect } from "react";
 import { useLocation } from "wouter";
 import {
@@ -59,10 +60,11 @@ export default function BudgetActual() {
 
   const totals = useMemo(() => {
     const totalEst = summary?.totalEstimated ?? 0;
+    const totalBudget = summary?.totalBudget ?? calcBudget(totalEst);
     const totalAct = summary?.totalActual ?? 0;
-    const diff = totalAct - totalEst;
-    const rate = totalEst > 0 ? (totalAct / totalEst) * 100 : 0;
-    return { totalEst, totalAct, diff, rate };
+    const diff = totalAct - totalBudget;
+    const rate = totalBudget > 0 ? (totalAct / totalBudget) * 100 : 0;
+    return { totalEst, totalBudget, totalAct, diff, rate };
   }, [summary]);
 
   const completedCases = useMemo(
@@ -76,18 +78,27 @@ export default function BudgetActual() {
         <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-2">
           Budget & Actual
         </p>
-        <h1 className="font-serif-jp text-3xl font-semibold tracking-tight">予実管理</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="font-serif-jp text-3xl font-semibold tracking-tight">予実管理</h1>
+          <Badge variant="outline" className="border-amber-300 text-amber-700 bg-amber-50">管理者限定</Badge>
+        </div>
         <p className="text-sm text-muted-foreground mt-2">
-          見積（予算）と実績の差分を案件ごとに管理します
+          予算は見積金額×{Math.round(BUDGET_RATIO * 100)}%で自動計算されます。予算と実績の差分を案件ごとに管理します。
         </p>
       </div>
 
       {/* サマリーカード */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
         <SummaryCard
           icon={<Wallet className="h-4 w-4" />}
           label="見積合計"
           value={fmtYen(totals.totalEst)}
+          accent="navy"
+        />
+        <SummaryCard
+          icon={<Wallet className="h-4 w-4" />}
+          label={`予算（見積×${Math.round(BUDGET_RATIO * 100)}%）`}
+          value={fmtYen(totals.totalBudget)}
           accent="navy"
         />
         <SummaryCard
@@ -106,13 +117,13 @@ export default function BudgetActual() {
               <Minus className="h-4 w-4" />
             )
           }
-          label="差分（実績 − 見積）"
+          label="差分（実績 − 予算）"
           value={`${totals.diff >= 0 ? "+" : ""}${fmtYen(totals.diff)}`}
           accent={totals.diff > 0 ? "red" : totals.diff < 0 ? "emerald" : "gray"}
         />
         <SummaryCard
           icon={<TrendingUp className="h-4 w-4" />}
-          label="実績率"
+          label="予算消化率"
           value={`${totals.rate.toFixed(1)}%`}
           accent="gold"
         />
@@ -141,21 +152,23 @@ export default function BudgetActual() {
                     <th className="px-3 py-2.5 text-left font-medium">店舗</th>
                     <th className="px-3 py-2.5 text-left font-medium">状態</th>
                     <th className="px-3 py-2.5 text-right font-medium">見積</th>
+                    <th className="px-3 py-2.5 text-right font-medium">予算<span className="text-[9px] block text-muted-foreground font-normal">見積×{Math.round(BUDGET_RATIO * 100)}%</span></th>
                     <th className="px-3 py-2.5 text-right font-medium">実績</th>
-                    <th className="px-3 py-2.5 text-right font-medium">差分</th>
-                    <th className="px-3 py-2.5 text-right font-medium">率</th>
+                    <th className="px-3 py-2.5 text-right font-medium">予算差</th>
+                    <th className="px-3 py-2.5 text-right font-medium">消化率</th>
                     <th className="px-3 py-2.5 w-16"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {cases.map((c) => {
+                    const budget = calcBudget(c.estimatedCost);
                     const diff =
-                      c.actualCost != null && c.estimatedCost != null
-                        ? c.actualCost - c.estimatedCost
+                      c.actualCost != null && budget > 0
+                        ? c.actualCost - budget
                         : null;
                     const rate =
-                      c.actualCost != null && c.estimatedCost && c.estimatedCost > 0
-                        ? (c.actualCost / c.estimatedCost) * 100
+                      c.actualCost != null && budget > 0
+                        ? (c.actualCost / budget) * 100
                         : null;
                     return (
                       <tr
@@ -178,6 +191,7 @@ export default function BudgetActual() {
                           </Badge>
                         </td>
                         <td className="px-3 py-2 text-right">{fmtYen(c.estimatedCost)}</td>
+                        <td className="px-3 py-2 text-right text-muted-foreground">{budget > 0 ? fmtYen(budget) : "—"}</td>
                         <td className="px-3 py-2 text-right font-medium">
                           {fmtYen(c.actualCost)}
                         </td>
