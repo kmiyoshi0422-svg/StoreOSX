@@ -1006,6 +1006,82 @@ export const appRouter = router({
         };
       }),
   }),
+
+  // ============================================================
+  // v11: 店舗一覧集計ルーター
+  // ============================================================
+  stores: router({
+    list: protectedProcedure.query(async () => {
+      const allCases = await listCases();
+
+      function storeKey(c: { storeCode: string | null; storeName: string }) {
+        return (c.storeCode && c.storeCode.trim()) || c.storeName.trim();
+      }
+
+      type StoreRow = {
+        key: string;
+        storeCode: string | null;
+        storeName: string;
+        brand: string | null;
+        address: string | null;
+        caseCount: number;
+        openCount: number;
+        completedCount: number;
+        urgentCount: number;
+        totalEstimated: number;
+        totalActual: number;
+        latestRequestAt: Date | null;
+        latestStatus: string | null;
+        latestStage: string | null;
+      };
+
+      const map = new Map<string, StoreRow>();
+      for (const c of allCases) {
+        const k = storeKey(c);
+        let row = map.get(k);
+        if (!row) {
+          row = {
+            key: k,
+            storeCode: c.storeCode,
+            storeName: c.storeName,
+            brand: c.brand,
+            address: c.address,
+            caseCount: 0,
+            openCount: 0,
+            completedCount: 0,
+            urgentCount: 0,
+            totalEstimated: 0,
+            totalActual: 0,
+            latestRequestAt: null,
+            latestStatus: null,
+            latestStage: null,
+          };
+          map.set(k, row);
+        }
+        row.caseCount++;
+        if (c.status === "完了" || c.status === "クローズ") row.completedCount++;
+        else row.openCount++;
+        if (c.urgency === "S" || c.urgency === "A") row.urgentCount++;
+        if (c.estimatedCost != null) row.totalEstimated += c.estimatedCost;
+        if (c.actualCost != null) row.totalActual += c.actualCost;
+        const reqAt = c.requestDate ?? c.createdAt;
+        if (reqAt && (!row.latestRequestAt || reqAt > row.latestRequestAt)) {
+          row.latestRequestAt = reqAt;
+          row.latestStatus = c.status;
+          row.latestStage = c.progressStage;
+        }
+        // 在中でも代表住所/ブランドが未設定なら補完
+        if (!row.address && c.address) row.address = c.address;
+        if (!row.brand && c.brand) row.brand = c.brand;
+      }
+
+      return Array.from(map.values()).sort((a, b) => {
+        const at = a.latestRequestAt ? +a.latestRequestAt : 0;
+        const bt = b.latestRequestAt ? +b.latestRequestAt : 0;
+        return bt - at;
+      });
+    }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

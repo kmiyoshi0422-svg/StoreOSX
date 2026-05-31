@@ -19,6 +19,7 @@ import Partners from "./pages/Partners";
 import AdminOnly from "./components/AdminOnly";
 import PartnerDetail from "./pages/PartnerDetail";
 import PartnerView from "./pages/PartnerView";
+import StoresList from "./pages/StoresList";
 
 function Router() {
   return (
@@ -44,6 +45,7 @@ function Router() {
         <Route path={"/reports/monthly"}>
           <AdminOnly><MonthlyReport /></AdminOnly>
         </Route>
+        <Route path={"/stores"} component={StoresList} />
         <Route path={"/partners"} component={Partners} />
         <Route path={"/partners/:id"}>
           {(params) => <PartnerDetail id={Number(params.id)} />}

@@ -415,3 +415,52 @@ describe("同一店舗の集約ロジック（v10）", () => {
     expect(open).toBe(2);
   });
 });
+
+
+describe("店舗一覧集計（v11）", () => {
+  it("stores.list は配列を返す", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const result = await caller.stores.list();
+    expect(Array.isArray(result)).toBe(true);
+  });
+
+  it("stores.list は各店舗の必須フィールドを含む", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const result = await caller.stores.list();
+    if (result.length > 0) {
+      const s = result[0];
+      expect(s).toHaveProperty("key");
+      expect(s).toHaveProperty("storeName");
+      expect(s).toHaveProperty("caseCount");
+      expect(s).toHaveProperty("openCount");
+      expect(s).toHaveProperty("completedCount");
+      expect(s).toHaveProperty("totalEstimated");
+      expect(s).toHaveProperty("totalActual");
+      expect(s).toHaveProperty("latestRequestAt");
+      expect(typeof s.caseCount).toBe("number");
+    }
+  });
+
+  it("stores.list は最終依頼日の降順でソートされている", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const result = await caller.stores.list();
+    for (let i = 1; i < result.length; i++) {
+      const prev = result[i - 1].latestRequestAt
+        ? +new Date(result[i - 1].latestRequestAt as Date)
+        : 0;
+      const curr = result[i].latestRequestAt
+        ? +new Date(result[i].latestRequestAt as Date)
+        : 0;
+      expect(prev).toBeGreaterThanOrEqual(curr);
+    }
+  });
+
+  it("店舗未ログイン状態のstores.list呼び出しは拒否される", async () => {
+    const caller = appRouter.createCaller({
+      user: null,
+      req: { protocol: "https", headers: {} } as never,
+      res: {} as never,
+    });
+    await expect(caller.stores.list()).rejects.toThrow();
+  });
+});
