@@ -29,7 +29,17 @@ import {
   Receipt,
   CheckCircle2,
   Folder,
+  Building2,
+  Layers,
+  AlertTriangle,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 const STATUS_COLORS: Record<string, string> = {
   受付: "bg-slate-100 text-slate-700 border-slate-200",
@@ -91,6 +101,11 @@ function avatarColor(id: number) {
   return AVATAR_COLORS[id % AVATAR_COLORS.length];
 }
 
+// 同一店舗キー：storeCodeを優先、無ければstoreNameを使う
+function storeKey(c: { storeCode: string | null; storeName: string }) {
+  return (c.storeCode && c.storeCode.trim()) || c.storeName.trim();
+}
+
 export default function CasesList() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
@@ -102,6 +117,34 @@ export default function CasesList() {
   const [stageTab, setStageTab] = useState<"all" | ProgressStage>("all");
   const [urgency, setUrgency] = useState("all");
   const [assignee, setAssignee] = useState("all");
+  const [storeDialogKey, setStoreDialogKey] = useState<string | null>(null);
+
+  // 同一店舗グルーピング（storeCode または storeName ごと）
+  const storeGroups = useMemo(() => {
+    const map = new Map<string, typeof cases>();
+    for (const c of cases) {
+      const k = storeKey(c);
+      const arr = map.get(k) ?? [];
+      arr.push(c);
+      map.set(k, arr);
+    }
+    return map;
+  }, [cases]);
+
+  // 複数案件を抱える店舗だけ抽出し、件数降順ソート
+  const multiCaseStores = useMemo(() => {
+    return Array.from(storeGroups.entries())
+      .filter(([, list]) => list.length >= 2)
+      .map(([key, list]) => ({
+        key,
+        storeName: list[0].storeName,
+        count: list.length,
+        openCount: list.filter((c) => c.status !== "完了" && c.status !== "クローズ").length,
+      }))
+      .sort((a, b) => b.count - a.count);
+  }, [storeGroups]);
+
+  const dialogStoreCases = storeDialogKey ? storeGroups.get(storeDialogKey) ?? [] : [];
 
   // タブごとの件数
   const stageCounts = useMemo(() => {
@@ -231,6 +274,46 @@ export default function CasesList() {
         </Select>
       </div>
 
+      {/* 複数案件を抱える店舗サマリー */}
+      {multiCaseStores.length > 0 && (
+        <Card className="border-amber-200 bg-amber-50/40">
+          <CardContent className="p-4 md:p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle className="h-4 w-4 text-amber-700" />
+              <h3 className="text-sm font-semibold text-amber-900">
+                複数案件を抱える店舗
+              </h3>
+              <Badge variant="outline" className="text-[10px] bg-white border-amber-200">
+                {multiCaseStores.length}店
+              </Badge>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {multiCaseStores.slice(0, 8).map((s) => (
+                <button
+                  key={s.key}
+                  onClick={() => setStoreDialogKey(s.key)}
+                  className="group inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-amber-200 hover:border-amber-400 hover:shadow-sm transition-all text-xs"
+                >
+                  <Building2 className="h-3.5 w-3.5 text-amber-700" />
+                  <span className="font-medium truncate max-w-[160px]">{s.storeName}</span>
+                  <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-amber-600 text-white font-bold text-[10px]">
+                    {s.count}
+                  </span>
+                  {s.openCount > 0 && s.openCount < s.count && (
+                    <span className="text-[10px] text-amber-700">進行中 {s.openCount}</span>
+                  )}
+                </button>
+              ))}
+              {multiCaseStores.length > 8 && (
+                <span className="text-xs text-muted-foreground self-center px-2">
+                  他 {multiCaseStores.length - 8} 店
+                </span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* List */}
       {isLoading ? (
         <div className="text-sm text-muted-foreground py-8 text-center">読み込み中...</div>
@@ -245,6 +328,8 @@ export default function CasesList() {
           {filtered.map((c) => {
             const stage = (c.progressStage as ProgressStage) ?? "未対応";
             const assigneeUser = c.assigneeId ? userMap.get(c.assigneeId) : null;
+            const sameStoreList = storeGroups.get(storeKey(c)) ?? [];
+            const sameStoreCount = sameStoreList.length;
             return (
               <Card
                 key={c.id}
@@ -275,7 +360,22 @@ export default function CasesList() {
                           {c.requestNumber}
                         </span>
                       </div>
-                      <h3 className="font-semibold text-base mb-1.5 truncate">{c.storeName}</h3>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <h3 className="font-semibold text-base truncate">{c.storeName}</h3>
+                        {sameStoreCount > 1 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setStoreDialogKey(storeKey(c));
+                            }}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors text-[10px] font-medium text-amber-800 shrink-0"
+                            title={`同じ店舗に他 ${sameStoreCount - 1} 件の案件があります`}
+                          >
+                            <Layers className="h-3 w-3" />
+                            同店舗 {sameStoreCount}件
+                          </button>
+                        )}
+                      </div>
                       <div className="text-xs text-muted-foreground space-y-1">
                         {c.address && (
                           <div className="flex items-start gap-1.5">
@@ -374,6 +474,90 @@ export default function CasesList() {
           })}
         </div>
       )}
+
+      {/* 同一店舗案件ダイアログ */}
+      <Dialog open={!!storeDialogKey} onOpenChange={(open) => !open && setStoreDialogKey(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-amber-700" />
+              {dialogStoreCases[0]?.storeName ?? "店舗名"}
+              <Badge variant="outline" className="text-[10px] bg-amber-50 border-amber-200 text-amber-800">
+                {dialogStoreCases.length}件
+              </Badge>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              この店舗で進行中・完了済みの案件一覧です。クリックで詳細へ遷移します。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="divide-y divide-border/60 max-h-[60vh] overflow-y-auto">
+            {dialogStoreCases
+              .slice()
+              .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+              .map((c) => {
+                const stage = (c.progressStage as ProgressStage) ?? "未対応";
+                const assigneeUser = c.assigneeId ? userMap.get(c.assigneeId) : null;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => {
+                      setStoreDialogKey(null);
+                      setLocation(`/cases/${c.id}`);
+                    }}
+                    className="w-full text-left py-3 px-2 hover:bg-muted/40 rounded transition-colors"
+                  >
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <span
+                        className={`inline-flex h-5 min-w-5 px-1.5 items-center justify-center rounded text-[9px] font-bold ${URGENCY_COLORS[c.urgency]}`}
+                      >
+                        {URGENCY_LABEL[c.urgency]}
+                      </span>
+                      <Badge variant="outline" className={`text-[10px] ${STAGE_BADGE[stage]}`}>
+                        {stage}
+                      </Badge>
+                      <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[c.status]}`}>
+                        {c.status}
+                      </Badge>
+                      <span className="text-[10px] font-mono text-muted-foreground">
+                        {c.requestNumber}
+                      </span>
+                      {c.requestDate && (
+                        <span className="text-[10px] text-muted-foreground ml-auto">
+                          {new Date(c.requestDate).toLocaleDateString("ja-JP")}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-muted-foreground">
+                        {c.categoryLarge || "—"} / {c.categoryMedium || "—"}
+                      </span>
+                      {assigneeUser && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          {assigneeUser.name || assigneeUser.email}
+                        </Badge>
+                      )}
+                      {!assigneeUser && (
+                        <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
+                          未割当
+                        </Badge>
+                      )}
+                      {c.estimatedCost != null && (
+                        <span className="font-mono text-[10px] ml-auto">
+                          ¥{c.estimatedCost.toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                    {c.requestContent && (
+                      <p className="text-[11px] text-muted-foreground mt-1 line-clamp-1">
+                        {c.requestContent}
+                      </p>
+                    )}
+                  </button>
+                );
+              })}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -363,3 +363,55 @@ describe("進捗ステージ（progressStage）", () => {
     expect(stages[3]).toBe("承認済");
   });
 });
+
+
+describe("同一店舗の集約ロジック（v10）", () => {
+  function storeKey(c: { storeCode: string | null; storeName: string }) {
+    return (c.storeCode && c.storeCode.trim()) || c.storeName.trim();
+  }
+
+  it("storeCodeがあればstoreCodeをキーに使う", () => {
+    expect(storeKey({ storeCode: "S001", storeName: "渋谷店" })).toBe("S001");
+    expect(storeKey({ storeCode: "S001", storeName: "渋谷東口店" })).toBe("S001");
+  });
+
+  it("storeCodeが空ならstoreNameを使う", () => {
+    expect(storeKey({ storeCode: null, storeName: "新宿店" })).toBe("新宿店");
+    expect(storeKey({ storeCode: "  ", storeName: "新宿店" })).toBe("新宿店");
+  });
+
+  it("同店舗の複数案件を集約できる", () => {
+    const cases = [
+      { id: 1, storeCode: "S001", storeName: "渋谷店", status: "受付" },
+      { id: 2, storeCode: "S001", storeName: "渋谷店", status: "完了" },
+      { id: 3, storeCode: "S002", storeName: "新宿店", status: "現調中" },
+      { id: 4, storeCode: null, storeName: "渋谷店", status: "受付" },
+    ];
+    const map = new Map<string, typeof cases>();
+    for (const c of cases) {
+      const k = storeKey(c);
+      const arr = map.get(k) ?? [];
+      arr.push(c);
+      map.set(k, arr);
+    }
+    expect(map.get("S001")?.length).toBe(2);
+    expect(map.get("S002")?.length).toBe(1);
+    // storeCodeがnullの場合は別グループ
+    expect(map.get("渋谷店")?.length).toBe(1);
+
+    const multiStores = Array.from(map.values()).filter((l) => l.length >= 2);
+    expect(multiStores).toHaveLength(1);
+    expect(multiStores[0][0].storeCode).toBe("S001");
+  });
+
+  it("進行中の案件数（status≠完了/クローズ）を正しくカウント", () => {
+    const list = [
+      { status: "受付" },
+      { status: "現調中" },
+      { status: "完了" },
+      { status: "クローズ" },
+    ];
+    const open = list.filter((c) => c.status !== "完了" && c.status !== "クローズ").length;
+    expect(open).toBe(2);
+  });
+});
