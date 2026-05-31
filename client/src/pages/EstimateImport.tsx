@@ -40,6 +40,7 @@ type Row = {
 export default function EstimateImport() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<Row[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const utils = trpc.useUtils();
 
   const uploadMutation = trpc.estimates.uploadFile.useMutation();
@@ -192,12 +193,73 @@ export default function EstimateImport() {
         </div>
       </div>
 
+      <div
+        data-testid="estimate-dropzone"
+        onDragEnter={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.dataTransfer.types.includes("Files")) setIsDragging(true);
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.dataTransfer.types.includes("Files")) {
+            e.dataTransfer.dropEffect = "copy";
+            setIsDragging(true);
+          }
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.currentTarget === e.target) setIsDragging(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragging(false);
+          const dropped = e.dataTransfer.files;
+          if (dropped && dropped.length > 0) {
+            const accepted: File[] = [];
+            for (const f of Array.from(dropped)) {
+              if (f.type === "application/pdf" || f.type.startsWith("image/")) {
+                accepted.push(f);
+              }
+            }
+            if (accepted.length === 0) {
+              toast.error("PDFまたは画像のみ対応しています");
+              return;
+            }
+            const dt = new DataTransfer();
+            accepted.forEach((f) => dt.items.add(f));
+            handleFiles(dt.files);
+            toast.success(`${accepted.length}件のファイルを追加しました`);
+          }
+        }}
+        className={`rounded-md border-2 border-dashed transition-colors ${
+          isDragging
+            ? "border-primary bg-primary/5"
+            : "border-muted-foreground/25 hover:border-muted-foreground/40"
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          className="w-full py-8 text-center cursor-pointer"
+        >
+          <Upload className={`h-8 w-8 mx-auto mb-2 ${isDragging ? "text-primary" : "text-muted-foreground"}`} />
+          <div className="font-medium text-sm">
+            {isDragging ? "ここにドロップしてください" : "ファイルをドラッグ＆ドロップ または クリックして選択"}
+          </div>
+          <div className="text-xs text-muted-foreground mt-1">PDF / 画像（複数同時可）</div>
+        </button>
+      </div>
+
       {rows.length === 0 ? (
         <Card>
-          <CardContent className="py-16 text-center text-muted-foreground">
+          <CardContent className="py-12 text-center text-muted-foreground">
             <Sparkles className="h-10 w-10 mx-auto mb-3 opacity-60" />
-            <div className="font-medium">ファイルをアップロードしてください</div>
-            <div className="text-xs mt-1">複数のPDF・画像をまとめて投入できます。AIが内容を読み取り案件にマッチします。</div>
+            <div className="font-medium">まだファイルがありません</div>
+            <div className="text-xs mt-1">上のエリアにドロップするか、ファイル追加ボタンから投入してください。</div>
           </CardContent>
         </Card>
       ) : (

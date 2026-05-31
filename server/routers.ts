@@ -47,6 +47,7 @@ import { storagePut, storageGetSignedUrl } from "./storage";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { BUDGET_RATIO, calcBudget } from "../shared/budget";
+import { scoreCandidates, topMatches, pickBestMatch } from "../shared/estimate-matcher";
 import { invokeLLM } from "./_core/llm";
 import { ENV } from "./_core/env";
 
@@ -1022,28 +1023,25 @@ export const appRouter = router({
         } catch (e) {
           console.warn("[estimates.extractAndMatch] LLM抽出失敗", e);
         }
-        // マッチ候補を見つける
+        // マッチ候補を見つける（sharedの純粋関数を使用）
         const allCases = await listCases();
         const reqStr = (parsed.requestNumber ?? "").toString().trim();
         const titleStr = (parsed.caseTitle ?? "").toString().trim();
         const storeStr = (parsed.storeName ?? "").toString().trim();
-        const norm = (s: string) => s.toLowerCase().replace(/[\s　ー\-_/\.]+/g, "");
-        const reqN = norm(reqStr);
-        const titleN = norm(titleStr);
-        const storeN = norm(storeStr);
-        const scored = allCases.map((c) => {
-          let score = 0;
-          const cReq = norm(c.requestNumber ?? "");
-          const cStore = norm(c.storeName ?? "");
-          const cDesc = norm((c.requestContent ?? "") + (c.categoryLarge ?? "") + (c.categoryMedium ?? "") + (c.categorySmall ?? ""));
-          if (reqN && cReq && (cReq === reqN || cReq.includes(reqN) || reqN.includes(cReq))) score += 100;
-          if (storeN && cStore && (cStore === storeN || cStore.includes(storeN) || storeN.includes(cStore))) score += 30;
-          if (titleN && (cDesc.includes(titleN) || titleN.length >= 3 && cDesc.includes(titleN.slice(0, 3)))) score += 15;
-          return { caseId: c.id, requestNumber: c.requestNumber, storeName: c.storeName, score };
-        });
-        scored.sort((a, b) => b.score - a.score);
-        const matches = scored.filter((s) => s.score > 0).slice(0, 5);
-        const bestMatch = matches[0] && matches[0].score >= 100 ? matches[0] : null;
+        const scored = scoreCandidates(
+          { requestNumber: reqStr || null, caseTitle: titleStr || null, storeName: storeStr || null },
+          allCases.map((c) => ({
+            id: c.id,
+            requestNumber: c.requestNumber,
+            storeName: c.storeName,
+            requestContent: c.requestContent,
+            categoryLarge: c.categoryLarge,
+            categoryMedium: c.categoryMedium,
+            categorySmall: c.categorySmall,
+          }))
+        );
+        const matches = topMatches(scored, 5);
+        const bestMatch = pickBestMatch(scored);
         return {
           extracted: {
             totalAmount: parsed.totalAmount ?? null,
@@ -1056,7 +1054,12 @@ export const appRouter = router({
             storeName: storeStr || null,
             note: parsed.note ?? null,
           },
-          matches,
+          matches: matches.map((m) => ({
+            caseId: m.caseId,
+            requestNumber: m.requestNumber ?? "",
+            storeName: m.storeName ?? "",
+            score: m.score,
+          })),
           bestMatchCaseId: bestMatch?.caseId ?? null,
         };
       }),
