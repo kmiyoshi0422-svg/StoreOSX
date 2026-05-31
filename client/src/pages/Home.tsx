@@ -61,13 +61,13 @@ export default function Home() {
       {/* Hero */}
       <div className="border-b border-border/60 pb-6">
         <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-2">
-          Dashboard
+          Store OSX · Dashboard
         </p>
         <h1 className="font-serif-jp text-3xl md:text-4xl font-semibold tracking-tight">
-          現場チェックブック
+          Store OSX
         </h1>
         <p className="text-sm text-muted-foreground mt-2">
-          プレナス修理依頼案件をチーム全員で管理・共有
+          プレナス修理依頼案件の施工管理をチーム全員で管理・共有
         </p>
       </div>
 

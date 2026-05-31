@@ -68,8 +68,11 @@ export default function DashboardLayout({
         <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
           <div className="flex flex-col items-center gap-6">
             <h1 className="font-serif-jp text-3xl font-semibold tracking-tight text-center">
-              プレナス現場チェックブック
+              Store OSX
             </h1>
+            <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground -mt-2">
+              Plenus Site Operations
+            </p>
             <p className="text-sm text-muted-foreground text-center max-w-sm">
               ログインして案件管理を開始してください。チームメンバー全員でリアルタイムに進捗を共有できます。
             </p>
@@ -179,7 +182,7 @@ function DashboardLayoutContent({
               {!isCollapsed ? (
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="font-serif-jp font-semibold tracking-tight truncate text-base">
-                    現場チェックブック
+                    Store OSX
                   </span>
                 </div>
               ) : null}

@@ -73,3 +73,6 @@
 - [x] 予算 = 見積金額 × 75% の自動計算（shared/budget.tsで共通化、client/server両方で使用）
 - [x] 予算消化率・差分を予算基準に統一（Home/BudgetActual/MonthlyReportに予算カラムと「予算（見積×75%）」表記を追加）
 - [x] テスト追加4件、全テスト18件PASS（予算75%計算・一般ユーザーFORBIDDEN・summary・monthlyReport・差分ロジック）
+## アプリ名変更（v7） ✅完了
+
+- [x] アプリ名を「Store OSX」に変更（client/index.html title・ログイン画面・サイドバーヘッダ・Homeヒーロー）
