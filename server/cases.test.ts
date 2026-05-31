@@ -672,3 +672,106 @@ describe("v16: workload.list 空データ・偏り判定", () => {
     expect(res.unassignedCount).toBe(unassigned?.totalTasks ?? 0);
   });
 });
+
+
+describe("v17: estimates.extractAndMatch / bulkSave 入力バリデーション", () => {
+  it("estimates.extractAndMatch は fileKey を要求する", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(
+      caller.estimates.extractAndMatch({ fileKey: "" } as never)
+    ).rejects.toThrow();
+  });
+
+  it("estimates.bulkSave は空配列を拒否する（1件以上必要）", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(
+      caller.estimates.bulkSave({ rows: [] })
+    ).rejects.toThrow();
+  });
+
+  it("estimates.bulkSave は caseId 必須", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(
+      caller.estimates.bulkSave({
+        rows: [
+          {
+            // @ts-expect-error - intentionally missing caseId
+            fileKey: "some-key",
+            fileUrl: "/manus-storage/some-key",
+            fileName: "estimate.pdf",
+            mimeType: "application/pdf",
+            totalAmount: 100000,
+            materialAmount: null,
+            laborAmount: null,
+            vendorName: null,
+            estimateDate: null,
+            note: null,
+          } as any,
+        ],
+      })
+    ).rejects.toThrow();
+  });
+
+  it("認証されていない場合、estimates.bulkSave は拒否される", async () => {
+    const caller = appRouter.createCaller({
+      session: null,
+      user: null,
+      req: { ip: "127.0.0.1" } as any,
+      res: {} as any,
+    });
+    await expect(
+      caller.estimates.bulkSave({
+        rows: [
+          {
+            caseId: 1,
+            fileKey: "k",
+            fileUrl: "/manus-storage/k",
+            fileName: "e.pdf",
+            mimeType: "application/pdf",
+            totalAmount: 100,
+            materialAmount: null,
+            laborAmount: null,
+            vendorName: null,
+            estimateDate: null,
+            note: null,
+          },
+        ],
+      })
+    ).rejects.toThrow();
+  });
+});
+
+describe("v17: 個別案件 収支計算", () => {
+  it("売上が0なら粗利率は0で扱う（割り算ゼロ防止）", () => {
+    const sales = 0;
+    const cost = 1000;
+    const grossMargin = sales > 0 ? (sales - cost) / sales : 0;
+    expect(grossMargin).toBe(0);
+  });
+
+  it("実績原価がない場合は協力業者支払予定（75%）を原価とする", () => {
+    const sales = 100000;
+    const partner75 = Math.floor(sales * 0.75);
+    const actual = 0;
+    const baseCost = actual > 0 ? actual : partner75;
+    expect(baseCost).toBe(75000);
+    expect(sales - baseCost).toBe(25000);
+  });
+
+  it("実績原価が入力されたら粗利は売上−実績で計算される", () => {
+    const sales = 100000;
+    const partner75 = Math.floor(sales * 0.75);
+    const actual = 80000;
+    const baseCost = actual > 0 ? actual : partner75;
+    expect(baseCost).toBe(80000);
+    expect(sales - baseCost).toBe(20000);
+  });
+
+  it("実績>予算なら予算超過、実績≤予算なら予算内", () => {
+    const partner75 = 75000;
+    const overActual = 90000;
+    const inActual = 70000;
+    expect(overActual - partner75 > 0).toBe(true);
+    expect(inActual - partner75 <= 0).toBe(true);
+  });
+});

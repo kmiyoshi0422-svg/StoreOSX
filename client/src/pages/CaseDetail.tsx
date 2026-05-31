@@ -171,7 +171,7 @@ export default function CaseDetail({ id }: { id: number }) {
 
       {/* Tabs */}
       <Tabs defaultValue="info" className="space-y-4">
-        <TabsList className="grid grid-cols-4 w-full md:w-auto md:inline-grid">
+        <TabsList className="grid grid-cols-5 w-full md:w-auto md:inline-grid">
           <TabsTrigger value="info">
             <Info className="h-3.5 w-3.5" />
             基本情報
@@ -193,6 +193,10 @@ export default function CaseDetail({ id }: { id: number }) {
           <TabsTrigger value="estimates">
             <Receipt className="h-3.5 w-3.5" />
             見積書
+          </TabsTrigger>
+          <TabsTrigger value="profit">
+            <Wallet className="h-3.5 w-3.5" />
+            収支
           </TabsTrigger>
         </TabsList>
 
@@ -218,6 +222,10 @@ export default function CaseDetail({ id }: { id: number }) {
 
         <TabsContent value="estimates">
           <EstimatesTab caseId={id} partnerToken={caseData.partnerToken} />
+        </TabsContent>
+
+        <TabsContent value="profit">
+          <ProfitTab caseData={caseData} />
         </TabsContent>
       </Tabs>
     </div>
@@ -1481,5 +1489,111 @@ function EstimateCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function ProfitTab({ caseData }: { caseData: Case }) {
+  const { data: estimates = [] } = trpc.estimates.listByCase.useQuery({ caseId: caseData.id });
+
+  const yen = (n: number | null | undefined) =>
+    n != null ? `¥${Math.round(n).toLocaleString()}` : "—";
+
+  // プレナス向け売上（見積） = caseData.estimatedCost or 見積一覧合計
+  const estimatesTotal = estimates.reduce((s, e) => s + (e.totalAmount ?? 0), 0);
+  const sales = caseData.estimatedCost ?? estimatesTotal;
+  // 協力業者支払（見積×75%）
+  const partnerCost75 = sales > 0 ? Math.floor(sales * 0.75) : 0;
+  // 実績原価（協力業者支払の実績合計）
+  const actualCost = caseData.actualCost ?? 0;
+  // 粗利（売上 - 原価）：実績優先、なければ75%目安
+  const baseCost = actualCost > 0 ? actualCost : partnerCost75;
+  const grossProfit = sales - baseCost;
+  const grossMargin = sales > 0 ? grossProfit / sales : 0;
+
+  const variance = (caseData.actualCost ?? 0) - partnerCost75;
+  const isOver = variance > 0;
+  const isInBudget = variance <= 0 && actualCost > 0;
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="p-5 space-y-4">
+          <div className="flex items-center gap-2">
+            <Wallet className="h-4 w-4 text-muted-foreground" />
+            <h3 className="font-medium">個別案件 収支</h3>
+            <span className="text-xs text-muted-foreground ml-auto">
+              依頼番号: {caseData.requestNumber}
+            </span>
+          </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="rounded-md border p-3 bg-blue-50 border-blue-200">
+              <div className="text-xs text-blue-700 mb-1">プレナス向け売上（見積合計）</div>
+              <div className="text-xl font-semibold tracking-tight">{yen(sales)}</div>
+            </div>
+            <div className="rounded-md border p-3 bg-emerald-50 border-emerald-200">
+              <div className="text-xs text-emerald-700 mb-1">協力業者支払予定（見積×75%）</div>
+              <div className="text-xl font-semibold tracking-tight">{yen(partnerCost75)}</div>
+            </div>
+            <div className="rounded-md border p-3 bg-amber-50 border-amber-200">
+              <div className="text-xs text-amber-700 mb-1">実績原価（協力業者支払実績）</div>
+              <div className="text-xl font-semibold tracking-tight">{yen(actualCost)}</div>
+            </div>
+            <div className={`rounded-md border p-3 ${grossProfit >= 0 ? "bg-violet-50 border-violet-200" : "bg-red-50 border-red-200"}`}>
+              <div className="text-xs mb-1 text-muted-foreground">粗利（売上−原価）</div>
+              <div className={`text-xl font-semibold tracking-tight ${grossProfit >= 0 ? "text-violet-700" : "text-red-700"}`}>
+                {yen(grossProfit)}
+              </div>
+              <div className="text-[11px] text-muted-foreground mt-1">
+                粗利率 {(grossMargin * 100).toFixed(1)}%
+              </div>
+            </div>
+          </div>
+
+          {actualCost > 0 && (
+            <div className="rounded-md border p-3 bg-muted/30">
+              <div className="text-xs text-muted-foreground mb-1">予算（見積×75%）と実績の差</div>
+              <div className="flex items-center gap-3">
+                <span className="text-lg font-semibold tracking-tight">
+                  {variance >= 0 ? "+" : "−"} ¥{Math.abs(variance).toLocaleString()}
+                </span>
+                {isOver && (
+                  <Badge className="bg-red-100 text-red-700 border-red-200">予算超過</Badge>
+                )}
+                {isInBudget && (
+                  <Badge className="bg-green-100 text-green-700 border-green-200">予算内</Badge>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="text-xs text-muted-foreground space-y-1 leading-relaxed pt-2 border-t">
+            <div>・売上：プレナス向け見積金額（estimatedCost。なければ見積一覧合計）</div>
+            <div>・原価：実績入力があれば実績、なければ協力業者支払予定（見積×75%）</div>
+            <div>・実績原価が入力されると粗利・粗利率がリアルタイムで反映されます</div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {estimates.length > 0 && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-sm font-medium mb-2">見積書内訳（{estimates.length}件）</div>
+            <div className="text-xs text-muted-foreground mb-3">合計: {yen(estimatesTotal)}</div>
+            <div className="space-y-1">
+              {estimates.map((e) => (
+                <div key={e.id} className="flex items-center justify-between text-sm border-b last:border-0 py-1.5">
+                  <div className="truncate">
+                    <span className="text-muted-foreground mr-2">{e.vendorName || "—"}</span>
+                    <span>{e.fileName ?? "見積書"}</span>
+                  </div>
+                  <div className="font-medium tabular-nums">{yen(e.totalAmount)}</div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }

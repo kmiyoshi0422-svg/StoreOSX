@@ -961,6 +961,155 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    // 一括取込: ファイルから金額+依頼番号/案件名/店舗名を抽出しマッチ候補を返す
+    extractAndMatch: protectedProcedure
+      .input(
+        z.object({
+          fileKey: z.string().min(1),
+          mimeType: z.string(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const key = input.fileKey.replace(/^\/manus-storage\//, "");
+        const publicUrl = await storageGetSignedUrl(key);
+        const isImage = input.mimeType.startsWith("image/");
+        const schema = {
+          type: "object",
+          properties: {
+            totalAmount: { type: ["number", "null"], description: "見積合計金額(円)" },
+            materialAmount: { type: ["number", "null"], description: "材料費小計" },
+            laborAmount: { type: ["number", "null"], description: "作業費小計" },
+            vendorName: { type: ["string", "null"], description: "見積を作成した会社名" },
+            estimateDate: { type: ["string", "null"], description: "見積日(YYYY-MM-DD)" },
+            requestNumber: { type: ["string", "null"], description: "依頼番号・件名番号・オーダーNoなど識別番号" },
+            caseTitle: { type: ["string", "null"], description: "案件名・件名・工事名称" },
+            storeName: { type: ["string", "null"], description: "店舗名・現場名" },
+            note: { type: ["string", "null"], description: "他メモ" },
+          },
+          required: [
+            "totalAmount", "materialAmount", "laborAmount", "vendorName",
+            "estimateDate", "requestNumber", "caseTitle", "storeName", "note",
+          ],
+          additionalProperties: false,
+        };
+        const messages: any = [
+          {
+            role: "system",
+            content:
+              "あなたは見積書・請求書から情報を抽出するAIです。金額、依頼番号、案件名、店舗名をJSONで返してください。依頼番号は「件名」「ORDER NO」「依頼」「依頼番号」「受付番号」などの項目を探し、英数・ハイフン・アンダースコアをそのまま返します。不明なnull。金額は円単位整数。",
+          },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "この見積書から金額と依頼番号・案件名・店舗名を抽出してJSONで返してください" },
+              isImage
+                ? { type: "image_url", image_url: { url: publicUrl, detail: "high" } }
+                : { type: "file_url", file_url: { url: publicUrl, mime_type: "application/pdf" } },
+            ],
+          },
+        ];
+        let parsed: any = {};
+        try {
+          const res = await invokeLLM({
+            messages,
+            response_format: {
+              type: "json_schema",
+              json_schema: { name: "estimate_match", strict: false, schema },
+            },
+          });
+          const content = res.choices?.[0]?.message?.content ?? "{}";
+          parsed = typeof content === "string" ? JSON.parse(content) : content;
+        } catch (e) {
+          console.warn("[estimates.extractAndMatch] LLM抽出失敗", e);
+        }
+        // マッチ候補を見つける
+        const allCases = await listCases();
+        const reqStr = (parsed.requestNumber ?? "").toString().trim();
+        const titleStr = (parsed.caseTitle ?? "").toString().trim();
+        const storeStr = (parsed.storeName ?? "").toString().trim();
+        const norm = (s: string) => s.toLowerCase().replace(/[\s　ー\-_/\.]+/g, "");
+        const reqN = norm(reqStr);
+        const titleN = norm(titleStr);
+        const storeN = norm(storeStr);
+        const scored = allCases.map((c) => {
+          let score = 0;
+          const cReq = norm(c.requestNumber ?? "");
+          const cStore = norm(c.storeName ?? "");
+          const cDesc = norm((c.requestContent ?? "") + (c.categoryLarge ?? "") + (c.categoryMedium ?? "") + (c.categorySmall ?? ""));
+          if (reqN && cReq && (cReq === reqN || cReq.includes(reqN) || reqN.includes(cReq))) score += 100;
+          if (storeN && cStore && (cStore === storeN || cStore.includes(storeN) || storeN.includes(cStore))) score += 30;
+          if (titleN && (cDesc.includes(titleN) || titleN.length >= 3 && cDesc.includes(titleN.slice(0, 3)))) score += 15;
+          return { caseId: c.id, requestNumber: c.requestNumber, storeName: c.storeName, score };
+        });
+        scored.sort((a, b) => b.score - a.score);
+        const matches = scored.filter((s) => s.score > 0).slice(0, 5);
+        const bestMatch = matches[0] && matches[0].score >= 100 ? matches[0] : null;
+        return {
+          extracted: {
+            totalAmount: parsed.totalAmount ?? null,
+            materialAmount: parsed.materialAmount ?? null,
+            laborAmount: parsed.laborAmount ?? null,
+            vendorName: parsed.vendorName ?? null,
+            estimateDate: parsed.estimateDate ?? null,
+            requestNumber: reqStr || null,
+            caseTitle: titleStr || null,
+            storeName: storeStr || null,
+            note: parsed.note ?? null,
+          },
+          matches,
+          bestMatchCaseId: bestMatch?.caseId ?? null,
+        };
+      }),
+
+    // マッチ確定した見積書を一括保存
+    bulkSave: protectedProcedure
+      .input(
+        z.object({
+          rows: z.array(
+            z.object({
+              caseId: z.number(),
+              fileKey: z.string().min(1),
+              fileUrl: z.string().min(1),
+              fileName: z.string().nullish(),
+              mimeType: z.string(),
+              totalAmount: z.number().nullish(),
+              materialAmount: z.number().nullish(),
+              laborAmount: z.number().nullish(),
+              vendorName: z.string().nullish(),
+              estimateDate: z.string().nullish(),
+              note: z.string().nullish(),
+            })
+          ).min(1),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const ids: number[] = [];
+        for (const r of input.rows) {
+          const id = await createEstimate({
+            caseId: r.caseId,
+            fileKey: r.fileKey,
+            fileUrl: r.fileUrl,
+            fileName: r.fileName ?? null,
+            mimeType: r.mimeType,
+            totalAmount: r.totalAmount ?? undefined,
+            materialAmount: r.materialAmount ?? undefined,
+            laborAmount: r.laborAmount ?? undefined,
+            vendorName: r.vendorName ?? undefined,
+            estimateDate: r.estimateDate ? new Date(r.estimateDate) : undefined,
+            note: r.note ?? undefined,
+            uploadedBy: ctx.user.id,
+          });
+          ids.push(id);
+          // 案件のestimatedCostを見積一覧合計で設定
+          const ests = await listEstimatesByCase(r.caseId);
+          const total = ests.reduce((s, e) => s + (e.totalAmount ?? 0), 0);
+          if (total > 0) {
+            await updateCase(r.caseId, { estimatedCost: total } as any);
+          }
+        }
+        return { count: ids.length, ids };
+      }),
+
     // 協力業者に見せる75%金額トークンを生成
     issuePartnerToken: protectedProcedure
       .input(z.object({ caseId: z.number() }))

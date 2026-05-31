@@ -13,6 +13,7 @@ import PhotoLedger from "./pages/PhotoLedger";
 import CsvImport from "./pages/CsvImport";
 import CasePdfImport from "./pages/CasePdfImport";
 import PartnerImport from "./pages/PartnerImport";
+import EstimateImport from "./pages/EstimateImport";
 import BudgetActual from "./pages/BudgetActual";
 import MonthlyReport from "./pages/MonthlyReport";
 import Partners from "./pages/Partners";
@@ -40,6 +41,7 @@ function Router() {
         <Route path={"/cases/import"} component={CsvImport} />
         <Route path={"/cases/import-pdf"} component={CasePdfImport} />
         <Route path={"/partners/import"} component={PartnerImport} />
+        <Route path={"/estimates/import"} component={EstimateImport} />
         <Route path={"/budget"}>
           <AdminOnly><BudgetActual /></AdminOnly>
         </Route>
