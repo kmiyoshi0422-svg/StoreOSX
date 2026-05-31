@@ -48,6 +48,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { BUDGET_RATIO, calcBudget } from "../shared/budget";
 import { scoreCandidates, topMatches, pickBestMatch } from "../shared/estimate-matcher";
+import { pickLatestEstimate } from "../shared/estimate-aggregator";
 import { invokeLLM } from "./_core/llm";
 import { ENV } from "./_core/env";
 
@@ -906,12 +907,18 @@ export const appRouter = router({
           uploadedBy: ctx.user.id,
         });
 
-        // 案件のestimatedCostを見積合計で更新（抽出できた場合のみ）
-        if (totalAmount != null) {
-          const updateData: any = { estimatedCost: totalAmount };
-          if (materialAmount != null) updateData.estimatedMaterialCost = materialAmount;
-          if (laborAmount != null) updateData.estimatedLaborCost = laborAmount;
-          await updateCase(input.caseId, updateData);
+        // 案件のestimatedCostを「同一案件の見積レコードのうち最新」を採用して更新
+        try {
+          const ests = await listEstimatesByCase(input.caseId);
+          const picked = pickLatestEstimate(ests);
+          if (picked) {
+            const upd: any = { estimatedCost: picked.totalAmount };
+            if (picked.materialAmount != null) upd.estimatedMaterialCost = picked.materialAmount;
+            if (picked.laborAmount != null) upd.estimatedLaborCost = picked.laborAmount;
+            await updateCase(input.caseId, upd);
+          }
+        } catch (e) {
+          console.warn("[estimates.uploadFile] estimatedCost同期失敗", e);
         }
 
         return {
@@ -944,13 +951,17 @@ export const appRouter = router({
         const { estimates: estimatesTable } = await import("../drizzle/schema");
         const { eq } = await import("drizzle-orm");
         await db.update(estimatesTable).set(data as any).where(eq(estimatesTable.id, id));
-        // 見積合計が更新されたらcasesのestimatedCostも同期
+        // 見積合計が更新されたらcasesのestimatedCostも同期（同一案件の最新見積を採用）
         const est = await getEstimateById(id);
-        if (est && est.totalAmount != null) {
-          const upd: any = { estimatedCost: est.totalAmount };
-          if (est.materialAmount != null) upd.estimatedMaterialCost = est.materialAmount;
-          if (est.laborAmount != null) upd.estimatedLaborCost = est.laborAmount;
-          await updateCase(est.caseId, upd);
+        if (est) {
+          const ests = await listEstimatesByCase(est.caseId);
+          const picked = pickLatestEstimate(ests);
+          if (picked) {
+            const upd: any = { estimatedCost: picked.totalAmount };
+            if (picked.materialAmount != null) upd.estimatedMaterialCost = picked.materialAmount;
+            if (picked.laborAmount != null) upd.estimatedLaborCost = picked.laborAmount;
+            await updateCase(est.caseId, upd);
+          }
         }
         return { success: true };
       }),
@@ -1103,11 +1114,14 @@ export const appRouter = router({
             uploadedBy: ctx.user.id,
           });
           ids.push(id);
-          // 案件のestimatedCostを見積一覧合計で設定
+          // 案件のestimatedCost/材料費/作業費を最新見積で更新
           const ests = await listEstimatesByCase(r.caseId);
-          const total = ests.reduce((s, e) => s + (e.totalAmount ?? 0), 0);
-          if (total > 0) {
-            await updateCase(r.caseId, { estimatedCost: total } as any);
+          const picked = pickLatestEstimate(ests);
+          if (picked) {
+            const upd: any = { estimatedCost: picked.totalAmount };
+            if (picked.materialAmount != null) upd.estimatedMaterialCost = picked.materialAmount;
+            if (picked.laborAmount != null) upd.estimatedLaborCost = picked.laborAmount;
+            await updateCase(r.caseId, upd);
           }
         }
         return { count: ids.length, ids };
