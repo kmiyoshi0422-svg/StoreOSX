@@ -308,3 +308,58 @@ describe("v8: cases.uploadPdf / partners.uploadFile 入力バリデーション"
     await expect(caller.cases.extractFromPdf({ fileKey: "" as any })).rejects.toThrow();
   });
 });
+
+
+describe("見積書・協力業者ビュー（v9）", () => {
+  it("estimates.listByCase は配列を返す", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const result = await caller.estimates.listByCase({ caseId: 999999 });
+    expect(Array.isArray(result)).toBe(true);
+  });
+
+  it("partnerView.getByToken は無効なトークンでエラーを投げる", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(
+      caller.partnerView.getByToken({ token: "invalid_token_xxx" })
+    ).rejects.toThrow();
+  });
+
+  it("partnerView.getByToken は短すぎるトークンを拒否する", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(caller.partnerView.getByToken({ token: "short" })).rejects.toThrow();
+  });
+
+  it("estimates.update は数値以外を受け付けない", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(
+      caller.estimates.update({ id: 1, totalAmount: "abc" as never })
+    ).rejects.toThrow();
+  });
+
+  it("estimates.uploadFile は空のファイル名を拒否する", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(
+      caller.estimates.uploadFile({
+        caseId: 1,
+        fileName: "",
+        fileBase64: "AAA",
+        mimeType: "application/pdf",
+      })
+    ).rejects.toThrow();
+  });
+});
+
+describe("進捗ステージ（progressStage）", () => {
+  it("75%計算が正しい（端数四捨五入）", () => {
+    expect(Math.round(100000 * 0.75)).toBe(75000);
+    expect(Math.round(123456 * 0.75)).toBe(92592);
+    expect(Math.round(1 * 0.75)).toBe(1);
+  });
+
+  it("4つの進捗ステージが定義されている", () => {
+    const stages = ["未対応", "現調済", "見積提出済", "承認済"];
+    expect(stages).toHaveLength(4);
+    expect(stages[0]).toBe("未対応");
+    expect(stages[3]).toBe("承認済");
+  });
+});

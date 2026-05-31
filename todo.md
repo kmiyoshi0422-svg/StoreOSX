@@ -84,3 +84,16 @@
 - [x] 協力会社マスタのインポート：写真（OCR）・Excel・PDFから一括登録（/partners/import）
 - [x] partners.bulkCreate / cases.uploadPdf テスト追加
 - [x] 全テストPASS（22件）
+
+## 追加機能（v9） ✅完了
+
+- [x] estimatesテーブル追加（caseId, fileKey, url, mimeType, totalAmount, materialAmount, laborAmount, note, uploadedBy, createdAt）
+- [x] 見積書アップロード（PDF/画像）+ LLMで金額抽出 → caseに紐付け
+- [x] cases.estimatedCost の自動更新（見積書の合計金額）
+- [x] 協力業者向け公開ページ /partner-view/[token]
+- [x] 案件詳細にトークン生成ボタン＋共有リンクコピー
+- [x] 進捗ステータス4区分（未対応 / 現調済 / 見積提出済 / 承認済）を導入：既存statusと別軸の progressStage 列を追加
+- [x] 案件一覧をタブでフォルダ分け（未対応 / 現調済 / 見積提出済 / 承認済 / 全て）
+- [x] 案件一覧の各行に担当者アバター＋名前バッジを表示（未割当は警告色）
+- [x] vitest追加：estimates list / partnerView / 75%計算 / バリデーション
+- [x] 全テストPASS（30件）

@@ -3,8 +3,10 @@ import { drizzle } from "drizzle-orm/mysql2";
 import {
   cases,
   checklistItems,
+  estimates,
   InsertCase,
   InsertChecklistItem,
+  InsertEstimate,
   InsertPartner,
   InsertPhoto,
   InsertUser,
@@ -274,4 +276,50 @@ export async function getCaseByRequestNumber(requestNumber: string) {
   if (!db) return undefined;
   const result = await db.select().from(cases).where(eq(cases.requestNumber, requestNumber)).limit(1);
   return result.length > 0 ? result[0] : undefined;
+}
+
+// ============================================================
+// Estimates（見積書）
+// ============================================================
+export async function listEstimatesByCase(caseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(estimates)
+    .where(eq(estimates.caseId, caseId))
+    .orderBy(desc(estimates.createdAt));
+}
+
+export async function createEstimate(data: InsertEstimate): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [r] = await db.insert(estimates).values(data).$returningId();
+  return r.id;
+}
+
+export async function deleteEstimateById(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(estimates).where(eq(estimates.id, id));
+}
+
+export async function getEstimateById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(estimates).where(eq(estimates.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getCaseByPartnerToken(token: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(cases).where(eq(cases.partnerToken, token)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function setCasePartnerToken(caseId: number, token: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(cases).set({ partnerToken: token }).where(eq(cases.id, caseId));
 }

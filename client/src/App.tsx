@@ -18,11 +18,20 @@ import MonthlyReport from "./pages/MonthlyReport";
 import Partners from "./pages/Partners";
 import AdminOnly from "./components/AdminOnly";
 import PartnerDetail from "./pages/PartnerDetail";
+import PartnerView from "./pages/PartnerView";
 
 function Router() {
   return (
-    <DashboardLayout>
-      <Switch>
+    <Switch>
+      {/* 協力業者向け公開ビュー（サイドバーなし、未ログインでも閲覧可） */}
+      <Route path={"/partner-view/:token"}>
+        {(params) => <PartnerView token={String(params.token)} />}
+      </Route>
+
+      {/* 社内向けダッシュボード */}
+      <Route>
+        <DashboardLayout>
+          <Switch>
         <Route path={"/"} component={Home} />
         <Route path={"/cases"} component={CasesList} />
         <Route path={"/cases/new"} component={CaseNew} />
@@ -45,10 +54,12 @@ function Router() {
         <Route path={"/cases/:id"}>
           {(params) => <CaseDetail id={Number(params.id)} />}
         </Route>
-        <Route path={"/404"} component={NotFound} />
-        <Route component={NotFound} />
-      </Switch>
-    </DashboardLayout>
+            <Route path={"/404"} component={NotFound} />
+            <Route component={NotFound} />
+          </Switch>
+        </DashboardLayout>
+      </Route>
+    </Switch>
   );
 }
 

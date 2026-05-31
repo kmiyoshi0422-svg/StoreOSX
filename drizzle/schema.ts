@@ -49,6 +49,15 @@ export const cases = mysqlTable("cases", {
   contractorPic: varchar("contractorPic", { length: 128 }),
   contractorPhone: varchar("contractorPhone", { length: 32 }),
   partnerId: int("partnerId"), // partners.id 協力会社マスタへのリンク
+  // 進捗ステージ（4区分）
+  progressStage: mysqlEnum("progressStage", [
+    "未対応",
+    "現調済",
+    "見積提出済",
+    "承認済",
+  ]).default("未対応").notNull(),
+  // 協力業者向け共有トークン（/partner-view/[token]）
+  partnerToken: varchar("partnerToken", { length: 64 }),
   // 進捗管理
   status: mysqlEnum("status", [
     "受付",       // 依頼受付
@@ -177,3 +186,28 @@ export const partners = mysqlTable("partners", {
 
 export type Partner = typeof partners.$inferSelect;
 export type InsertPartner = typeof partners.$inferInsert;
+
+/**
+ * 見積書テーブル（PDF/画像アップロード + LLM抽出金額）
+ */
+export const estimates = mysqlTable("estimates", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("caseId").notNull(),
+  fileKey: varchar("fileKey", { length: 512 }).notNull(),
+  fileUrl: varchar("fileUrl", { length: 512 }).notNull(),
+  fileName: varchar("fileName", { length: 255 }),
+  mimeType: varchar("mimeType", { length: 64 }),
+  // プレナスへの見積金額（原価・全額）
+  totalAmount: int("totalAmount"),
+  materialAmount: int("materialAmount"),
+  laborAmount: int("laborAmount"),
+  vendorName: varchar("vendorName", { length: 255 }),
+  estimateDate: timestamp("estimateDate"),
+  note: text("note"),
+  uploadedBy: int("uploadedBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Estimate = typeof estimates.$inferSelect;
+export type InsertEstimate = typeof estimates.$inferInsert;

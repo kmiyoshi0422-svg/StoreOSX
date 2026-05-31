@@ -4,21 +4,27 @@ import { z } from "zod";
 import {
   createCase,
   createChecklistItems,
+  createEstimate,
   createPartner,
   createPhoto,
   deleteCase,
+  deleteEstimateById,
   deletePartner,
   deletePhoto,
   getAllUsers,
   getCaseById,
+  getCaseByPartnerToken,
   getCaseByRequestNumber,
   getChecklistByCaseId,
+  getEstimateById,
   getPartnerById,
   getPhotoById,
   getPhotosByCaseId,
   listCases,
   listCasesByPartner,
+  listEstimatesByCase,
   listPartners,
+  setCasePartnerToken,
   updateCase,
   updateChecklistItem,
   updatePartner,
@@ -60,6 +66,9 @@ const caseInputSchema = z.object({
   status: z
     .enum(["受付", "現調中", "見積中", "施工待ち", "施工中", "完了", "クローズ"])
     .default("受付"),
+  progressStage: z
+    .enum(["未対応", "現調済", "見積提出済", "承認済"])
+    .default("未対応"),
   urgency: z.enum(["S", "A", "B", "C"]).default("B"),
   assigneeId: z.number().int().nullish(),
   estimatedCost: z.number().int().nullish(),
@@ -763,6 +772,239 @@ export const appRouter = router({
     get: protectedProcedure
       .input(z.object({ id: z.number() }))
       .query(({ input }) => getPhotoById(input.id)),
+  }),
+
+  // ==========================================================
+  // 見積書（PDF/画像アップロード + LLM金額抽出）
+  // ==========================================================
+  estimates: router({
+    listByCase: protectedProcedure
+      .input(z.object({ caseId: z.number() }))
+      .query(({ input }) => listEstimatesByCase(input.caseId)),
+
+    uploadFile: protectedProcedure
+      .input(
+        z.object({
+          caseId: z.number(),
+          fileName: z.string().min(1),
+          fileBase64: z.string().min(1),
+          mimeType: z.string(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const base64 = input.fileBase64.replace(/^data:[^;]+;base64,/, "");
+        const buffer = Buffer.from(base64, "base64");
+        const safe = input.fileName.replace(/[^\w\d._-]/g, "_");
+        const key = `estimates/case-${input.caseId}-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}_${safe}`;
+        const { url, key: fileKey } = await storagePut(key, buffer, input.mimeType);
+        return { fileKey, url, mimeType: input.mimeType };
+      }),
+
+    extractAndCreate: protectedProcedure
+      .input(
+        z.object({
+          caseId: z.number(),
+          fileKey: z.string().min(1),
+          fileUrl: z.string().min(1),
+          fileName: z.string().optional(),
+          mimeType: z.string(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const key = input.fileKey.replace(/^\/manus-storage\//, "");
+        const publicUrl = await storageGetSignedUrl(key);
+        const isImage = input.mimeType.startsWith("image/");
+        const schema = {
+          type: "object",
+          properties: {
+            totalAmount: { type: ["number", "null"], description: "見積合計金額(税込もしくは税抜の大きい方、円)" },
+            materialAmount: { type: ["number", "null"], description: "材料費小計" },
+            laborAmount: { type: ["number", "null"], description: "作業費小計" },
+            vendorName: { type: ["string", "null"], description: "見積を作成した会社名" },
+            estimateDate: { type: ["string", "null"], description: "見積日 (YYYY-MM-DD)" },
+            note: { type: ["string", "null"], description: "他に重要なメモ" },
+          },
+          required: [
+            "totalAmount",
+            "materialAmount",
+            "laborAmount",
+            "vendorName",
+            "estimateDate",
+            "note",
+          ],
+          additionalProperties: false,
+        };
+        const messages: any = [
+          {
+            role: "system",
+            content:
+              "あなたは見積書から金額を読み取るアシスタントです。合計金額・材料費・作業費・会社名・見積日をJSONで返してください。「合計」「ご請求金額」「合計（税込）」などの記載を探し、不明なfieldはnullとしてください。金額は円単位の整数。",
+          },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "この見積書から金額を抽出してJSONで返してください" },
+              isImage
+                ? { type: "image_url", image_url: { url: publicUrl, detail: "high" } }
+                : { type: "file_url", file_url: { url: publicUrl, mime_type: "application/pdf" } },
+            ],
+          },
+        ];
+        let totalAmount: number | null = null;
+        let materialAmount: number | null = null;
+        let laborAmount: number | null = null;
+        let vendorName: string | null = null;
+        let estimateDate: Date | null = null;
+        let note: string | null = null;
+        try {
+          const res = await invokeLLM({
+            messages,
+            response_format: {
+              type: "json_schema",
+              json_schema: { name: "estimate_extract", strict: false, schema },
+            },
+          });
+          const content = res.choices?.[0]?.message?.content ?? "{}";
+          const parsed = typeof content === "string" ? JSON.parse(content) : content;
+          totalAmount = parsed.totalAmount ?? null;
+          materialAmount = parsed.materialAmount ?? null;
+          laborAmount = parsed.laborAmount ?? null;
+          vendorName = parsed.vendorName ?? null;
+          estimateDate = parsed.estimateDate ? new Date(parsed.estimateDate) : null;
+          note = parsed.note ?? null;
+        } catch (e) {
+          console.warn("[estimates.extract] LLM抽出失敗", e);
+        }
+
+        const id = await createEstimate({
+          caseId: input.caseId,
+          fileKey: input.fileKey,
+          fileUrl: input.fileUrl,
+          fileName: input.fileName ?? null,
+          mimeType: input.mimeType,
+          totalAmount: totalAmount ?? undefined,
+          materialAmount: materialAmount ?? undefined,
+          laborAmount: laborAmount ?? undefined,
+          vendorName: vendorName ?? undefined,
+          estimateDate: estimateDate ?? undefined,
+          note: note ?? undefined,
+          uploadedBy: ctx.user.id,
+        });
+
+        // 案件のestimatedCostを見積合計で更新（抽出できた場合のみ）
+        if (totalAmount != null) {
+          const updateData: any = { estimatedCost: totalAmount };
+          if (materialAmount != null) updateData.estimatedMaterialCost = materialAmount;
+          if (laborAmount != null) updateData.estimatedLaborCost = laborAmount;
+          await updateCase(input.caseId, updateData);
+        }
+
+        return {
+          id,
+          totalAmount,
+          materialAmount,
+          laborAmount,
+          vendorName,
+          estimateDate,
+          note,
+        };
+      }),
+
+    update: protectedProcedure
+      .input(
+        z.object({
+          id: z.number(),
+          totalAmount: z.number().nullish(),
+          materialAmount: z.number().nullish(),
+          laborAmount: z.number().nullish(),
+          vendorName: z.string().nullish(),
+          estimateDate: z.date().nullish(),
+          note: z.string().nullish(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        const db = await (await import("./db")).getDb();
+        if (!db) throw new Error("DB not available");
+        const { estimates: estimatesTable } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        await db.update(estimatesTable).set(data as any).where(eq(estimatesTable.id, id));
+        // 見積合計が更新されたらcasesのestimatedCostも同期
+        const est = await getEstimateById(id);
+        if (est && est.totalAmount != null) {
+          const upd: any = { estimatedCost: est.totalAmount };
+          if (est.materialAmount != null) upd.estimatedMaterialCost = est.materialAmount;
+          if (est.laborAmount != null) upd.estimatedLaborCost = est.laborAmount;
+          await updateCase(est.caseId, upd);
+        }
+        return { success: true };
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteEstimateById(input.id);
+        return { success: true };
+      }),
+
+    // 協力業者に見せる75%金額トークンを生成
+    issuePartnerToken: protectedProcedure
+      .input(z.object({ caseId: z.number() }))
+      .mutation(async ({ input }) => {
+        const existing = await getCaseById(input.caseId);
+        if (!existing) throw new Error("案件が見つかりません");
+        let token = existing.partnerToken;
+        if (!token) {
+          token = `pv_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+          await setCasePartnerToken(input.caseId, token);
+        }
+        return { token };
+      }),
+  }),
+
+  // ==========================================================
+  // 協力業者向け公開ビュー（見積75%のみ表示）
+  // ==========================================================
+  partnerView: router({
+    getByToken: publicProcedure
+      .input(z.object({ token: z.string().min(8) }))
+      .query(async ({ input }) => {
+        const c = await getCaseByPartnerToken(input.token);
+        if (!c) throw new Error("リンクが無効です");
+        const ests = await listEstimatesByCase(c.id);
+        // 原価は返さず、75%金額のみ返す
+        const partnerEstimates = ests
+          .filter((e) => e.totalAmount != null)
+          .map((e) => ({
+            id: e.id,
+            fileName: e.fileName,
+            vendorName: e.vendorName,
+            estimateDate: e.estimateDate,
+            partnerAmount: Math.round((e.totalAmount as number) * 0.75),
+            createdAt: e.createdAt,
+          }));
+        const totalPartnerAmount = c.estimatedCost != null ? Math.round(c.estimatedCost * 0.75) : null;
+        return {
+          requestNumber: c.requestNumber,
+          storeName: c.storeName,
+          address: c.address,
+          storePhone: c.storePhone,
+          businessHours: c.businessHours,
+          requestContent: c.requestContent,
+          categoryLarge: c.categoryLarge,
+          categoryMedium: c.categoryMedium,
+          categorySmall: c.categorySmall,
+          urgency: c.urgency,
+          status: c.status,
+          progressStage: c.progressStage,
+          surveyDate: c.surveyDate,
+          constructionDate: c.constructionDate,
+          totalPartnerAmount,
+          estimates: partnerEstimates,
+        };
+      }),
   }),
 });
 
