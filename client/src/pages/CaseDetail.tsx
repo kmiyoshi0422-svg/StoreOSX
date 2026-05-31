@@ -171,7 +171,7 @@ export default function CaseDetail({ id }: { id: number }) {
 
       {/* Tabs */}
       <Tabs defaultValue="info" className="space-y-4">
-        <TabsList className="grid grid-cols-5 w-full md:w-auto md:inline-grid">
+        <TabsList className="grid grid-cols-6 w-full md:w-auto md:inline-grid">
           <TabsTrigger value="info">
             <Info className="h-3.5 w-3.5" />
             基本情報
@@ -197,6 +197,10 @@ export default function CaseDetail({ id }: { id: number }) {
           <TabsTrigger value="profit">
             <Wallet className="h-3.5 w-3.5" />
             収支
+          </TabsTrigger>
+          <TabsTrigger value="expenses">
+            <Receipt className="h-3.5 w-3.5" />
+            経費
           </TabsTrigger>
         </TabsList>
 
@@ -226,6 +230,10 @@ export default function CaseDetail({ id }: { id: number }) {
 
         <TabsContent value="profit">
           <ProfitTab caseData={caseData} />
+        </TabsContent>
+
+        <TabsContent value="expenses">
+          <ExpensesTab caseId={id} />
         </TabsContent>
       </Tabs>
     </div>
@@ -1594,6 +1602,106 @@ function ProfitTab({ caseData }: { caseData: Case }) {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+function ExpensesTab({ caseId }: { caseId: number }) {
+  const utils = trpc.useUtils();
+  const { data: expenses = [] } = trpc.expenses.listByCase.useQuery({ caseId });
+  const deleteMutation = trpc.expenses.delete.useMutation({
+    onSuccess: () => {
+      utils.expenses.listByCase.invalidate({ caseId });
+      utils.cases.get.invalidate({ id: caseId });
+      toast.success("経費を削除しました");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const yen = (n: number | null | undefined) =>
+    n != null ? `¥${Math.round(n).toLocaleString()}` : "—";
+
+  const total = expenses.reduce((s, e) => s + (e.amount ?? 0), 0);
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Receipt className="h-4 w-4 text-muted-foreground" />
+              <h3 className="font-medium">経費一覧</h3>
+              <Badge variant="outline">{expenses.length}件</Badge>
+            </div>
+            <div className="text-sm">
+              合計:{" "}
+              <span className="font-semibold tabular-nums text-base">
+                {yen(total)}
+              </span>
+            </div>
+          </div>
+
+          {expenses.length === 0 ? (
+            <div className="text-sm text-muted-foreground py-8 text-center border rounded-md">
+              この案件に紐付く経費はまだ登録されていません。<br />
+              <a href="/expenses/import" className="text-primary underline">
+                経費取込ページ
+              </a>
+              から領収書/請求書をアップロードしてください。
+            </div>
+          ) : (
+            <div className="border rounded-md overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium">日付</th>
+                    <th className="text-left px-3 py-2 font-medium">業者</th>
+                    <th className="text-left px-3 py-2 font-medium">区分</th>
+                    <th className="text-right px-3 py-2 font-medium">金額（税込）</th>
+                    <th className="text-left px-3 py-2 font-medium">摘要</th>
+                    <th className="px-3 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {expenses.map((e) => (
+                    <tr key={e.id} className="border-t">
+                      <td className="px-3 py-2 tabular-nums">
+                        {e.expenseDate
+                          ? new Date(e.expenseDate as any).toLocaleDateString()
+                          : "—"}
+                      </td>
+                      <td className="px-3 py-2">{e.vendorName ?? "—"}</td>
+                      <td className="px-3 py-2">
+                        <Badge variant="outline">{e.category}</Badge>
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums font-medium">
+                        {yen(e.amount)}
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground truncate max-w-[260px]">
+                        {e.note ?? "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            if (confirm("この経費を削除しますか？")) {
+                              deleteMutation.mutate({ id: e.id });
+                            }
+                          }}
+                          disabled={deleteMutation.isPending}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

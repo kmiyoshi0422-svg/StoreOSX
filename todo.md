@@ -162,3 +162,22 @@
 - [x] サイドバーに「見積書取込」リンクを追加
 - [x] 案件詳細に「収支」タブ（売上・原価・粗利・粗利率と予実差）
 - [x] vitest 8件追加・全テストPASS（78件）
+
+## 追加機能（v18）見積書AI抽出→案件収支自動反映 ✅完了
+
+- [x] pickLatestEstimate を純粋関数として shared/estimate-aggregator.ts に分離
+- [x] estimates.uploadFile / update / bulkSave すべてで「同一案件の最新見積」を採用するロジックに統一
+- [x] aggregator vitest 8件追加・全テストPASS（100件）
+
+## 追加機能（v19）月別実績・担当者別成績・経費取込
+
+- [x] expenses テーブル追加
+- [x] cases.actualCost を expenses 合計で自動同期
+- [x] expenses.uploadFile + extractAndMatch：AIで金額/業者/日付/カテゴリ/案件を抽出して自動振り分け
+- [x] expenses.bulkSave / list / listByCase / listUnmatched / update / delete（いずれも syncCaseActualCost で cases.actualCost を再計算）
+- [x] /expenses/import ページ（D&D 複数取込→マッチ表→一括登録）
+- [x] 案件詳細に「経費」タブ（一覧表示・削除）
+- [x] reports.monthly：月別 売上(見積×75%) / 原価(経費合計) / 粗利 / 件数 / 完了件数
+- [x] reports.byAssignee：担当者別 件数 / 売上 / 原価 / 粗利 / 粗利率
+- [x] /reports ページ（月別タブ＋担当者別タブ・BarChart/LineChart）＋サイドバー追加
+- [x] vitest 13件追加（expense-router・reports.monthly・reports.byAssignee・集計ロジック）、全113件PASS

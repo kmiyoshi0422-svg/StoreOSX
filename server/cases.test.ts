@@ -775,3 +775,141 @@ describe("v17: 個別案件 収支計算", () => {
     expect(inActual - partner75 <= 0).toBe(true);
   });
 });
+
+describe("v19: reports.monthly 月別実績レポート", () => {
+  it("デフォルト6ヶ月の月別行と合計を返す", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const res = await caller.reports.monthly();
+    expect(res).toHaveProperty("rows");
+    expect(res).toHaveProperty("totals");
+    expect(Array.isArray(res.rows)).toBe(true);
+    expect(res.rows.length).toBe(6);
+    // 月キーは YYYY-MM フォーマット
+    for (const r of res.rows) {
+      expect(r.key).toMatch(/^\d{4}-\d{2}$/);
+      expect(typeof r.revenue).toBe("number");
+      expect(typeof r.cost).toBe("number");
+      expect(typeof r.profit).toBe("number");
+      expect(typeof r.margin).toBe("number");
+      // 粗利 = 売上 - 原価
+      expect(r.profit).toBe(r.revenue - r.cost);
+    }
+    // totals = rows の合計
+    const sumRevenue = res.rows.reduce((s, r) => s + r.revenue, 0);
+    const sumCost = res.rows.reduce((s, r) => s + r.cost, 0);
+    expect(res.totals.revenue).toBe(sumRevenue);
+    expect(res.totals.cost).toBe(sumCost);
+    expect(res.totals.profit).toBe(sumRevenue - sumCost);
+  });
+
+  it("3ヶ月を指定すると行数が3になる", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const res = await caller.reports.monthly({ months: 3 });
+    expect(res.rows.length).toBe(3);
+  });
+
+  it("月数の境界外（0や25）はバリデーションエラー", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(caller.reports.monthly({ months: 0 } as any)).rejects.toThrow();
+    await expect(caller.reports.monthly({ months: 25 } as any)).rejects.toThrow();
+  });
+});
+
+describe("v19: reports.byAssignee 担当者別成績", () => {
+  it("担当者別の集計を取得できる（rowsプロパティを返す）", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const res = await caller.reports.byAssignee();
+    expect(res).toHaveProperty("rows");
+    expect(Array.isArray(res.rows)).toBe(true);
+    // 各行は粗利率が数値で、profit = revenue - cost
+    for (const r of res.rows) {
+      expect(typeof r.userId).toBe("number");
+      expect(typeof r.caseCount).toBe("number");
+      expect(r.profit).toBe(r.revenue - r.cost);
+    }
+  });
+
+  it("担当者0件は除外される（caseCount>0のみ返す）", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const res = await caller.reports.byAssignee();
+    for (const r of res.rows) {
+      expect(r.caseCount).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("v19: expenses router バリデーション", () => {
+  it("経費一覧APIが配列を返す", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const res = await caller.expenses.list();
+    expect(Array.isArray(res)).toBe(true);
+  });
+
+  it("未紐付け経費の一覧も配列で返す", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const res = await caller.expenses.listUnmatched();
+    expect(Array.isArray(res)).toBe(true);
+  });
+
+  it("expenses.bulkSave に空配列を渡すと挙動が安全（countが0）", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const res = await caller.expenses.bulkSave({ items: [] });
+    expect(res).toHaveProperty("count");
+    expect(res.count).toBe(0);
+  });
+
+  it("expenses.uploadFile はfileNameとfileBase64が必須", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(
+      caller.expenses.uploadFile({ fileName: "", fileBase64: "abc", mimeType: "application/pdf" }),
+    ).rejects.toThrow();
+    await expect(
+      caller.expenses.uploadFile({ fileName: "a.pdf", fileBase64: "", mimeType: "application/pdf" }),
+    ).rejects.toThrow();
+  });
+
+  it("expenses.bulkSave のcategoryは事前定義された5値のみ受け付ける", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(
+      caller.expenses.bulkSave({
+        items: [
+          {
+            caseId: 1,
+            amount: 1000,
+            category: "INVALID" as any,
+          },
+        ],
+      }),
+    ).rejects.toThrow();
+  });
+});
+
+describe("v19: 月別レポート集計ロジック（純粋関数）", () => {
+  it("売上=見積×75%、原価=経費合計、粗利=売上-原価", () => {
+    const BUDGET_RATIO = 0.75;
+    const estimatedCost = 100000;
+    const expenseSum = 60000;
+    const revenue = Math.round(estimatedCost * BUDGET_RATIO);
+    const cost = expenseSum;
+    const profit = revenue - cost;
+    const margin = revenue > 0 ? Math.round((profit / revenue) * 1000) / 10 : 0;
+    expect(revenue).toBe(75000);
+    expect(profit).toBe(15000);
+    expect(margin).toBe(20);
+  });
+
+  it("売上が0なら粗利率は0で扱う", () => {
+    const revenue = 0;
+    const cost = 5000;
+    const margin = revenue > 0 ? Math.round(((revenue - cost) / revenue) * 1000) / 10 : 0;
+    expect(margin).toBe(0);
+  });
+
+  it("月キーは YYYY-MM 形式でゼロパディングされる", () => {
+    function bucketKey(d: Date) {
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    }
+    expect(bucketKey(new Date(2025, 0, 15))).toBe("2025-01");
+    expect(bucketKey(new Date(2025, 11, 1))).toBe("2025-12");
+  });
+});

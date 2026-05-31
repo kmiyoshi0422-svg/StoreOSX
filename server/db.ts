@@ -4,9 +4,11 @@ import {
   cases,
   checklistItems,
   estimates,
+  expenses,
   InsertCase,
   InsertChecklistItem,
   InsertEstimate,
+  InsertExpense,
   InsertPartner,
   InsertPhoto,
   InsertRouteAssignment,
@@ -406,4 +408,64 @@ export async function upsertTeamSetting(data: InsertTeamSetting) {
   }
   const result = await db.insert(teamSettings).values(data);
   return (result as unknown as { insertId: number }).insertId;
+}
+
+
+// ============================================================
+// Expenses (v19)
+// ============================================================
+export async function listAllExpenses() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(expenses).orderBy(desc(expenses.expenseDate), desc(expenses.id));
+}
+
+export async function listExpensesByCase(caseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(expenses).where(eq(expenses.caseId, caseId)).orderBy(desc(expenses.expenseDate), desc(expenses.id));
+}
+
+export async function listUnmatchedExpenses() {
+  const db = await getDb();
+  if (!db) return [];
+  const all = await db.select().from(expenses).orderBy(desc(expenses.id));
+  return all.filter((e) => e.caseId == null);
+}
+
+export async function createExpense(input: InsertExpense) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const result = await db.insert(expenses).values(input);
+  const insertId = (result as any)[0]?.insertId ?? (result as any).insertId;
+  return Number(insertId);
+}
+
+export async function updateExpense(id: number, patch: Partial<InsertExpense>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.update(expenses).set(patch).where(eq(expenses.id, id));
+}
+
+export async function deleteExpense(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.delete(expenses).where(eq(expenses.id, id));
+}
+
+export async function getExpenseById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(expenses).where(eq(expenses.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+/** 案件の actualCost を「経費合計＋見積実績(materialAmount+laborAmount)」で同期 */
+export async function syncCaseActualCost(caseId: number) {
+  const db = await getDb();
+  if (!db) return;
+  const expRows = await db.select().from(expenses).where(eq(expenses.caseId, caseId));
+  const expenseTotal = expRows.reduce((s, e) => s + (e.amount ?? 0), 0);
+  // 経費合計を actualCost にセット（請求書ベースの実績）
+  await db.update(cases).set({ actualCost: expenseTotal }).where(eq(cases.id, caseId));
 }

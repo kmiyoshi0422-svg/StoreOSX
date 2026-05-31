@@ -250,3 +250,33 @@ export const teamSettings = mysqlTable("team_settings", {
 
 export type TeamSetting = typeof teamSettings.$inferSelect;
 export type InsertTeamSetting = typeof teamSettings.$inferInsert;
+
+/**
+ * 経費テーブル（v19: PDF/画像から取り込む経費を案件に自動紐付け）
+ */
+export const expenses = mysqlTable("expenses", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("caseId"), // null可（マッチ前は未確定）
+  fileKey: varchar("fileKey", { length: 512 }),
+  fileUrl: varchar("fileUrl", { length: 512 }),
+  fileName: varchar("fileName", { length: 255 }),
+  mimeType: varchar("mimeType", { length: 64 }),
+  vendorName: varchar("vendorName", { length: 255 }), // 業者名・支払先
+  amount: int("amount").notNull(), // 税込金額
+  taxAmount: int("taxAmount"), // 内消費税
+  expenseDate: timestamp("expenseDate"), // 支払日・領収日
+  category: mysqlEnum("category", [
+    "材料費",
+    "外注費",
+    "交通費",
+    "消耗品",
+    "その他",
+  ]).default("その他").notNull(),
+  note: text("note"),
+  uploadedBy: int("uploadedBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Expense = typeof expenses.$inferSelect;
+export type InsertExpense = typeof expenses.$inferInsert;

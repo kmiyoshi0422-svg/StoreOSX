@@ -24,6 +24,14 @@ import {
   listCasesByPartner,
   listEstimatesByCase,
   listPartners,
+  listAllExpenses,
+  listExpensesByCase,
+  listUnmatchedExpenses,
+  createExpense,
+  updateExpense,
+  deleteExpense,
+  getExpenseById,
+  syncCaseActualCost,
   listRouteAssignmentsByDateRange,
   createRouteAssignment,
   updateRouteAssignment,
@@ -1601,6 +1609,353 @@ export const appRouter = router({
             result.find((r) => r.userId == null)?.totalTasks ?? 0,
         };
       }),
+  }),
+  expenses: router({
+    list: protectedProcedure.query(async () => {
+      const rows = await listAllExpenses();
+      return rows;
+    }),
+    listByCase: protectedProcedure
+      .input(z.object({ caseId: z.number().int() }))
+      .query(async ({ input }) => {
+        return await listExpensesByCase(input.caseId);
+      }),
+    listUnmatched: protectedProcedure.query(async () => {
+      return await listUnmatchedExpenses();
+    }),
+    uploadFile: protectedProcedure
+      .input(
+        z.object({
+          fileName: z.string().min(1),
+          fileBase64: z.string().min(1),
+          mimeType: z.string(),
+        }),
+      )
+      .mutation(async ({ input, ctx }) => {
+        const base64 = input.fileBase64.replace(/^data:[^;]+;base64,/, "");
+        const buffer = Buffer.from(base64, "base64");
+        const safe = input.fileName.replace(/[^\w\d._-]/g, "_");
+        const key = `expenses/u-${ctx.user.id}-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}_${safe}`;
+        const { url, key: fileKey } = await storagePut(key, buffer, input.mimeType);
+        return { fileKey, url, mimeType: input.mimeType };
+      }),
+    extractAndMatch: protectedProcedure
+      .input(
+        z.object({
+          fileKey: z.string(),
+          fileUrl: z.string(),
+          fileName: z.string().optional(),
+          mimeType: z.string().optional(),
+        }),
+      )
+      .mutation(async ({ input }) => {
+        const key = input.fileKey.replace(/^\/manus-storage\//, "");
+        const signedUrl = await storageGetSignedUrl(key);
+        const isImage = (input.mimeType || "").startsWith("image/");
+        const userContent: any[] = [
+          {
+            type: "text",
+            text: `この経費書類（領収書/請求書）から以下を抽出しJSONで返してください: vendorName(支払先), amount(税込合計、整数円), taxAmount(消費税、不明ならnull), expenseDate(YYYY-MM-DD、不明ならnull), category(材料費|外注費|交通費|消耗品|その他のいずれか), requestNumber(関連する依頼番号、例284909-1。なければnull), storeName(関連店舗名、なければnull), caseHint(案件名や工事内容のヒント、なければnull), note(短い摘要)。`,
+          },
+        ];
+        if (isImage) {
+          userContent.push({
+            type: "image_url",
+            image_url: { url: signedUrl, detail: "high" },
+          });
+        } else {
+          userContent.push({
+            type: "file_url",
+            file_url: { url: signedUrl, mime_type: "application/pdf" },
+          });
+        }
+
+        const llm = await invokeLLM({
+          messages: [
+            { role: "system", content: "あなたは経費書類読取アシスタント。JSONのみを返します。" },
+            { role: "user", content: userContent as any },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "expense_extract",
+              schema: {
+                type: "object",
+                properties: {
+                  vendorName: { type: ["string", "null"] },
+                  amount: { type: ["number", "null"] },
+                  taxAmount: { type: ["number", "null"] },
+                  expenseDate: { type: ["string", "null"] },
+                  category: { type: "string" },
+                  requestNumber: { type: ["string", "null"] },
+                  storeName: { type: ["string", "null"] },
+                  caseHint: { type: ["string", "null"] },
+                  note: { type: ["string", "null"] },
+                },
+              },
+            },
+          },
+        });
+        const raw = (llm as any).choices?.[0]?.message?.content ?? "{}";
+        let parsed: any = {};
+        try {
+          parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+        } catch {
+          parsed = {};
+        }
+
+        // 案件マッチング
+        const allCases = await listCases();
+        const candidates = allCases.map((c) => ({
+          id: c.id,
+          requestNumber: c.requestNumber,
+          storeName: c.storeName,
+          requestContent: c.requestContent ?? "",
+        }));
+        const scored = scoreCandidates(
+          {
+            requestNumber: parsed.requestNumber ?? null,
+            storeName: parsed.storeName ?? null,
+            caseTitle: parsed.caseHint ?? null,
+          },
+          candidates,
+        );
+        const top = topMatches(scored, 5).map((m) => ({
+          caseId: m.caseId,
+          requestNumber: m.requestNumber,
+          storeName: m.storeName,
+          score: m.score,
+        }));
+        const best = pickBestMatch(scored);
+
+        return {
+          extracted: {
+            vendorName: parsed.vendorName ?? null,
+            amount: parsed.amount ?? null,
+            taxAmount: parsed.taxAmount ?? null,
+            expenseDate: parsed.expenseDate ?? null,
+            category: ["材料費", "外注費", "交通費", "消耗品", "その他"].includes(parsed.category)
+              ? parsed.category
+              : "その他",
+            note: parsed.note ?? null,
+            requestNumber: parsed.requestNumber ?? null,
+            storeName: parsed.storeName ?? null,
+            caseHint: parsed.caseHint ?? null,
+          },
+          matches: top,
+          autoMatchCaseId: best?.caseId ?? null,
+          autoMatchScore: best?.score ?? 0,
+        };
+      }),
+    bulkSave: protectedProcedure
+      .input(
+        z.object({
+          items: z.array(
+            z.object({
+              caseId: z.number().int(),
+              fileKey: z.string().nullish(),
+              fileUrl: z.string().nullish(),
+              fileName: z.string().nullish(),
+              mimeType: z.string().nullish(),
+              vendorName: z.string().nullish(),
+              amount: z.number().int(),
+              taxAmount: z.number().int().nullish(),
+              expenseDate: z.string().nullish(), // YYYY-MM-DD
+              category: z.enum(["材料費", "外注費", "交通費", "消耗品", "その他"]).default("その他"),
+              note: z.string().nullish(),
+            }),
+          ),
+        }),
+      )
+      .mutation(async ({ input, ctx }) => {
+        const ids: number[] = [];
+        const touchedCases = new Set<number>();
+        for (const item of input.items) {
+          const id = await createExpense({
+            caseId: item.caseId,
+            fileKey: item.fileKey ?? null,
+            fileUrl: item.fileUrl ?? null,
+            fileName: item.fileName ?? null,
+            mimeType: item.mimeType ?? null,
+            vendorName: item.vendorName ?? null,
+            amount: item.amount,
+            taxAmount: item.taxAmount ?? null,
+            expenseDate: item.expenseDate ? new Date(item.expenseDate) : null,
+            category: item.category,
+            note: item.note ?? null,
+            uploadedBy: ctx.user.id,
+          });
+          ids.push(id);
+          touchedCases.add(item.caseId);
+        }
+        for (const cid of Array.from(touchedCases)) {
+          await syncCaseActualCost(cid);
+        }
+        return { count: ids.length, ids };
+      }),
+    update: protectedProcedure
+      .input(
+        z.object({
+          id: z.number().int(),
+          patch: z.object({
+            caseId: z.number().int().nullish(),
+            vendorName: z.string().nullish(),
+            amount: z.number().int().optional(),
+            taxAmount: z.number().int().nullish(),
+            expenseDate: z.string().nullish(),
+            category: z.enum(["材料費", "外注費", "交通費", "消耗品", "その他"]).optional(),
+            note: z.string().nullish(),
+          }),
+        }),
+      )
+      .mutation(async ({ input }) => {
+        const before = await getExpenseById(input.id);
+        const patch: any = { ...input.patch };
+        if (patch.expenseDate !== undefined) {
+          patch.expenseDate = patch.expenseDate ? new Date(patch.expenseDate) : null;
+        }
+        await updateExpense(input.id, patch);
+        const after = await getExpenseById(input.id);
+        const cids = new Set<number>();
+        if (before?.caseId) cids.add(before.caseId);
+        if (after?.caseId) cids.add(after.caseId);
+        for (const cid of Array.from(cids)) await syncCaseActualCost(cid);
+        return { ok: true };
+      }),
+    delete: protectedProcedure
+      .input(z.object({ id: z.number().int() }))
+      .mutation(async ({ input }) => {
+        const before = await getExpenseById(input.id);
+        await deleteExpense(input.id);
+        if (before?.caseId) await syncCaseActualCost(before.caseId);
+        return { ok: true };
+      }),
+  }),
+  reports: router({
+    monthly: protectedProcedure
+      .input(
+        z
+          .object({
+            months: z.number().int().min(1).max(24).default(6),
+          })
+          .optional(),
+      )
+      .query(async ({ input }) => {
+        const months = input?.months ?? 6;
+        const allCases = await listCases();
+        const allExpenses = await listAllExpenses();
+
+        // 直近 months ヶ月の月キーを生成（YYYY-MM）
+        const now = new Date();
+        const buckets: { key: string; year: number; month: number }[] = [];
+        for (let i = months - 1; i >= 0; i--) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          buckets.push({
+            key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+            year: d.getFullYear(),
+            month: d.getMonth() + 1,
+          });
+        }
+        const byKey = new Map(
+          buckets.map((b) => [
+            b.key,
+            {
+              key: b.key,
+              year: b.year,
+              month: b.month,
+              revenue: 0,
+              cost: 0,
+              caseCount: 0,
+              completedCount: 0,
+            } as { key: string; year: number; month: number; revenue: number; cost: number; caseCount: number; completedCount: number },
+          ]),
+        );
+
+        function bucketKey(d: Date | null | undefined) {
+          if (!d) return null;
+          const x = new Date(d as any);
+          return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`;
+        }
+
+        // 案件は requestDate を基準に件数とその月の見積×75% を売上計上
+        for (const c of allCases) {
+          const k = bucketKey(c.requestDate as any) ?? bucketKey(c.createdAt as any);
+          if (!k || !byKey.has(k)) continue;
+          const b = byKey.get(k)!;
+          b.caseCount += 1;
+          if (c.completedAt || c.status === "完了") b.completedCount += 1;
+          const est = c.estimatedCost ?? 0;
+          if (est > 0) {
+            b.revenue += Math.round(est * BUDGET_RATIO);
+          }
+        }
+        // 経費は expenseDate（無ければcreatedAt）の月で原価計上
+        for (const e of allExpenses) {
+          const k = bucketKey(e.expenseDate as any) ?? bucketKey(e.createdAt as any);
+          if (!k || !byKey.has(k)) continue;
+          const b = byKey.get(k)!;
+          b.cost += e.amount ?? 0;
+        }
+        const rows = buckets.map((b) => {
+          const r = byKey.get(b.key)!;
+          const profit = r.revenue - r.cost;
+          const margin = r.revenue > 0 ? Math.round((profit / r.revenue) * 1000) / 10 : 0;
+          return { ...r, profit, margin };
+        });
+        const totals = rows.reduce(
+          (s, r) => ({
+            revenue: s.revenue + r.revenue,
+            cost: s.cost + r.cost,
+            profit: s.profit + r.profit,
+            caseCount: s.caseCount + r.caseCount,
+            completedCount: s.completedCount + r.completedCount,
+          }),
+          { revenue: 0, cost: 0, profit: 0, caseCount: 0, completedCount: 0 },
+        );
+        return { rows, totals };
+      }),
+    byAssignee: protectedProcedure.query(async () => {
+      const allCases = await listCases();
+      const allExpenses = await listAllExpenses();
+      const users = await getAllUsers();
+      const byUser = new Map<number, { userId: number; name: string; email: string; caseCount: number; completedCount: number; revenue: number; cost: number }>();
+      for (const u of users) {
+        byUser.set(u.id, {
+          userId: u.id,
+          name: u.name ?? `User ${u.id}`,
+          email: u.email ?? "",
+          caseCount: 0,
+          completedCount: 0,
+          revenue: 0,
+          cost: 0,
+        });
+      }
+      const expByCase = new Map<number, number>();
+      for (const e of allExpenses) {
+        if (!e.caseId) continue;
+        expByCase.set(e.caseId, (expByCase.get(e.caseId) ?? 0) + (e.amount ?? 0));
+      }
+      for (const c of allCases) {
+        if (!c.assigneeId || !byUser.has(c.assigneeId)) continue;
+        const r = byUser.get(c.assigneeId)!;
+        r.caseCount += 1;
+        if (c.completedAt || c.status === "完了") r.completedCount += 1;
+        const est = c.estimatedCost ?? 0;
+        if (est > 0) r.revenue += Math.round(est * BUDGET_RATIO);
+        r.cost += expByCase.get(c.id) ?? 0;
+      }
+      const rows = Array.from(byUser.values())
+        .filter((r) => r.caseCount > 0)
+        .map((r) => {
+          const profit = r.revenue - r.cost;
+          const margin = r.revenue > 0 ? Math.round((profit / r.revenue) * 1000) / 10 : 0;
+          return { ...r, profit, margin };
+        })
+        .sort((a, b) => b.profit - a.profit);
+      return { rows };
+    }),
   }),
 });
 

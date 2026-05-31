@@ -14,6 +14,8 @@ import CsvImport from "./pages/CsvImport";
 import CasePdfImport from "./pages/CasePdfImport";
 import PartnerImport from "./pages/PartnerImport";
 import EstimateImport from "./pages/EstimateImport";
+import ExpenseImport from "./pages/ExpenseImport";
+import Reports from "./pages/Reports";
 import BudgetActual from "./pages/BudgetActual";
 import MonthlyReport from "./pages/MonthlyReport";
 import Partners from "./pages/Partners";
@@ -42,6 +44,10 @@ function Router() {
         <Route path={"/cases/import-pdf"} component={CasePdfImport} />
         <Route path={"/partners/import"} component={PartnerImport} />
         <Route path={"/estimates/import"} component={EstimateImport} />
+        <Route path={"/expenses/import"} component={ExpenseImport} />
+        <Route path={"/reports"}>
+          <AdminOnly><Reports /></AdminOnly>
+        </Route>
         <Route path={"/budget"}>
           <AdminOnly><BudgetActual /></AdminOnly>
         </Route>
