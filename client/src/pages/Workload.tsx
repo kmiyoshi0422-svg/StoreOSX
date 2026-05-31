@@ -48,25 +48,33 @@ function addDays(d: Date, n: number) {
   return r;
 }
 
-type Preset = "this-week" | "next-2w" | "this-month";
+type Preset = "this-week" | "next-week" | "next-2w" | "this-month";
 
 function presetRange(p: Preset): { start: string; end: string; label: string } {
   const now = new Date();
+  const dow = now.getDay();
+  const monOffset = dow === 0 ? -6 : 1 - dow;
+  const monday = addDays(now, monOffset);
   if (p === "this-week") {
-    const dow = now.getDay();
-    const monOffset = dow === 0 ? -6 : 1 - dow;
-    const monday = addDays(now, monOffset);
     return {
       start: fmtYmd(monday),
       end: fmtYmd(addDays(monday, 6)),
       label: "今週",
     };
   }
+  if (p === "next-week") {
+    const nextMon = addDays(monday, 7);
+    return {
+      start: fmtYmd(nextMon),
+      end: fmtYmd(addDays(nextMon, 6)),
+      label: "来週",
+    };
+  }
   if (p === "next-2w") {
     return {
       start: fmtYmd(now),
       end: fmtYmd(addDays(now, 14)),
-      label: "向こう2週間",
+      label: "14日先まで",
     };
   }
   const first = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -97,14 +105,20 @@ export default function Workload() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {(["this-week", "next-2w", "this-month"] as Preset[]).map((p) => (
+            {(["this-week", "next-week", "next-2w", "this-month"] as Preset[]).map((p) => (
               <Button
                 key={p}
                 size="sm"
                 variant={preset === p ? "default" : "outline"}
                 onClick={() => setPreset(p)}
               >
-                {p === "this-week" ? "今週" : p === "next-2w" ? "向こう2週間" : "今月"}
+                {p === "this-week"
+                  ? "今週"
+                  : p === "next-week"
+                  ? "来週"
+                  : p === "next-2w"
+                  ? "14日先"
+                  : "今月"}
               </Button>
             ))}
           </div>

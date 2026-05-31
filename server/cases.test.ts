@@ -622,3 +622,53 @@ describe("v16: workload.list 担当者別集計", () => {
     }
   });
 });
+
+// ============================================================
+// v16: workload.list 空データ・偏り判定の境界
+// ============================================================
+describe("v16: workload.list 空データ・偏り判定", () => {
+  it("未来の十分先（タスクが存在しない期間）では rows が空、imbalanced=false、totalAssigned=0", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const res = await caller.workload.list({
+      start: "2099-01-01",
+      end: "2099-01-07",
+    });
+    expect(res.rows).toEqual([]);
+    expect(res.imbalanced).toBe(false);
+    expect(res.totalAssigned).toBe(0);
+    expect(res.unassignedCount).toBe(0);
+  });
+
+  it("rows は totalTasks 降順でソートされている（あれば）", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const res = await caller.workload.list({
+      start: "2026-01-01",
+      end: "2026-12-31",
+    });
+    for (let i = 1; i < res.rows.length; i++) {
+      expect(res.rows[i - 1].totalTasks).toBeGreaterThanOrEqual(res.rows[i].totalTasks);
+    }
+  });
+
+  it("totalAssigned は 担当者あり行(userId != null) の totalTasks 合計と一致", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const res = await caller.workload.list({
+      start: "2026-01-01",
+      end: "2026-12-31",
+    });
+    const sum = res.rows
+      .filter((r) => r.userId != null)
+      .reduce((s, r) => s + r.totalTasks, 0);
+    expect(res.totalAssigned).toBe(sum);
+  });
+
+  it("unassignedCount は userId=null の行の totalTasks と一致（無ければ 0）", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const res = await caller.workload.list({
+      start: "2026-01-01",
+      end: "2026-12-31",
+    });
+    const unassigned = res.rows.find((r) => r.userId == null);
+    expect(res.unassignedCount).toBe(unassigned?.totalTasks ?? 0);
+  });
+});
