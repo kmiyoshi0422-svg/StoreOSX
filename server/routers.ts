@@ -1273,6 +1273,169 @@ export const appRouter = router({
       });
     }),
   }),
+
+  // ============================================================
+  // v16: 担当者別ワークロード集計
+  // ============================================================
+  workload: router({
+    list: protectedProcedure
+      .input(
+        z.object({
+          start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        }),
+      )
+      .query(async ({ input }) => {
+        const assignments = await listRouteAssignmentsByDateRange(
+          input.start,
+          input.end,
+        );
+        const allCases = await listCases();
+        const allUsers = await getAllUsers();
+
+        function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+          const R = 6371;
+          const toRad = (v: number) => (v * Math.PI) / 180;
+          const dLat = toRad(lat2 - lat1);
+          const dLon = toRad(lon2 - lon1);
+          const a =
+            Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+          return 2 * R * Math.asin(Math.sqrt(a));
+        }
+
+        const caseLatLng = new Map<
+          number,
+          { lat: number | null; lng: number | null }
+        >();
+        for (const c of allCases) {
+          caseLatLng.set(c.id, {
+            lat: c.latitude ? Number(c.latitude) : null,
+            lng: c.longitude ? Number(c.longitude) : null,
+          });
+        }
+
+        type Row = {
+          userId: number | null;
+          userName: string;
+          totalTasks: number;
+          surveyTasks: number;
+          constructionTasks: number;
+          activeDays: number;
+          totalKm: number;
+          teamA: number;
+          teamB: number;
+        };
+
+        const userById = new Map<number, { id: number; name: string }>();
+        for (const u of allUsers) {
+          userById.set(u.id, { id: u.id, name: u.name ?? `ユーザー#${u.id}` });
+        }
+
+        // (userId, dayKey, team) ごとにタスクを収集
+        type Bucket = {
+          userId: number | null;
+          team: "A" | "B";
+          date: string;
+          items: typeof assignments;
+        };
+        const bucketMap = new Map<string, Bucket>();
+        for (const a of assignments) {
+          const key = `${a.assigneeId ?? "none"}|${a.scheduledDate}|${a.team}`;
+          let b = bucketMap.get(key);
+          if (!b) {
+            b = {
+              userId: a.assigneeId,
+              team: a.team as "A" | "B",
+              date: a.scheduledDate,
+              items: [],
+            };
+            bucketMap.set(key, b);
+          }
+          b.items.push(a);
+        }
+
+        const rows = new Map<number | string, Row>();
+        function getRow(userId: number | null): Row {
+          const k = userId ?? "_unassigned";
+          let r = rows.get(k);
+          if (!r) {
+            r = {
+              userId,
+              userName:
+                userId == null
+                  ? "未割当"
+                  : userById.get(userId)?.name ?? `ユーザー#${userId}`,
+              totalTasks: 0,
+              surveyTasks: 0,
+              constructionTasks: 0,
+              activeDays: 0,
+              totalKm: 0,
+              teamA: 0,
+              teamB: 0,
+            };
+            rows.set(k, r);
+          }
+          return r;
+        }
+
+        const userActiveDays = new Map<number | string, Set<string>>();
+
+        bucketMap.forEach((b) => {
+          const r = getRow(b.userId);
+          // タスク件数
+          for (const it of b.items) {
+            r.totalTasks++;
+            if (it.taskType === "survey") r.surveyTasks++;
+            else r.constructionTasks++;
+            if (b.team === "A") r.teamA++;
+            else r.teamB++;
+          }
+          // 稼働日カウント
+          const k = b.userId ?? "_unassigned";
+          if (!userActiveDays.has(k)) userActiveDays.set(k, new Set());
+          userActiveDays.get(k)!.add(b.date);
+          // 距離
+          const sorted = [...b.items].sort((a, b2) => a.sequence - b2.sequence);
+          const pts: Array<{ lat: number; lng: number }> = [];
+          for (const it of sorted) {
+            const c = caseLatLng.get(it.caseId);
+            if (c?.lat != null && c?.lng != null) pts.push({ lat: c.lat, lng: c.lng });
+          }
+          for (let i = 1; i < pts.length; i++) {
+            r.totalKm += haversineKm(pts[i - 1].lat, pts[i - 1].lng, pts[i].lat, pts[i].lng);
+          }
+        });
+
+        userActiveDays.forEach((set, k) => {
+          const r = rows.get(k);
+          if (r) r.activeDays = set.size;
+        });
+
+        const result = Array.from(rows.values()).sort(
+          (a, b) => b.totalTasks - a.totalTasks,
+        );
+
+        // 偏り判定：複数1名以上で最大-最小 ≥ 3件 または 距離差≥ 30km
+        const assigned = result.filter((r) => r.userId != null);
+        let imbalanced = false;
+        if (assigned.length >= 2) {
+          const counts = assigned.map((r) => r.totalTasks);
+          const kms = assigned.map((r) => r.totalKm);
+          const taskGap = Math.max(...counts) - Math.min(...counts);
+          const kmGap = Math.max(...kms) - Math.min(...kms);
+          imbalanced = taskGap >= 3 || kmGap >= 30;
+        }
+
+        return {
+          rows: result,
+          imbalanced,
+          totalAssigned: assigned.reduce((s, r) => s + r.totalTasks, 0),
+          unassignedCount:
+            result.find((r) => r.userId == null)?.totalTasks ?? 0,
+        };
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

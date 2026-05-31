@@ -193,8 +193,15 @@ export default function ScheduleBoard() {
   const caseLatLng = useMemo(() => {
     const m = new Map<number, { lat: number | null; lng: number | null }>();
     for (const c of cases.data ?? []) {
-      const cc = c as unknown as { id: number; lat: number | null; lng: number | null };
-      m.set(cc.id, { lat: cc.lat, lng: cc.lng });
+      const cc = c as unknown as {
+        id: number;
+        latitude: string | null;
+        longitude: string | null;
+      };
+      m.set(cc.id, {
+        lat: cc.latitude ? Number(cc.latitude) : null,
+        lng: cc.longitude ? Number(cc.longitude) : null,
+      });
     }
     return m;
   }, [cases.data]);

@@ -20,6 +20,7 @@ import AdminOnly from "./components/AdminOnly";
 import PartnerDetail from "./pages/PartnerDetail";
 import PartnerView from "./pages/PartnerView";
 import StoresList from "./pages/StoresList";
+import Workload from "./pages/Workload";
 
 function Router() {
   return (
@@ -46,6 +47,7 @@ function Router() {
           <AdminOnly><MonthlyReport /></AdminOnly>
         </Route>
         <Route path={"/stores"} component={StoresList} />
+        <Route path={"/workload"} component={Workload} />
         <Route path={"/partners"} component={Partners} />
         <Route path={"/partners/:id"}>
           {(params) => <PartnerDetail id={Number(params.id)} />}

@@ -565,3 +565,60 @@ describe("v14: routes.upsert によるDnD移動", () => {
     ).rejects.toThrow();
   });
 });
+
+// ============================================================
+// v16: workload.list ワークロード集計
+// ============================================================
+describe("v16: workload.list 担当者別集計", () => {
+  it("workload.list は rows 配列と imbalanced/totalAssigned/unassignedCount を返す", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const res = await caller.workload.list({
+      start: "2026-05-01",
+      end: "2026-05-31",
+    });
+    expect(res).toHaveProperty("rows");
+    expect(Array.isArray(res.rows)).toBe(true);
+    expect(typeof res.imbalanced).toBe("boolean");
+    expect(typeof res.totalAssigned).toBe("number");
+    expect(typeof res.unassignedCount).toBe("number");
+  });
+
+  it("workload.list は YYYY-MM-DD 形式以外を拒否する", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(
+      caller.workload.list({ start: "2026/05/01", end: "2026-05-31" })
+    ).rejects.toThrow();
+    await expect(
+      caller.workload.list({ start: "2026-05-01", end: "2026-05" })
+    ).rejects.toThrow();
+  });
+
+  it("認証されていない場合、workload.list は拒否される", async () => {
+    const caller = appRouter.createCaller({
+      user: null,
+      req: { protocol: "https", headers: {} } as never,
+      res: {} as never,
+    } as never);
+    await expect(
+      caller.workload.list({ start: "2026-05-01", end: "2026-05-31" })
+    ).rejects.toThrow();
+  });
+
+  it("workload.list の各 row が必須フィールドを持つ", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const res = await caller.workload.list({
+      start: "2026-05-01",
+      end: "2026-05-31",
+    });
+    for (const r of res.rows) {
+      expect(r).toHaveProperty("userId");
+      expect(r).toHaveProperty("userName");
+      expect(typeof r.totalTasks).toBe("number");
+      expect(typeof r.surveyTasks).toBe("number");
+      expect(typeof r.constructionTasks).toBe("number");
+      expect(typeof r.totalKm).toBe("number");
+      expect(typeof r.activeDays).toBe("number");
+      expect(r.surveyTasks + r.constructionTasks).toBe(r.totalTasks);
+    }
+  });
+});
