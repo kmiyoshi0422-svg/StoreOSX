@@ -557,21 +557,6 @@ export const appRouter = router({
         };
       }),
 
-    // 依頼番号の重複チェック（バルクPDF取込のプリフライト用）
-    checkDuplicates: protectedProcedure
-      .input(z.object({ requestNumbers: z.array(z.string()).min(1) }))
-      .query(async ({ input }) => {
-        const all = await listCases();
-        const set = new Set(input.requestNumbers.map((s) => s.trim()).filter(Boolean));
-        const matches: { requestNumber: string; existingId: number }[] = [];
-        for (const c of all) {
-          if (set.has(c.requestNumber)) {
-            matches.push({ requestNumber: c.requestNumber, existingId: c.id });
-          }
-        }
-        return { duplicates: matches };
-      }),
-
     // CSV一括インポート
     bulkImport: protectedProcedure
       .input(z.object({ rows: z.array(caseInputSchema).min(1, "最低1件必要です") }))
