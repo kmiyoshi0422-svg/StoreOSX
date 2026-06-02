@@ -203,3 +203,11 @@
 - [x] 一括登録ボタン → 順次 cases.create で送信、行状態を saving/saved/error に更新
 - [x] vitest追加：v21 cases.checkDuplicates 3件（min(1)エラー・厳密マッチング・重複入力）
 - [x] 全116件PASS、テスト残骸をDBから再授清クリーンアップ
+
+## v21.1 PDF一括取込のDOMエラー修正
+
+- [x] 原因特定：Tabs切替で Bulkモードサブツリーが一括アンマウントされ、Radix Dialog Portal が見失うノードを React が removeChild しようとして NotFoundError になる
+- [x] 修正① 両モードを常時マウントしタブ選択をCSSベースで表示切替として Portal を安定化
+- [x] 修正② 編集ダイアログを row オブジェクト参照から editingId(string|null) プリミティブ参照に変更
+- [x] 修正③ ExtractedFields に key={editingId} を付け、update を関数型 setRows でクロージャ古さを退治
+- [x] 全116件vitest PASS リグレッションなし・テスト残骸再授清

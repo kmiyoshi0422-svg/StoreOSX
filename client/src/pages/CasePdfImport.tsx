@@ -122,13 +122,14 @@ export default function CasePdfImport() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="single" className="space-y-6 mt-0">
+        {/* 両モードを常時マウントし、表示をCSSで切り替えることで
+            タブ切替時にRadix Portal/DialogがアンマウントされるremoveChildエラーを防ぐ。 */}
+        <div className={tab === "single" ? "space-y-6" : "hidden"} aria-hidden={tab !== "single"}>
           <SingleMode />
-        </TabsContent>
-
-        <TabsContent value="bulk" className="space-y-6 mt-0">
+        </div>
+        <div className={tab === "bulk" ? "space-y-6" : "hidden"} aria-hidden={tab !== "bulk"}>
           <BulkMode />
-        </TabsContent>
+        </div>
       </Tabs>
     </div>
   );
@@ -554,7 +555,10 @@ function BulkMode() {
     toast.success(`一括登録：成功 ${okCount}件 / 失敗 ${ngCount}件`);
   };
 
-  const editingRow = rows.find((r) => r.id === editingId) ?? null;
+  // 編集中のダイアログを安定させるため、rowオブジェクトではなく
+  // editingId(string|null) を単一の真実として使う。
+  const editingRow = editingId ? rows.find((r) => r.id === editingId) ?? null : null;
+  const editingData = editingRow?.data ?? null;
 
   return (
     <>
@@ -782,25 +786,35 @@ function BulkMode() {
         </Card>
       )}
 
-      {/* 編集ダイアログ */}
+      {/* 編集ダイアログ：openは editingId の有無（プリミティブ）で判定してオブジェクト参照を避ける */}
       <Dialog
-        open={!!editingRow}
-        onOpenChange={(open) => !open && setEditingId(null)}
+        open={editingId !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditingId(null);
+        }}
       >
         <DialogContent className="max-w-3xl max-h-[88vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-serif-jp">抽出結果の編集</DialogTitle>
           </DialogHeader>
-          {editingRow?.data && (
+          {editingId && editingData ? (
             <ExtractedFields
-              data={editingRow.data}
+              key={editingId}
+              data={editingData}
               update={(k, v) => {
-                const cur = editingRow.data!;
-                updateRow(editingRow.id, {
-                  data: { ...cur, [k]: v },
-                });
+                // 状態更新は関数型 setRows で最新の row を参照してマージ
+                setRows((prev) =>
+                  prev.map((r) => {
+                    if (r.id !== editingId || !r.data) return r;
+                    return { ...r, data: { ...r.data, [k]: v } };
+                  })
+                );
               }}
             />
+          ) : (
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              読み込み中...
+            </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingId(null)}>
