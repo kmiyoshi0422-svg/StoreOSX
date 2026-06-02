@@ -192,3 +192,14 @@
 - [x] Reports/CaseDetail経費の表に hover:bg-muted/30, font-medium ヘッダを適用
 - [x] ログイン画面の説明文を text-foreground/80 に強化
 - [x] vitest 全113件PASS確認、チェックポイント v20=ee016c4e 保存
+
+## v22 案件マップ（住所をピン表示）
+
+- [x] 案件マップページ /cases/map を新規作成（MapView利用、CasesMap.tsx）
+- [x] cases.list の lat/lng を使い AdvancedMarkerElement（雫型SVGピン）で表示、複数時は fitBounds
+- [x] lat/lng 未取得分は routes.geocodeMissing を呼ぶ「位置情報を取得」ボタン（未取得件数バッジ付き）
+- [x] 左サイドリスト↔地図ピンを連動（focusCaseで panTo+zoom+InfoWindow、選択中ハイライト）
+- [x] 緊急度でピン色分け（S赤/A橙/B黄/C緑）、凡例表示、位置未取得は警告アイコン付きで一覧に表示
+- [x] 検索（店舗/依頼番号/住所）・緊急度・進捗フィルタ
+- [x] DashboardLayout サイドバーに「案件マップ」追加 + App.tsx ルート登録
+- [x] 型チェック OK、vitest v22 5件追加全118件PASS、テスト残骸をDBから再授清

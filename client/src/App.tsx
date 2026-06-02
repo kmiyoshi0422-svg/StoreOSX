@@ -12,6 +12,7 @@ import CaseDetail from "./pages/CaseDetail";
 import PhotoLedger from "./pages/PhotoLedger";
 import CsvImport from "./pages/CsvImport";
 import CasePdfImport from "./pages/CasePdfImport";
+import CasesMap from "./pages/CasesMap";
 import PartnerImport from "./pages/PartnerImport";
 import EstimateImport from "./pages/EstimateImport";
 import ExpenseImport from "./pages/ExpenseImport";
@@ -42,6 +43,7 @@ function Router() {
         <Route path={"/cases/new"} component={CaseNew} />
         <Route path={"/cases/import"} component={CsvImport} />
         <Route path={"/cases/import-pdf"} component={CasePdfImport} />
+        <Route path={"/cases/map"} component={CasesMap} />
         <Route path={"/partners/import"} component={PartnerImport} />
         <Route path={"/estimates/import"} component={EstimateImport} />
         <Route path={"/expenses/import"} component={ExpenseImport} />

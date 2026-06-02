@@ -913,3 +913,76 @@ describe("v19: 月別レポート集計ロジック（純粋関数）", () => {
     expect(bucketKey(new Date(2025, 11, 1))).toBe("2025-12");
   });
 });
+
+describe("v22: 案件マップ（位置情報の振り分け・ジオコード対象）", () => {
+  type GeoCase = {
+    id: number;
+    address: string | null;
+    latitude: string | null;
+    longitude: string | null;
+  };
+
+  // CasesMap が使う「位置あり/なし」の判定ロジックと同等
+  function splitByLocation(rows: GeoCase[]) {
+    const located = rows
+      .filter((c) => c.latitude && c.longitude)
+      .map((c) => ({ id: c.id, lat: Number(c.latitude), lng: Number(c.longitude) }))
+      .filter((c) => Number.isFinite(c.lat) && Number.isFinite(c.lng));
+    const unlocated = rows.filter((c) => !c.latitude || !c.longitude);
+    return { located, unlocated };
+  }
+
+  // geocodeMissing が対象とする「住所あり・座標なし」の件数
+  function missingCount(rows: GeoCase[]) {
+    return rows.filter((c) => c.address && (!c.latitude || !c.longitude)).length;
+  }
+
+  it("緯度経度が揃った案件のみ located に入る", () => {
+    const rows: GeoCase[] = [
+      { id: 1, address: "東京都", latitude: "35.68", longitude: "139.76" },
+      { id: 2, address: "大阪府", latitude: null, longitude: null },
+      { id: 3, address: null, latitude: "34.0", longitude: "135.0" },
+    ];
+    const { located, unlocated } = splitByLocation(rows);
+    expect(located.map((c) => c.id)).toEqual([1, 3]);
+    expect(unlocated.map((c) => c.id)).toEqual([2]);
+  });
+
+  it("片方だけ座標がある案件は located から除外される", () => {
+    const rows: GeoCase[] = [
+      { id: 1, address: "A", latitude: "35.0", longitude: null },
+      { id: 2, address: "B", latitude: null, longitude: "139.0" },
+    ];
+    const { located, unlocated } = splitByLocation(rows);
+    expect(located).toHaveLength(0);
+    expect(unlocated.map((c) => c.id)).toEqual([1, 2]);
+  });
+
+  it("数値変換できない座標文字列は located から弾かれる", () => {
+    const rows: GeoCase[] = [
+      { id: 1, address: "A", latitude: "abc", longitude: "139.0" },
+      { id: 2, address: "B", latitude: "35.0", longitude: "139.0" },
+    ];
+    const { located } = splitByLocation(rows);
+    expect(located.map((c) => c.id)).toEqual([2]);
+  });
+
+  it("ジオコード対象は『住所あり・座標なし』のみカウントする", () => {
+    const rows: GeoCase[] = [
+      { id: 1, address: "東京都", latitude: null, longitude: null }, // 対象
+      { id: 2, address: "大阪府", latitude: "34.0", longitude: "135.0" }, // 済
+      { id: 3, address: null, latitude: null, longitude: null }, // 住所なしは対象外
+      { id: 4, address: "福岡県", latitude: "33.0", longitude: null }, // 片側欠落 → 対象
+    ];
+    expect(missingCount(rows)).toBe(2);
+  });
+
+  it("routes.geocodeMissing は認証必須（未ログインは拒否）", async () => {
+    const caller = appRouter.createCaller({
+      user: null,
+      req: { protocol: "https", headers: {} } as never,
+      res: {} as never,
+    } as never);
+    await expect(caller.routes.geocodeMissing()).rejects.toThrow();
+  });
+});
