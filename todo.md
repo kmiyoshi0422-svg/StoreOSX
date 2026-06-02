@@ -192,3 +192,14 @@
 - [x] Reports/CaseDetail経費の表に hover:bg-muted/30, font-medium ヘッダを適用
 - [x] ログイン画面の説明文を text-foreground/80 に強化
 - [x] vitest 全113件PASS確認、チェックポイント v20=ee016c4e 保存
+
+## v21 PDF案件 一括取込モード
+
+- [x] cases.checkDuplicates（依頼番号配列→既存ID対応表）を query として追加
+- [x] CasePdfImport.tsxに「単票/一括」タブを追加
+- [x] 一括モード：複数PDFをD&D/選択 → 並列で uploadPdf+extractFromPdf 実行（同時実行数=3）
+- [x] 進捗テーブル（ファイル名/状態/依頼番号/店舗/区分/重複警告/エラー）
+- [x] 行ごとに含める/除外、編集ダイアログ、PDFを開くリンク
+- [x] 一括登録ボタン → 順次 cases.create で送信、行状態を saving/saved/error に更新
+- [x] vitest追加：v21 cases.checkDuplicates 3件（min(1)エラー・厳密マッチング・重複入力）
+- [x] 全116件PASS、テスト残骸をDBから再授清クリーンアップ

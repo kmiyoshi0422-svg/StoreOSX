@@ -913,3 +913,64 @@ describe("v19: 月別レポート集計ロジック（純粋関数）", () => {
     expect(bucketKey(new Date(2025, 11, 1))).toBe("2025-12");
   });
 });
+
+
+describe("v21: cases.checkDuplicates 依頼番号の重複検知", () => {
+  it("空配列はエラー（min(1)）", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await expect(
+      caller.cases.checkDuplicates({ requestNumbers: [] }),
+    ).rejects.toThrow();
+  });
+
+  it(
+    "登録済み案件と一致する依頼番号のみ duplicates に含まれる",
+    { timeout: 30000 },
+    async () => {
+      const caller = appRouter.createCaller(createAuthContext());
+      const stamp = Date.now();
+      const dupNo = `DUP-${stamp}`;
+      const created = await caller.cases.create({
+        requestNumber: dupNo,
+        brand: "ほっともっと",
+        storeName: "重複検知テスト店",
+        workType: "修理",
+        costBearer: "店舗",
+        urgency: "B",
+        status: "受付",
+      });
+      const res = await caller.cases.checkDuplicates({
+        requestNumbers: [dupNo, `NOEXIST-${stamp}-A`, `NOEXIST-${stamp}-B`],
+      });
+      const hit = res.duplicates.find((d) => d.requestNumber === dupNo);
+      expect(hit).toBeDefined();
+      expect(hit?.existingId).toBe(created.id);
+      // 未登録番号は含まれないこと
+      expect(
+        res.duplicates.some((d) => d.requestNumber.startsWith(`NOEXIST-${stamp}`)),
+      ).toBe(false);
+      await caller.cases.delete({ id: created.id });
+    },
+  );
+
+  it("同一依頼番号を複数回入力しても重複を検出できる", { timeout: 30000 }, async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const stamp = Date.now();
+    const dupNo = `DUP2-${stamp}`;
+    const created = await caller.cases.create({
+      requestNumber: dupNo,
+      brand: "ほっともっと",
+      storeName: "重複検知テスト店2",
+      workType: "修理",
+      costBearer: "店舗",
+      urgency: "B",
+      status: "受付",
+    });
+    const res = await caller.cases.checkDuplicates({
+      requestNumbers: [dupNo, dupNo],
+    });
+    expect(res.duplicates.length).toBeGreaterThanOrEqual(1);
+    expect(res.duplicates[0].requestNumber).toBe(dupNo);
+    await caller.cases.delete({ id: created.id });
+  });
+});
