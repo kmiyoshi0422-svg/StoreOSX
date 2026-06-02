@@ -203,3 +203,9 @@
 - [x] 検索（店舗/依頼番号/住所）・緊急度・進捗フィルタ
 - [x] DashboardLayout サイドバーに「案件マップ」追加 + App.tsx ルート登録
 - [x] 型チェック OK、vitest v22 5件追加全118件PASS、テスト残骸をDBから再授清
+
+## v23 案件マップ ピンずれ修正＋InfoWindow編集ボタン
+
+- [x] 広域ズーム時のピンずれを修正：pinSvgの translate(-50%,-100%) を削除し、createPinElement（line-height:0/display:block）で AdvancedMarkerElement の既定アンカー（下端中央）に任せた
+- [x] InfoWindowを setContent(DOM) 方式に変更し「案件詳細を編集→」ボタンを追加、clickで setLocation(`/cases/${id}`)
+- [x] 型チェック OK、vitest全118件PASS、テスト残骸をDBから再授清

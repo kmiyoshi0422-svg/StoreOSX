@@ -71,19 +71,26 @@ type CaseRow = {
 
 type Located = CaseRow & { lat: number; lng: number };
 
-/* ピンのSVG（雫型＋中央ドット） */
-function pinSvg(color: string, emphasized: boolean) {
+/* ピンのSVG（雫型＋中央ドット）
+   AdvancedMarkerElement は content 要素の「下端中央」を座標にアンカーするため、
+   ここでは translate などの自前オフセットを一切付けず、雫の先端が要素の
+   下端中央に一致するSVG（viewBox 高さ=要素高さ）だけを返す。
+   これにより、どのズームレベルでもピン先端が正確に座標へ吸着しズレない。 */
+function createPinElement(color: string, emphasized: boolean) {
   const scale = emphasized ? 1.25 : 1;
   const w = 28 * scale;
   const h = 38 * scale;
-  return `
-    <div style="transform: translate(-50%, -100%); filter: drop-shadow(0 2px 3px rgba(0,0,0,.35));">
-      <svg width="${w}" height="${h}" viewBox="0 0 28 38" xmlns="http://www.w3.org/2000/svg">
-        <path d="M14 0C6.27 0 0 6.27 0 14c0 9.5 14 24 14 24s14-14.5 14-24C28 6.27 21.73 0 14 0z"
-          fill="${color}" stroke="white" stroke-width="2"/>
-        <circle cx="14" cy="14" r="5" fill="white"/>
-      </svg>
-    </div>`;
+  const wrap = document.createElement("div");
+  // display:block + line-height:0 で余白を消し、SVG下端=要素下端を厳密に一致させる
+  wrap.style.lineHeight = "0";
+  wrap.style.filter = "drop-shadow(0 2px 3px rgba(0,0,0,.35))";
+  wrap.innerHTML = `
+    <svg width="${w}" height="${h}" viewBox="0 0 28 38" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+      <path d="M14 0C6.27 0 0 6.27 0 14c0 9.5 14 24 14 24s14-14.5 14-24C28 6.27 21.73 0 14 0z"
+        fill="${color}" stroke="white" stroke-width="2"/>
+      <circle cx="14" cy="14" r="5" fill="white"/>
+    </svg>`;
+  return wrap;
 }
 
 export default function CasesMap() {
@@ -174,8 +181,7 @@ export default function CasesMap() {
     located.forEach((c) => {
       const color = URGENCY_PIN[c.urgency] ?? "#64748b";
       const emphasized = c.id === selectedId;
-      const content = document.createElement("div");
-      content.innerHTML = pinSvg(color, emphasized);
+      const content = createPinElement(color, emphasized);
 
       const marker = new g.maps.marker.AdvancedMarkerElement({
         map,
@@ -210,27 +216,47 @@ export default function CasesMap() {
     if (!infoRef.current || !mapRef.current) return;
     const marker = markersRef.current.get(c.id);
     if (!marker) return;
-    const html = `
-      <div style="font-family: system-ui; min-width: 200px; max-width:260px;">
-        <div style="font-weight:600; font-size:14px; margin-bottom:2px;">${escapeHtml(
-          c.storeName
-        )}</div>
-        <div style="color:#64748b; font-size:12px; margin-bottom:6px;">${escapeHtml(
-          c.requestNumber
-        )} ・ ${escapeHtml(c.brand)}</div>
-        <div style="font-size:12px; color:#334155; margin-bottom:6px;">${escapeHtml(
-          c.address ?? ""
-        )}</div>
-        <div style="display:flex; gap:6px; font-size:11px;">
-          <span style="background:${URGENCY_PIN[c.urgency] ?? "#64748b"};color:#fff;padding:1px 6px;border-radius:4px;">緊急度 ${
-            c.urgency
-          }</span>
-          <span style="background:#f1f5f9;color:#334155;padding:1px 6px;border-radius:4px;">${escapeHtml(
-            c.progressStage
-          )}</span>
-        </div>
+
+    // InfoWindow は HTML文字列だと React の onClick が効かないため、
+    // DOM要素を組み立ててボタンに直接リスナーを付ける。
+    const root = document.createElement("div");
+    root.style.fontFamily = "system-ui";
+    root.style.minWidth = "210px";
+    root.style.maxWidth = "270px";
+    root.innerHTML = `
+      <div style="font-weight:600; font-size:14px; margin-bottom:2px;">${escapeHtml(
+        c.storeName
+      )}</div>
+      <div style="color:#64748b; font-size:12px; margin-bottom:6px;">${escapeHtml(
+        c.requestNumber
+      )} ・ ${escapeHtml(c.brand)}</div>
+      <div style="font-size:12px; color:#334155; margin-bottom:8px;">${escapeHtml(
+        c.address ?? ""
+      )}</div>
+      <div style="display:flex; gap:6px; font-size:11px; margin-bottom:10px;">
+        <span style="background:${URGENCY_PIN[c.urgency] ?? "#64748b"};color:#fff;padding:1px 6px;border-radius:4px;">緊急度 ${
+          c.urgency
+        }</span>
+        <span style="background:#f1f5f9;color:#334155;padding:1px 6px;border-radius:4px;">${escapeHtml(
+          c.progressStage
+        )}</span>
       </div>`;
-    infoRef.current.setContent(html);
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "案件詳細を編集 →";
+    btn.style.cssText =
+      "width:100%;display:inline-flex;align-items:center;justify-content:center;gap:4px;" +
+      "background:#1e293b;color:#fff;border:none;border-radius:6px;padding:7px 10px;" +
+      "font-size:12px;font-weight:600;cursor:pointer;";
+    btn.addEventListener("mouseenter", () => (btn.style.background = "#0f172a"));
+    btn.addEventListener("mouseleave", () => (btn.style.background = "#1e293b"));
+    btn.addEventListener("click", () => {
+      setLocation(`/cases/${c.id}`);
+    });
+    root.appendChild(btn);
+
+    infoRef.current.setContent(root);
     infoRef.current.open({ map: mapRef.current, anchor: marker });
   }
 
