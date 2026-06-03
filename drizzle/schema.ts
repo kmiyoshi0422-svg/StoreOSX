@@ -74,7 +74,8 @@ export const cases = mysqlTable("cases", {
   // 担当者
   assigneeId: int("assigneeId"), // users.id
   // 見積（予算）
-  estimatedCost: int("estimatedCost"), // 見積金額合計（円）
+  estimatedCost: int("estimatedCost"), // 協力業者の見積金額合計＝原価（円）
+  plenusQuoteAmount: int("plenusQuoteAmount"), // プレナスへ提出した見積金額＝売上/請求額（円）
   estimatedMaterialCost: int("estimatedMaterialCost"), // 見積：材料費
   estimatedLaborCost: int("estimatedLaborCost"), // 見積：作業費
   is10mYen: boolean("is10mYen").default(false), // 10万円超フラグ

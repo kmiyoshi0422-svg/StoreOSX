@@ -217,3 +217,17 @@
 - [x] InfoWindow に「地図アプリで開く」（Googleマップ経路案内、住所優先・無ければ座標）ボタンを追加
 - [x] URL生成ロジックを shared/map-actions.ts に純粋関数として切り出し（normalizePhone / buildTelHref / buildMapDirectionsHref）
 - [x] vitest 7件追加（v24）、全125件PASS、テスト残骸をDBから再清掃
+
+## v25 案件詳細にプレナス提出見積額・協力業者見積額の入力
+
+- [x] cases に plenusQuoteAmount（プレナス提出見積額＝売上）カラムを追加しマイグレーション適用（0008_fast_veda.sql）
+- [x] cases.update に plenusQuoteAmount / estimatedCost（協力業者額）を手入力で保存できるよう対応
+- [x] 案件詳細「収支」タブに金額入力カード（プレナス提出額・協力業者額・原価＝協力業者額＋経費）を追加
+- [x] 粗利＝プレナス提出額−原価。プレナス額未入力時は協力業者額÷0.75でフォールバック表示
+- [x] 写真と金額が同じ収支タブで一覧できるよう配置
+- [x] 収支計算ロジックを shared/profit.ts に純粋関数として切り出し（calcSales / calcCost / calcCaseProfit）
+- [x] reports.monthly を新定義に修正（売上＝プレナス提出額、原価＝協力業者額＋経費）
+- [x] reports.byAssignee を新定義に修正（同上）
+- [x] Reports.tsx の説明文・空状態文言を新定義に更新
+- [x] vitest追加（profit.test.ts 13件・cases.test.ts の新定義テスト）、型チェック OK、全138件PASS
+- [x] テスト残骸（TEST-/HIST-/AUTO- 案件とテストパートナー）をDBから削除、チェックポイント保存

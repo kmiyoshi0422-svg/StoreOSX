@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 import { DEFAULT_CHECKLIST } from "../shared/checklist-template";
+import { calcCaseProfit } from "@shared/profit";
 
 type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
 
@@ -884,18 +885,21 @@ describe("v19: expenses router バリデーション", () => {
   });
 });
 
-describe("v19: 月別レポート集計ロジック（純粋関数）", () => {
-  it("売上=見積×75%、原価=経費合計、粗利=売上-原価", () => {
-    const BUDGET_RATIO = 0.75;
-    const estimatedCost = 100000;
-    const expenseSum = 60000;
-    const revenue = Math.round(estimatedCost * BUDGET_RATIO);
-    const cost = expenseSum;
-    const profit = revenue - cost;
-    const margin = revenue > 0 ? Math.round((profit / revenue) * 1000) / 10 : 0;
-    expect(revenue).toBe(75000);
-    expect(profit).toBe(15000);
-    expect(margin).toBe(20);
+describe("v25: 月別レポート集計ロジック（新定義・純粋関数）", () => {
+  it("売上=プレナス提出額、原価=協力業者額+経費、粗利=売上-原価", () => {
+    const p = calcCaseProfit({ plenusQuoteAmount: 100000, estimatedCost: 60000, expensesTotal: 5000 });
+    expect(p.sales).toBe(100000);
+    expect(p.cost).toBe(65000);
+    expect(p.grossProfit).toBe(35000);
+    expect(Math.round(p.grossMargin * 1000) / 10).toBe(35);
+  });
+
+  it("プレナス額未入力は協力業者額÷0.75で売上を想定する", () => {
+    const p = calcCaseProfit({ plenusQuoteAmount: null, estimatedCost: 75000, expensesTotal: 0 });
+    expect(p.sales).toBe(100000);
+    expect(p.cost).toBe(75000);
+    expect(p.grossProfit).toBe(25000);
+    expect(p.salesIsEstimated).toBe(true);
   });
 
   it("売上が0なら粗利率は0で扱う", () => {
@@ -911,6 +915,63 @@ describe("v19: 月別レポート集計ロジック（純粋関数）", () => {
     }
     expect(bucketKey(new Date(2025, 0, 15))).toBe("2025-01");
     expect(bucketKey(new Date(2025, 11, 1))).toBe("2025-12");
+  });
+});
+
+describe("v25: reports 集計がプレナス提出額を売上に使う（DB統合）", () => {
+  it("plenusQuoteAmount を設定した案件の売上が monthly の合計に反映される", { timeout: 30000 }, async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const stamp = Date.now();
+    const before = await caller.reports.monthly({ months: 24 });
+    const beforeRevenue = before.totals.revenue;
+    const beforeCost = before.totals.cost;
+
+    const created = await caller.cases.create({
+      requestNumber: `TEST-PROFIT-${stamp}`,
+      brand: "その他",
+      storeName: "収支テスト店",
+      workType: "修理",
+      costBearer: "店舗",
+      requestDate: new Date(),
+      plenusQuoteAmount: 200000,
+      estimatedCost: 120000,
+    });
+
+    try {
+      const after = await caller.reports.monthly({ months: 24 });
+      // 売上は plenusQuoteAmount(200000) 分増える
+      expect(after.totals.revenue).toBe(beforeRevenue + 200000);
+      // 原価は estimatedCost(120000) + 経費(0) 分増える
+      expect(after.totals.cost).toBe(beforeCost + 120000);
+    } finally {
+      await caller.cases.delete({ id: created.id });
+    }
+  });
+
+  it("plenusQuoteAmount 未入力の案件は estimatedCost÷0.75 で売上計上される", { timeout: 30000 }, async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    const stamp = Date.now();
+    const before = await caller.reports.monthly({ months: 24 });
+    const beforeRevenue = before.totals.revenue;
+    const beforeCost = before.totals.cost;
+
+    const created = await caller.cases.create({
+      requestNumber: `TEST-PROFIT-FB-${stamp}`,
+      brand: "その他",
+      storeName: "収支テスト店FB",
+      workType: "修理",
+      costBearer: "店舗",
+      requestDate: new Date(),
+      estimatedCost: 75000, // プレナス額未入力 → 75000/0.75 = 100000
+    });
+
+    try {
+      const after = await caller.reports.monthly({ months: 24 });
+      expect(after.totals.revenue).toBe(beforeRevenue + 100000);
+      expect(after.totals.cost).toBe(beforeCost + 75000);
+    } finally {
+      await caller.cases.delete({ id: created.id });
+    }
   });
 });
 

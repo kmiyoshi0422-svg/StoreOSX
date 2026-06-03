@@ -55,6 +55,7 @@ import { storagePut, storageGetSignedUrl } from "./storage";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { BUDGET_RATIO, calcBudget } from "../shared/budget";
+import { calcCaseProfit } from "../shared/profit";
 import { scoreCandidates, topMatches, pickBestMatch } from "../shared/estimate-matcher";
 import { pickLatestEstimate } from "../shared/estimate-aggregator";
 import { invokeLLM } from "./_core/llm";
@@ -94,6 +95,7 @@ const caseInputSchema = z.object({
   urgency: z.enum(["S", "A", "B", "C"]).default("B"),
   assigneeId: z.number().int().nullish(),
   estimatedCost: z.number().int().nullish(),
+  plenusQuoteAmount: z.number().int().nullish(),
   estimatedMaterialCost: z.number().int().nullish(),
   estimatedLaborCost: z.number().int().nullish(),
   is10mYen: z.boolean().default(false),
@@ -1879,24 +1881,28 @@ export const appRouter = router({
           return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`;
         }
 
-        // 案件は requestDate を基準に件数とその月の見積×75% を売上計上
+        // 案件ごとの経費合計を集計（原価に加算）
+        const expByCaseMonthly = new Map<number, number>();
+        for (const e of allExpenses) {
+          if (!e.caseId) continue;
+          expByCaseMonthly.set(e.caseId, (expByCaseMonthly.get(e.caseId) ?? 0) + (e.amount ?? 0));
+        }
+        // 案件は requestDate を基準に件数・売上・原価を計上
+        // 売上 = プレナス提出見積額（未入力は協力業者額÷0.75）
+        // 原価 = 協力業者見積額 + その案件の経費合計
         for (const c of allCases) {
           const k = bucketKey(c.requestDate as any) ?? bucketKey(c.createdAt as any);
           if (!k || !byKey.has(k)) continue;
           const b = byKey.get(k)!;
           b.caseCount += 1;
           if (c.completedAt || c.status === "完了") b.completedCount += 1;
-          const est = c.estimatedCost ?? 0;
-          if (est > 0) {
-            b.revenue += Math.round(est * BUDGET_RATIO);
-          }
-        }
-        // 経費は expenseDate（無ければcreatedAt）の月で原価計上
-        for (const e of allExpenses) {
-          const k = bucketKey(e.expenseDate as any) ?? bucketKey(e.createdAt as any);
-          if (!k || !byKey.has(k)) continue;
-          const b = byKey.get(k)!;
-          b.cost += e.amount ?? 0;
+          const p = calcCaseProfit({
+            plenusQuoteAmount: c.plenusQuoteAmount,
+            estimatedCost: c.estimatedCost,
+            expensesTotal: expByCaseMonthly.get(c.id) ?? 0,
+          });
+          b.revenue += p.sales;
+          b.cost += p.cost;
         }
         const rows = buckets.map((b) => {
           const r = byKey.get(b.key)!;
@@ -1942,9 +1948,14 @@ export const appRouter = router({
         const r = byUser.get(c.assigneeId)!;
         r.caseCount += 1;
         if (c.completedAt || c.status === "完了") r.completedCount += 1;
-        const est = c.estimatedCost ?? 0;
-        if (est > 0) r.revenue += Math.round(est * BUDGET_RATIO);
-        r.cost += expByCase.get(c.id) ?? 0;
+        // 売上 = プレナス提出額（未入力は協力業者額÷0.75）、原価 = 協力業者額 + 経費
+        const p = calcCaseProfit({
+          plenusQuoteAmount: c.plenusQuoteAmount,
+          estimatedCost: c.estimatedCost,
+          expensesTotal: expByCase.get(c.id) ?? 0,
+        });
+        r.revenue += p.sales;
+        r.cost += p.cost;
       }
       const rows = Array.from(byUser.values())
         .filter((r) => r.caseCount > 0)

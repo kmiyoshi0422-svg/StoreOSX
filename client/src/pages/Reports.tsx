@@ -41,7 +41,7 @@ export default function Reports() {
         eyebrow="Reports"
         title="実績レポート"
         icon={<TrendingUp className="h-7 w-7 text-primary" />}
-        description="月別の売上・原価・粗利、および担当者別の成績を可視化します。売上は見積金額×75%、原価は登録された経費の合計です。"
+        description="月別の売上・原価・粗利、および担当者別の成績を可視化します。売上はプレナス提出見積額（未入力は協力業者額÷0.75）、原価は協力業者見積額＋経費の合計です。"
       />
 
       <Tabs defaultValue="monthly" className="space-y-5">
@@ -85,7 +85,7 @@ export default function Reports() {
                 <Inbox className="h-10 w-10 opacity-60" />
                 <div className="font-medium text-foreground">該当期間の実績がまだありません</div>
                 <div className="text-sm max-w-sm">
-                  案件を登録し、見積・経費を入力すると、月ごとの売上・原価・粗利が自動で集計されます。
+                  案件を登録し、収支タブでプレナス提出額・協力業者額や経費を入力すると、月ごとの売上・原価・粗利が自動で集計されます。
                 </div>
               </CardContent>
             </Card>

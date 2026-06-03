@@ -229,7 +229,7 @@ export default function CaseDetail({ id }: { id: number }) {
         </TabsContent>
 
         <TabsContent value="profit">
-          <ProfitTab caseData={caseData} />
+          <ProfitTab caseData={caseData} onUpdated={() => utils.cases.get.invalidate({ id })} />
         </TabsContent>
 
         <TabsContent value="expenses">
@@ -1501,52 +1501,174 @@ function EstimateCard({
   );
 }
 
-function ProfitTab({ caseData }: { caseData: Case }) {
+function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => void }) {
   const { data: estimates = [] } = trpc.estimates.listByCase.useQuery({ caseId: caseData.id });
+  const { data: expenses = [] } = trpc.expenses.listByCase.useQuery({ caseId: caseData.id });
 
   const yen = (n: number | null | undefined) =>
     n != null ? `¥${Math.round(n).toLocaleString()}` : "—";
 
-  // プレナス向け売上（見積） = caseData.estimatedCost or 見積一覧合計
+  // 入力フォーム state（プレナス提出見積額＝売上／協力業者見積額＝原価）
+  const [plenusInput, setPlenusInput] = useState<string>(
+    caseData.plenusQuoteAmount != null ? String(caseData.plenusQuoteAmount) : ""
+  );
+  const [vendorInput, setVendorInput] = useState<string>(
+    caseData.estimatedCost != null ? String(caseData.estimatedCost) : ""
+  );
+
+  const saveMutation = trpc.cases.update.useMutation({
+    onSuccess: () => {
+      toast.success("金額を保存しました");
+      onUpdated();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const handleSave = () => {
+    const plenus = plenusInput.trim() === "" ? null : Number(plenusInput);
+    const vendor = vendorInput.trim() === "" ? null : Number(vendorInput);
+    if (plenus != null && (!Number.isFinite(plenus) || plenus < 0)) {
+      toast.error("プレナス提出額が不正です");
+      return;
+    }
+    if (vendor != null && (!Number.isFinite(vendor) || vendor < 0)) {
+      toast.error("協力業者額が不正です");
+      return;
+    }
+    saveMutation.mutate({
+      id: caseData.id,
+      data: {
+        plenusQuoteAmount: plenus,
+        estimatedCost: vendor,
+        is10mYen: (plenus ?? 0) >= 100000,
+      },
+    });
+  };
+
+  // 見積一覧合計（協力業者見積の参考値）
   const estimatesTotal = estimates.reduce((s, e) => s + (e.totalAmount ?? 0), 0);
-  const sales = caseData.estimatedCost ?? estimatesTotal;
-  // 協力業者支払（見積×75%）
-  const partnerCost75 = sales > 0 ? Math.floor(sales * 0.75) : 0;
-  // 実績原価（協力業者支払の実績合計）
-  const actualCost = caseData.actualCost ?? 0;
-  // 粗利（売上 - 原価）：実績優先、なければ75%目安
-  const baseCost = actualCost > 0 ? actualCost : partnerCost75;
-  const grossProfit = sales - baseCost;
+  // 経費合計（領収書取込分）
+  const expensesTotal = expenses.reduce((s, e) => s + (e.amount ?? 0), 0);
+
+  // 売上 = プレナス提出見積額。未入力なら協力業者見積額からの想定（÷0.75）でフォールバック表示
+  const vendorAmount = caseData.estimatedCost ?? null;
+  const plenusAmount = caseData.plenusQuoteAmount ?? null;
+  const sales =
+    plenusAmount != null
+      ? plenusAmount
+      : vendorAmount != null && vendorAmount > 0
+        ? Math.round(vendorAmount / 0.75)
+        : 0;
+  const salesIsEstimated = plenusAmount == null && sales > 0;
+
+  // 原価 = 協力業者見積額 + 経費合計
+  const cost = (vendorAmount ?? 0) + expensesTotal;
+  const grossProfit = sales - cost;
   const grossMargin = sales > 0 ? grossProfit / sales : 0;
 
-  const variance = (caseData.actualCost ?? 0) - partnerCost75;
-  const isOver = variance > 0;
-  const isInBudget = variance <= 0 && actualCost > 0;
+  const dirty =
+    plenusInput !== (caseData.plenusQuoteAmount != null ? String(caseData.plenusQuoteAmount) : "") ||
+    vendorInput !== (caseData.estimatedCost != null ? String(caseData.estimatedCost) : "");
 
   return (
     <div className="space-y-4">
+      {/* 金額入力カード */}
       <Card>
         <CardContent className="p-5 space-y-4">
           <div className="flex items-center gap-2">
             <Wallet className="h-4 w-4 text-muted-foreground" />
-            <h3 className="font-medium">個別案件 収支</h3>
+            <h3 className="font-medium">金額入力</h3>
             <span className="text-xs text-muted-foreground ml-auto">
               依頼番号: {caseData.requestNumber}
             </span>
           </div>
 
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">プレナスへ提出した見積金額（売上）</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">¥</span>
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  className="pl-7 tabular-nums"
+                  placeholder="例: 320000"
+                  value={plenusInput}
+                  onChange={(e) => setPlenusInput(e.target.value)}
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">プレナスへ請求・提出した金額。これが売上になります。</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">協力業者の見積金額（原価）</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">¥</span>
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  className="pl-7 tabular-nums"
+                  placeholder="例: 240000"
+                  value={vendorInput}
+                  onChange={(e) => setVendorInput(e.target.value)}
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                協力業者へ支払う金額。経費（領収書取込分）と合わせて原価になります。
+                {estimatesTotal > 0 && (
+                  <>
+                    {" "}見積書合計: <span className="font-medium">{yen(estimatesTotal)}</span>
+                    {estimatesTotal !== (caseData.estimatedCost ?? estimatesTotal) && (
+                      <button
+                        type="button"
+                        className="ml-1 text-primary underline"
+                        onClick={() => setVendorInput(String(estimatesTotal))}
+                      >
+                        反映
+                      </button>
+                    )}
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <Button onClick={handleSave} disabled={!dirty || saveMutation.isPending} className="active:scale-[0.97] transition-transform">
+              {saveMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-1.5" />
+              )}
+              金額を保存
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 収支サマリーカード */}
+      <Card>
+        <CardContent className="p-5 space-y-4">
+          <div className="flex items-center gap-2">
+            <Wallet className="h-4 w-4 text-muted-foreground" />
+            <h3 className="font-medium">個別案件 収支</h3>
+          </div>
+
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="rounded-md border p-3 bg-blue-50 border-blue-200">
-              <div className="text-xs text-blue-700 mb-1">プレナス向け売上（見積合計）</div>
+              <div className="text-xs text-blue-700 mb-1">売上（プレナス提出額）</div>
               <div className="text-xl font-semibold tracking-tight">{yen(sales)}</div>
+              {salesIsEstimated && (
+                <div className="text-[11px] text-blue-700/80 mt-1">未入力のため協力業者額から想定（÷0.75）</div>
+              )}
             </div>
             <div className="rounded-md border p-3 bg-emerald-50 border-emerald-200">
-              <div className="text-xs text-emerald-700 mb-1">協力業者支払予定（見積×75%）</div>
-              <div className="text-xl font-semibold tracking-tight">{yen(partnerCost75)}</div>
+              <div className="text-xs text-emerald-700 mb-1">協力業者見積額</div>
+              <div className="text-xl font-semibold tracking-tight">{yen(vendorAmount)}</div>
             </div>
             <div className="rounded-md border p-3 bg-amber-50 border-amber-200">
-              <div className="text-xs text-amber-700 mb-1">実績原価（協力業者支払実績）</div>
-              <div className="text-xl font-semibold tracking-tight">{yen(actualCost)}</div>
+              <div className="text-xs text-amber-700 mb-1">経費（領収書）</div>
+              <div className="text-xl font-semibold tracking-tight">{yen(expensesTotal)}</div>
+              <div className="text-[11px] text-amber-700/80 mt-1">原価計: {yen(cost)}</div>
             </div>
             <div className={`rounded-md border p-3 ${grossProfit >= 0 ? "bg-violet-50 border-violet-200" : "bg-red-50 border-red-200"}`}>
               <div className="text-xs mb-1 text-muted-foreground">粗利（売上−原価）</div>
@@ -1559,27 +1681,10 @@ function ProfitTab({ caseData }: { caseData: Case }) {
             </div>
           </div>
 
-          {actualCost > 0 && (
-            <div className="rounded-md border p-3 bg-muted/30">
-              <div className="text-xs text-muted-foreground mb-1">予算（見積×75%）と実績の差</div>
-              <div className="flex items-center gap-3">
-                <span className="text-lg font-semibold tracking-tight">
-                  {variance >= 0 ? "+" : "−"} ¥{Math.abs(variance).toLocaleString()}
-                </span>
-                {isOver && (
-                  <Badge className="bg-red-100 text-red-700 border-red-200">予算超過</Badge>
-                )}
-                {isInBudget && (
-                  <Badge className="bg-green-100 text-green-700 border-green-200">予算内</Badge>
-                )}
-              </div>
-            </div>
-          )}
-
           <div className="text-xs text-muted-foreground space-y-1 leading-relaxed pt-2 border-t">
-            <div>・売上：プレナス向け見積金額（estimatedCost。なければ見積一覧合計）</div>
-            <div>・原価：実績入力があれば実績、なければ協力業者支払予定（見積×75%）</div>
-            <div>・実績原価が入力されると粗利・粗利率がリアルタイムで反映されます</div>
+            <div>・売上：プレナスへ提出した見積金額（未入力時は協力業者額から想定表示）</div>
+            <div>・原価：協力業者見積額 ＋ 経費（領収書取込分の合計）</div>
+            <div>・粗利・粗利率は金額を保存すると即時に反映されます</div>
           </div>
         </CardContent>
       </Card>
