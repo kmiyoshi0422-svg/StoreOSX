@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
+import { buildTelHref, buildMapDirectionsHref } from "@shared/map-actions";
 import { trpc } from "@/lib/trpc";
 import { MapView } from "@/components/Map";
 import PageHeader from "@/components/PageHeader";
@@ -62,6 +63,7 @@ type CaseRow = {
   storeName: string;
   brand: string;
   address: string | null;
+  storePhone: string | null;
   latitude: string | null;
   longitude: string | null;
   urgency: string;
@@ -241,6 +243,58 @@ export default function CasesMap() {
           c.progressStage
         )}</span>
       </div>`;
+
+    // 現場向けクイックアクション行（電話 / 地図アプリで開く）
+    const phone = (c.storePhone ?? "").trim();
+    const actionRow = document.createElement("div");
+    actionRow.style.cssText =
+      "display:flex; gap:6px; margin-bottom:8px;";
+
+    // 電話する（有効な番号がある時のみ）
+    const telHref = buildTelHref(phone);
+    if (telHref) {
+      const telLink = document.createElement("a");
+      telLink.href = telHref;
+      telLink.textContent = "電話する";
+      telLink.style.cssText =
+        "flex:1;display:inline-flex;align-items:center;justify-content:center;gap:4px;" +
+        "background:#059669;color:#fff;text-decoration:none;border-radius:6px;padding:7px 8px;" +
+        "font-size:12px;font-weight:600;cursor:pointer;";
+      telLink.addEventListener(
+        "mouseenter",
+        () => (telLink.style.background = "#047857")
+      );
+      telLink.addEventListener(
+        "mouseleave",
+        () => (telLink.style.background = "#059669")
+      );
+      actionRow.appendChild(telLink);
+    }
+
+    // 地図アプリで開く（経路案内）。住所優先、無ければ座標。
+    const mapLink = document.createElement("a");
+    mapLink.href = buildMapDirectionsHref({
+      address: c.address,
+      lat: c.lat,
+      lng: c.lng,
+    });
+    mapLink.target = "_blank";
+    mapLink.rel = "noopener noreferrer";
+    mapLink.textContent = "地図アプリで開く";
+    mapLink.style.cssText =
+      "flex:1;display:inline-flex;align-items:center;justify-content:center;gap:4px;" +
+      "background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;padding:7px 8px;" +
+      "font-size:12px;font-weight:600;cursor:pointer;";
+    mapLink.addEventListener(
+      "mouseenter",
+      () => (mapLink.style.background = "#1d4ed8")
+    );
+    mapLink.addEventListener(
+      "mouseleave",
+      () => (mapLink.style.background = "#2563eb")
+    );
+    actionRow.appendChild(mapLink);
+    root.appendChild(actionRow);
 
     const btn = document.createElement("button");
     btn.type = "button";
