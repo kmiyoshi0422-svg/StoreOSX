@@ -56,6 +56,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { BUDGET_RATIO, calcBudget } from "../shared/budget";
 import { calcCaseProfit } from "../shared/profit";
+import { contentToText, parseLlmJson } from "../shared/extract";
 import { scoreCandidates, topMatches, pickBestMatch } from "../shared/estimate-matcher";
 import { pickLatestEstimate } from "../shared/estimate-aggregator";
 import { invokeLLM } from "./_core/llm";
@@ -515,13 +516,20 @@ export const appRouter = router({
         });
 
         const raw = response.choices?.[0]?.message?.content;
-        const text = typeof raw === "string" ? raw : Array.isArray(raw) ? raw.map((c: any) => c.text ?? "").join("") : "";
-        let parsed: Record<string, any> = {};
-        try {
-          parsed = JSON.parse(text);
-        } catch {
-          throw new Error("PDFからの抽出結果をパースできませんでした");
+        const text = contentToText(raw);
+
+        // LLM応答が空（モデル側の失敗・タイムアウト等）の場合は分かりやすく通知
+        if (!text.trim()) {
+          throw new Error(
+            "PDFから情報を読み取れませんでした。スキャン画質や向きを確認のうえ、もう一度お試しください。"
+          );
         }
+
+        // コードフェンスや前後説明文を含んでもパースできるよう堅牢化。
+        // パースに失敗しても例外にはせず、空オブジェクトにフォールバックして
+        // 手入力できる状態（rawText付き）で返す。
+        const parsed: Record<string, any> = parseLlmJson(text) ?? {};
+        const parseFailed = Object.keys(parsed).length === 0;
 
         // 依頼日時をDateに試行変換
         let requestDate: Date | null = null;
@@ -556,6 +564,8 @@ export const appRouter = router({
             urgency: ["S", "A", "B", "C"].includes(parsed.urgency) ? parsed.urgency : "B",
           },
           rawText: text,
+          // 構造化抽出に失敗した場合のフラグ（フロントで注意喚起に利用）
+          parseFailed,
         };
       }),
 

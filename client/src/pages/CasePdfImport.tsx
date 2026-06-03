@@ -86,7 +86,13 @@ export default function CasePdfImport() {
         ...ex,
         requestDate: ex.requestDate ? new Date(ex.requestDate) : null,
       });
-      toast.success("PDFから案件情報を抽出しました");
+      if ((res as any).parseFailed) {
+        toast.warning(
+          "自動抽出がうまくいきませんでした。下のフォームに手入力して登録してください。"
+        );
+      } else {
+        toast.success("PDFから案件情報を抽出しました");
+      }
     } catch (e: any) {
       toast.error(e?.message ?? "PDF処理に失敗しました");
     }

@@ -231,3 +231,13 @@
 - [x] Reports.tsx の説明文・空状態文言を新定義に更新
 - [x] vitest追加（profit.test.ts 13件・cases.test.ts の新定義テスト）、型チェック OK、全138件PASS
 - [x] テスト残骸（TEST-/HIST-/AUTO- 案件とテストパートナー）をDBから削除、チェックポイント保存
+
+## v26 PDF案件取込のエラー対策（堅牢化）
+
+- [x] LLM応答のJSONパースを堅牢化（Markdownコードフェンスや前後説明文を除去してから抽出）
+- [x] パース失敗時はエラーにせず、抽出できた範囲＋手入力可能な状態（parseFailedフラグ＋rawText）にフォールバック
+- [x] LLM応答が空のときは「読み取れませんでした」と分かりやすいメッセージを返す
+- [x] parseFailed 時はフロントで警告トーストを出して手入力フォームを開く（CasePdfImport.tsx）
+- [x] 抽出ロジック（contentToText / stripCodeFences / extractFirstJsonObject / parseLlmJson）を shared/extract.ts の純粋関数に切り出し
+- [x] vitest追加（extract.test.ts 19件：コードフェンス/説明文混在/壊れたJSON/空応答/ネスト）
+- [x] 型チェック OK、全157件PASS、テスト残骸をDBから削除、チェックポイント保存
