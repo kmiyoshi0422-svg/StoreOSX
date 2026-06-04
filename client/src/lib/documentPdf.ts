@@ -3,7 +3,8 @@ import { toast } from "sonner";
 import type { Case } from "../../../drizzle/schema";
 
 // jsPDFは日本語フォントが標準で含まれないため、html2canvasベースで作成
-import html2canvas from "html2canvas";
+// Tailwind4のoklch色をサポートする html2canvas-pro を使用
+import html2canvas from "html2canvas-pro";
 
 function fmtDate(d: Date | null | undefined): string {
   if (!d) return "—";

@@ -266,3 +266,13 @@
 - [x] フロント: 取込に「カメラで撮影」を追加（capture属性でスマホカメラ起動）
 - [x] フロント: 立替者別経費レポート画面を追加（期間切替・KPI・立替者カード・区分マトリクス、管理者のみ）
 - [x] vitest追加（expense-aggregate.test.ts 16件）、型チェック OK、全177件PASS、本番経路E2E検証OK（残骸削除）、チェックポイント保存
+
+## v29 案件詳細のPDFダウンロードでoklchエラー修正
+
+- [x] 原因特定: html2canvas が Tailwind4 の oklch 色（継承CSS変数含む）を解釈できずエラー
+- [x] html2canvas を oklch 対応の html2canvas-pro に置き換え
+- [x] documentPdf.ts（見積書・完了報告書）のimportを差し替え
+- [x] PhotoLedger.tsx（写真台帳）のimportを差し替え
+- [x] 型チェックOK・本番ビルド成功・サーバー再起動
+- [x] 実ブラウザ検証: oklch継承要素を html2canvas-pro でエラーなく canvas 生成（696x406）
+- [x] 検証用ファイル削除・チェックポイント保存

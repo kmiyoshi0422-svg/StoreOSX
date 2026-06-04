@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { useMemo, useRef, useState } from "react";
 import { ArrowLeft, Download, Loader2 } from "lucide-react";
-import html2canvas from "html2canvas";
+import html2canvas from "html2canvas-pro";
 import jsPDF from "jspdf";
 import { toast } from "sonner";
 

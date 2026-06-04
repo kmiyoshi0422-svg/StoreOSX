@@ -58,6 +58,7 @@
     "express": "^4.21.2",
     "framer-motion": "^12.23.22",
     "html2canvas": "^1.4.1",
+    "html2canvas-pro": "^2.0.4",
     "input-otp": "^1.4.2",
     "jose": "6.1.0",
     "jpeg-js": "^0.4.4",
