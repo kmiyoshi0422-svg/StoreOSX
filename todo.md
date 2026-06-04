@@ -241,3 +241,14 @@
 - [x] 抽出ロジック（contentToText / stripCodeFences / extractFirstJsonObject / parseLlmJson）を shared/extract.ts の純粋関数に切り出し
 - [x] vitest追加（extract.test.ts 19件：コードフェンス/説明文混在/壊れたJSON/空応答/ネスト）
 - [x] 型チェック OK、全157件PASS、テスト残骸をDBから削除、チェックポイント保存
+
+## v27 PDF内の現況写真を自動抽出して保存
+
+- [x] Node専用環境での抽出方式を検証（pdfjs-dist で埋め込み画像取得 + jpeg-js でJPEGエンコード、実物PDFで4枚抽出確認）
+- [x] サーバー: server/_core/pdfImages.ts に extractPdfEmbeddedImages(buffer) を実装（pdfjs-dist+jpeg-js、200px未満除外・上限枚数・重複除去）
+- [x] サーバー: cases.extractPhotosFromPdf 手続きを追加（fileKey受取→画像抽出→storagePut→photos(現調)へ保存→保存結果返す）
+- [x] フロント: 案件登録後に自動で現況写真抽出を実行し、抽出枚数をトースト表示
+- [x] フロント: 抽出した現況写真をサムネイル一覧でプレビュー、各写真に削除ボタン（楽観的更新）
+- [x] 案件詳細の写真タブから閲覧できる（現調タイプで保存、E2E検証でlistByCase確認済）
+- [x] vitest追加（pdfImages.test.ts 4件：実物PDFで4枚抽出/最小サイズ除外/maxImages制限/画像なしPDF）
+- [x] 型チェック OK、全161件PASS、本番経路のE2E検証もOK（テスト残骸は自動削除）、チェックポイント保存

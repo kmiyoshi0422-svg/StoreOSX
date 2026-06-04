@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { useRef, useState } from "react";
-import { Upload, FileText, Loader2, CheckCircle2, Sparkles, ArrowRight, RotateCcw } from "lucide-react";
+import { Upload, FileText, Loader2, CheckCircle2, Sparkles, ArrowRight, RotateCcw, ImageIcon, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
@@ -49,16 +49,24 @@ export default function CasePdfImport() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [pdfName, setPdfName] = useState<string>("");
   const [pdfUrl, setPdfUrl] = useState<string>("");
+  const [pdfFileKey, setPdfFileKey] = useState<string>("");
   const [data, setData] = useState<Extracted | null>(null);
   const [createdId, setCreatedId] = useState<number | null>(null);
+  // PDFから抽出した現況写真（保存済）
+  const [extractedPhotos, setExtractedPhotos] = useState<{ id: number; url: string }[]>([]);
+  const [photoExtracting, setPhotoExtracting] = useState(false);
 
   const uploadMutation = trpc.cases.uploadPdf.useMutation();
   const extractMutation = trpc.cases.extractFromPdf.useMutation();
+  const extractPhotosMutation = trpc.cases.extractPhotosFromPdf.useMutation();
+  const deletePhotoMutation = trpc.photos.delete.useMutation();
   const createMutation = trpc.cases.create.useMutation({
     onSuccess: ({ id }) => {
       setCreatedId(id);
       toast.success("案件を登録しました");
       utils.cases.list.invalidate();
+      // 登録した案件に対して、同じPDFから現況写真を自動抽出
+      void runPhotoExtraction(id);
     },
     onError: (e) => toast.error(e.message),
   });
@@ -79,6 +87,7 @@ export default function CasePdfImport() {
         mimeType: "application/pdf",
       });
       setPdfUrl(url);
+      setPdfFileKey(fileKey);
       toast.info("PDFをアップロードしました。抽出を実行します...");
       const res = await extractMutation.mutateAsync({ fileKey });
       const ex = res.extracted as any;
@@ -134,11 +143,45 @@ export default function CasePdfImport() {
     });
   };
 
+  // 案件登録後に、同じPDFから現況写真を自動抽出・保存する
+  const runPhotoExtraction = async (caseId: number) => {
+    if (!pdfFileKey) return;
+    setPhotoExtracting(true);
+    try {
+      const res = await extractPhotosMutation.mutateAsync({ caseId, fileKey: pdfFileKey });
+      setExtractedPhotos(res.photos);
+      if (res.saved > 0) {
+        toast.success(`現況写真を ${res.saved} 枚取り込みました`);
+      } else {
+        toast.info("PDF内に現況写真は見つかりませんでした");
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? "現況写真の抽出に失敗しました");
+    } finally {
+      setPhotoExtracting(false);
+    }
+  };
+
+  const handleDeletePhoto = async (id: number) => {
+    // 楽観的にUIから即時除去
+    const prev = extractedPhotos;
+    setExtractedPhotos((list) => list.filter((p) => p.id !== id));
+    try {
+      await deletePhotoMutation.mutateAsync({ id });
+      if (createdId) utils.photos.listByCase.invalidate({ caseId: createdId });
+    } catch (e: any) {
+      setExtractedPhotos(prev);
+      toast.error(e?.message ?? "削除に失敗しました");
+    }
+  };
+
   const reset = () => {
     setData(null);
     setPdfName("");
     setPdfUrl("");
+    setPdfFileKey("");
     setCreatedId(null);
+    setExtractedPhotos([]);
   };
 
   const loading = uploadMutation.isPending || extractMutation.isPending;
@@ -336,21 +379,61 @@ export default function CasePdfImport() {
 
       {createdId && (
         <Card className="border-emerald-200 bg-emerald-50/40">
-          <CardContent className="p-6 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <CheckCircle2 className="h-6 w-6 text-emerald-600" />
-              <div>
-                <p className="font-medium text-sm">案件を登録しました</p>
-                <p className="text-xs text-muted-foreground">PDFから抽出した内容で案件 #{createdId} が作成されました</p>
+          <CardContent className="p-6 space-y-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+                <div>
+                  <p className="font-medium text-sm">案件を登録しました</p>
+                  <p className="text-xs text-muted-foreground">PDFから抽出した内容で案件 #{createdId} が作成されました</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={reset}>
+                  続けて別のPDFを登録
+                </Button>
+                <Button onClick={() => setLocation(`/cases/${createdId}`)}>
+                  案件詳細へ
+                </Button>
               </div>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={reset}>
-                続けて別のPDFを登録
-              </Button>
-              <Button onClick={() => setLocation(`/cases/${createdId}`)}>
-                案件詳細へ
-              </Button>
+
+            {/* PDFから自動抽出した現況写真 */}
+            <div className="rounded-lg border bg-white/70 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <ImageIcon className="h-4 w-4 text-emerald-600" />
+                <p className="text-sm font-medium">PDFから取り込んだ現況写真（現調）</p>
+                {photoExtracting && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+              </div>
+
+              {photoExtracting ? (
+                <p className="text-xs text-muted-foreground">PDFから現況写真を抽出しています...</p>
+              ) : extractedPhotos.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  PDF内に現況写真は見つかりませんでした。案件詳細の「写真」タブから手動で追加できます。
+                </p>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    {extractedPhotos.length} 枚を現調写真として保存しました。不要なものはゴミ箱ボタンで削除できます。
+                  </p>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                    {extractedPhotos.map((p) => (
+                      <div key={p.id} className="relative group aspect-square overflow-hidden rounded-md border bg-muted">
+                        <img src={p.url} alt="現況写真" className="h-full w-full object-cover" loading="lazy" />
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePhoto(p.id)}
+                          className="absolute top-1 right-1 rounded-md bg-black/55 p-1.5 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                          aria-label="写真を削除"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </CardContent>
         </Card>

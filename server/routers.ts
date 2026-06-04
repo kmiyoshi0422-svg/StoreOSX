@@ -57,6 +57,7 @@ import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_
 import { BUDGET_RATIO, calcBudget } from "../shared/budget";
 import { calcCaseProfit } from "../shared/profit";
 import { contentToText, parseLlmJson } from "../shared/extract";
+import { extractPdfEmbeddedImages } from "./_core/pdfImages";
 import { scoreCandidates, topMatches, pickBestMatch } from "../shared/estimate-matcher";
 import { pickLatestEstimate } from "../shared/estimate-aggregator";
 import { invokeLLM } from "./_core/llm";
@@ -567,6 +568,67 @@ export const appRouter = router({
           // 構造化抽出に失敗した場合のフラグ（フロントで注意喚起に利用）
           parseFailed,
         };
+      }),
+
+    // アップロード済PDFから埋め込み現況写真を抽出し、案件の写真（現調）として保存
+    extractPhotosFromPdf: protectedProcedure
+      .input(
+        z.object({
+          caseId: z.number(),
+          fileKey: z.string().min(1),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        // 署名付きURLでPDFバイナリを取得
+        const key = input.fileKey.replace(/^\/manus-storage\//, "");
+        const signedUrl = await storageGetSignedUrl(key);
+        const resp = await fetch(signedUrl);
+        if (!resp.ok) {
+          throw new Error("PDFの取得に失敗しました");
+        }
+        const pdfBuffer = Buffer.from(await resp.arrayBuffer());
+
+        // 埋め込み画像を抽出（小さすぎるロゴ等は除外）
+        let images: Awaited<ReturnType<typeof extractPdfEmbeddedImages>> = [];
+        try {
+          images = await extractPdfEmbeddedImages(pdfBuffer, {
+            minWidth: 200,
+            minHeight: 200,
+            maxImages: 30,
+            quality: 82,
+          });
+        } catch {
+          // 抽出ライブラリでの失敗時は0枚として返す（致命的エラーにしない）
+          images = [];
+        }
+
+        if (images.length === 0) {
+          return { saved: 0, photos: [] as { id: number; url: string }[] };
+        }
+
+        // ストレージへ保存し、photos テーブルへ現調として登録
+        const saved: { id: number; url: string }[] = [];
+        let order = 0;
+        for (const img of images) {
+          const pkey = `case-${input.caseId}/pdf-current-${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2, 8)}.jpg`;
+          const { url, key: fileKey } = await storagePut(pkey, img.data, "image/jpeg");
+          const id = await createPhoto({
+            caseId: input.caseId,
+            fileKey,
+            fileUrl: url,
+            photoType: "現調",
+            workCategory: null,
+            workItem: null,
+            memo: "依頼PDFから自動取り込み",
+            orderNo: order++,
+            uploadedBy: ctx.user.id,
+          });
+          saved.push({ id, url });
+        }
+
+        return { saved: saved.length, photos: saved };
       }),
 
     // CSV一括インポート
