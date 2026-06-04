@@ -252,3 +252,17 @@
 - [x] 案件詳細の写真タブから閲覧できる（現調タイプで保存、E2E検証でlistByCase確認済）
 - [x] vitest追加（pdfImages.test.ts 4件：実物PDFで4枚抽出/最小サイズ除外/maxImages制限/画像なしPDF）
 - [x] 型チェック OK、全161件PASS、本番経路のE2E検証もOK（テスト残骸は自動削除）、チェックポイント保存
+
+## v28 経費の案件/全体の入れ分け・費目拡張・立替者別集計・カメラ取込
+
+- [x] expensesスキーマに scope（"案件" | "全体"）を追加（デフォルト"案件"）
+- [x] category を拡張：材料費/外注費/交通費/消耗品/その他 に加え 車両費/宿泊費/接待交際費 を追加
+- [x] マイグレーション生成→SQL適用（scope列ADD＋category enum拡張、既存データは scope="案件" 互換）
+- [x] db: createExpenseでscope保存、listExpensesForAggregation、syncCaseActualCostをscope=案件に限定
+- [x] サーバー: expenses.saveGeneral（全体経費保存、案件不要、scope=全体固定）手続きを追加
+- [x] サーバー: expenses.byUser（期間・案件/全体内訳・区分内訳つき、立替者別合計、管理者のみ）手続きを追加
+- [x] 集計ロジックを shared/expense-aggregate.ts の純粋関数に切り出し（aggregateExpensesByUser/isWithinRange）
+- [x] フロント: 経費取込で各行を「案件 / 全体」で切替、全体は案件未選択でも登録可（bulkSave/saveGeneralに振り分け）
+- [x] フロント: 取込に「カメラで撮影」を追加（capture属性でスマホカメラ起動）
+- [x] フロント: 立替者別経費レポート画面を追加（期間切替・KPI・立替者カード・区分マトリクス、管理者のみ）
+- [x] vitest追加（expense-aggregate.test.ts 16件）、型チェック OK、全177件PASS、本番経路E2E検証OK（残骸削除）、チェックポイント保存

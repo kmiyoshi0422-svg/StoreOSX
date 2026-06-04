@@ -41,6 +41,7 @@ const menuItems: MenuItem[] = [
   { icon: Briefcase, label: "協力会社", path: "/partners" },
   { icon: Users, label: "協力会社取込", path: "/partners/import" },
   { icon: Receipt, label: "経費取込", path: "/expenses/import" },
+  { icon: Wallet, label: "立替者別経費", path: "/expenses/by-user", adminOnly: true },
   { icon: Wallet, label: "予実管理", path: "/budget", adminOnly: true },
   { icon: BarChart3, label: "月次レポート", path: "/reports/monthly", adminOnly: true },
   { icon: TrendingUp, label: "実績レポート", path: "/reports", adminOnly: true },

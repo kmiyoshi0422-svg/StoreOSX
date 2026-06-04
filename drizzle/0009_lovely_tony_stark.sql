@@ -1,0 +1,2 @@
+ALTER TABLE `expenses` MODIFY COLUMN `category` enum('材料費','外注費','交通費','消耗品','車両費','宿泊費','接待交際費','その他') NOT NULL DEFAULT 'その他';--> statement-breakpoint
+ALTER TABLE `expenses` ADD `scope` enum('案件','全体') DEFAULT '案件' NOT NULL;

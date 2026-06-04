@@ -257,7 +257,8 @@ export type InsertTeamSetting = typeof teamSettings.$inferInsert;
  */
 export const expenses = mysqlTable("expenses", {
   id: int("id").autoincrement().primaryKey(),
-  caseId: int("caseId"), // null可（マッチ前は未確定）
+  caseId: int("caseId"), // null可（全体経費・マッチ前は未確定）
+  scope: mysqlEnum("scope", ["案件", "全体"]).default("案件").notNull(), // 案件紐付か全体共通経費か
   fileKey: varchar("fileKey", { length: 512 }),
   fileUrl: varchar("fileUrl", { length: 512 }),
   fileName: varchar("fileName", { length: 255 }),
@@ -271,6 +272,9 @@ export const expenses = mysqlTable("expenses", {
     "外注費",
     "交通費",
     "消耗品",
+    "車両費",
+    "宿泊費",
+    "接待交際費",
     "その他",
   ]).default("その他").notNull(),
   note: text("note"),

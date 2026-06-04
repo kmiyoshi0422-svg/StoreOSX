@@ -23,6 +23,9 @@ import {
   Save,
   AlertCircle,
   Receipt,
+  Camera,
+  Building2,
+  FolderKanban,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -35,8 +38,27 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-type Category = "材料費" | "外注費" | "交通費" | "消耗品" | "その他";
-const CATEGORIES: Category[] = ["材料費", "外注費", "交通費", "消耗品", "その他"];
+type Category =
+  | "材料費"
+  | "外注費"
+  | "交通費"
+  | "消耗品"
+  | "車両費"
+  | "宿泊費"
+  | "接待交際費"
+  | "その他";
+const CATEGORIES: Category[] = [
+  "材料費",
+  "外注費",
+  "交通費",
+  "消耗品",
+  "車両費",
+  "宿泊費",
+  "接待交際費",
+  "その他",
+];
+
+type Scope = "案件" | "全体";
 
 type Row = {
   localId: string;
@@ -45,6 +67,7 @@ type Row = {
   fileUrl: string;
   mimeType: string;
   status: "uploading" | "extracting" | "ready" | "saved" | "error";
+  scope: Scope;
   caseId: number | null;
   vendorName: string;
   amount: number | null;
@@ -60,6 +83,7 @@ type Row = {
 
 export default function ExpenseImport() {
   const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const utils = trpc.useUtils();
@@ -67,6 +91,7 @@ export default function ExpenseImport() {
   const uploadMutation = trpc.expenses.uploadFile.useMutation();
   const extractMutation = trpc.expenses.extractAndMatch.useMutation();
   const bulkSaveMutation = trpc.expenses.bulkSave.useMutation();
+  const saveGeneralMutation = trpc.expenses.saveGeneral.useMutation();
   const allCases = trpc.cases.list.useQuery();
 
   async function handleFiles(files: FileList) {
@@ -75,11 +100,12 @@ export default function ExpenseImport() {
       const localId = Math.random().toString(36).slice(2);
       newRows.push({
         localId,
-        fileName: file.name,
+        fileName: file.name || `撮影_${new Date().toLocaleString("ja-JP")}.jpg`,
         fileKey: "",
         fileUrl: "",
         mimeType: file.type || "application/pdf",
         status: "uploading",
+        scope: "案件",
         caseId: null,
         vendorName: "",
         amount: null,
@@ -100,8 +126,9 @@ export default function ExpenseImport() {
       const localId = newRows[i].localId;
       try {
         const base64 = await fileToBase64(file);
+        const fname = file.name || `${localId}.jpg`;
         const up = await uploadMutation.mutateAsync({
-          fileName: file.name,
+          fileName: fname,
           fileBase64: base64,
           mimeType: file.type || "application/pdf",
         });
@@ -120,16 +147,20 @@ export default function ExpenseImport() {
         const ext = await extractMutation.mutateAsync({
           fileKey: up.fileKey,
           fileUrl: up.url,
-          fileName: file.name,
+          fileName: fname,
           mimeType: file.type || "application/pdf",
         });
+        // 案件マッチが無い場合は全体経費を初期選択にする
+        const matchedCaseId = ext.autoMatchCaseId ?? null;
+        const initialScope: Scope = matchedCaseId ? "案件" : "案件";
         setRows((prev) =>
           prev.map((r) =>
             r.localId === localId
               ? {
                   ...r,
                   status: "ready",
-                  caseId: ext.autoMatchCaseId ?? null,
+                  scope: initialScope,
+                  caseId: matchedCaseId,
                   vendorName: ext.extracted.vendorName ?? "",
                   amount: ext.extracted.amount ?? null,
                   taxAmount: ext.extracted.taxAmount ?? null,
@@ -147,7 +178,7 @@ export default function ExpenseImport() {
           ),
         );
       } catch (e: any) {
-        toast.error(`${file.name}: ${e?.message || "失敗"}`);
+        toast.error(`${file.name || "撮影画像"}: ${e?.message || "失敗"}`);
         setRows((prev) =>
           prev.map((r) =>
             r.localId === localId ? { ...r, status: "error" } : r,
@@ -166,31 +197,60 @@ export default function ExpenseImport() {
     setRows((prev) => prev.filter((r) => r.localId !== id));
   }
 
+  // 登録可能な行: 全体は案件不要、案件は紐付け案件が必要。いずれも金額>0が必要。
   const readyRows = rows.filter(
-    (r) => r.status === "ready" && r.caseId && r.amount && r.amount > 0,
+    (r) =>
+      r.status === "ready" &&
+      r.amount != null &&
+      r.amount > 0 &&
+      (r.scope === "全体" || (r.scope === "案件" && !!r.caseId)),
   );
+  const caseRows = readyRows.filter((r) => r.scope === "案件");
+  const generalRows = readyRows.filter((r) => r.scope === "全体");
+
   async function handleBulkSave() {
     if (readyRows.length === 0) {
-      toast.error("案件と金額が確定した行がありません");
+      toast.error("登録できる行がありません（金額と、案件経費は紐付け案件が必要です）");
       return;
     }
     try {
-      const res = await bulkSaveMutation.mutateAsync({
-        items: readyRows.map((r) => ({
-          caseId: r.caseId!,
-          fileKey: r.fileKey,
-          fileUrl: r.fileUrl,
-          fileName: r.fileName,
-          mimeType: r.mimeType,
-          vendorName: r.vendorName || null,
-          amount: r.amount!,
-          taxAmount: r.taxAmount ?? null,
-          expenseDate: r.expenseDate || null,
-          category: r.category,
-          note: r.note || null,
-        })),
-      });
-      toast.success(`${res.count}件の経費を登録しました`);
+      let saved = 0;
+      if (caseRows.length > 0) {
+        const res = await bulkSaveMutation.mutateAsync({
+          items: caseRows.map((r) => ({
+            caseId: r.caseId!,
+            fileKey: r.fileKey,
+            fileUrl: r.fileUrl,
+            fileName: r.fileName,
+            mimeType: r.mimeType,
+            vendorName: r.vendorName || null,
+            amount: r.amount!,
+            taxAmount: r.taxAmount ?? null,
+            expenseDate: r.expenseDate || null,
+            category: r.category,
+            note: r.note || null,
+          })),
+        });
+        saved += res.count;
+      }
+      if (generalRows.length > 0) {
+        const res = await saveGeneralMutation.mutateAsync({
+          items: generalRows.map((r) => ({
+            fileKey: r.fileKey,
+            fileUrl: r.fileUrl,
+            fileName: r.fileName,
+            mimeType: r.mimeType,
+            vendorName: r.vendorName || null,
+            amount: r.amount!,
+            taxAmount: r.taxAmount ?? null,
+            expenseDate: r.expenseDate || null,
+            category: r.category,
+            note: r.note || null,
+          })),
+        });
+        saved += res.count;
+      }
+      toast.success(`${saved}件の経費を登録しました（案件${caseRows.length}・全体${generalRows.length}）`);
       utils.expenses.list.invalidate();
       utils.cases.list.invalidate();
       setRows((prev) =>
@@ -206,6 +266,7 @@ export default function ExpenseImport() {
   }
 
   const cases = allCases.data ?? [];
+  const isSaving = bulkSaveMutation.isPending || saveGeneralMutation.isPending;
 
   return (
     <div className="space-y-5">
@@ -222,21 +283,34 @@ export default function ExpenseImport() {
           }
         }}
       />
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            handleFiles(e.target.files);
+            e.target.value = "";
+          }
+        }}
+      />
       <PageHeader
         eyebrow="Expense Import"
         title="経費取込"
         icon={<Receipt className="h-7 w-7 text-primary" />}
-        description="領収書・請求書（PDF / 画像）をドラッグ＆ドロップすると、AI が金額・支払先・関連案件を抽出し、案件の実績原価に自動反映します。"
+        description="領収書・請求書（PDF / 画像）をアップロードまたはカメラ撮影すると、AI が金額・支払先・関連案件を抽出します。各経費は「案件」か「全体（共通）」を選んで登録できます。"
         actions={
           <>
+            <Button onClick={() => cameraRef.current?.click()} variant="outline">
+              <Camera className="h-4 w-4 mr-2" /> カメラで撮影
+            </Button>
             <Button onClick={() => fileRef.current?.click()} variant="outline">
               <Upload className="h-4 w-4 mr-2" /> ファイル追加
             </Button>
-            <Button
-              onClick={handleBulkSave}
-              disabled={readyRows.length === 0 || bulkSaveMutation.isPending}
-            >
-              {bulkSaveMutation.isPending ? (
+            <Button onClick={handleBulkSave} disabled={readyRows.length === 0 || isSaving}>
+              {isSaving ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
                 <Save className="h-4 w-4 mr-2" />
@@ -275,10 +349,7 @@ export default function ExpenseImport() {
           if (dropped && dropped.length > 0) {
             const accepted: File[] = [];
             for (const f of Array.from(dropped)) {
-              if (
-                f.type === "application/pdf" ||
-                f.type.startsWith("image/")
-              ) {
+              if (f.type === "application/pdf" || f.type.startsWith("image/")) {
                 accepted.push(f);
               }
             }
@@ -311,12 +382,10 @@ export default function ExpenseImport() {
             <Upload className="h-7 w-7" />
           </div>
           <div className="font-semibold text-base">
-            {isDragging
-              ? "ここにドロップしてください"
-              : "ファイルをドラッグ＆ドロップ"}
+            {isDragging ? "ここにドロップしてください" : "ファイルをドラッグ＆ドロップ"}
           </div>
           <div className="text-sm text-muted-foreground mt-1">
-            またはクリックして選択・PDF / 画像を複数同時可
+            またはクリックして選択・PDF / 画像を複数同時可。スマホは「カメラで撮影」も使えます。
           </div>
         </button>
       </div>
@@ -327,7 +396,7 @@ export default function ExpenseImport() {
             <Sparkles className="h-10 w-10 opacity-60 text-muted-foreground" />
             <div className="font-medium">まだファイルがありません</div>
             <div className="text-sm text-muted-foreground max-w-sm">
-              上のエリアにドロップするか、「ファイル追加」ボタンから投入してください。複数ファイル同時可、AI が順次解析します。
+              上のエリアにドロップするか、「ファイル追加」「カメラで撮影」ボタンから投入してください。AI が順次解析します。
             </div>
           </CardContent>
         </Card>
@@ -377,161 +446,188 @@ export default function ExpenseImport() {
                       </Badge>
                     )}
                   </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => removeRow(r.localId)}
-                  >
+                  <Button size="sm" variant="ghost" onClick={() => removeRow(r.localId)}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
 
                 {r.status === "ready" && (
-                  <div className="grid md:grid-cols-2 gap-4 text-sm">
-                    <div className="space-y-3">
-                      <div>
-                        <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
-                          AI 抽出情報
-                        </Label>
-                        <div className="rounded-md border bg-muted/40 p-3 space-y-1 text-sm">
-                          <div className="flex justify-between gap-2">
-                            <span className="text-muted-foreground">支払先</span>
-                            <span className="font-medium truncate">{r.vendorName || "—"}</span>
-                          </div>
-                          <div className="flex justify-between gap-2">
-                            <span className="text-muted-foreground">依頼番号</span>
-                            <span className="font-mono">{r.extractedRequestNumber ?? "—"}</span>
-                          </div>
-                          <div className="flex justify-between gap-2">
-                            <span className="text-muted-foreground">店舗</span>
-                            <span className="truncate">{r.extractedStoreName ?? "—"}</span>
-                          </div>
-                          {r.extractedCaseHint && (
-                            <div className="flex justify-between gap-2">
-                              <span className="text-muted-foreground">ヒント</span>
-                              <span className="truncate">{r.extractedCaseHint}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div>
-                        <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
-                          紐付け案件
-                        </Label>
-                        <Select
-                          value={r.caseId ? String(r.caseId) : ""}
-                          onValueChange={(v) =>
-                            updateRow(r.localId, { caseId: Number(v) })
-                          }
+                  <div className="space-y-3 text-sm">
+                    {/* 案件/全体の入れ分けトグル */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                        経費の種別
+                      </Label>
+                      <div className="inline-flex rounded-md border p-0.5 bg-muted/40">
+                        <button
+                          type="button"
+                          onClick={() => updateRow(r.localId, { scope: "案件" })}
+                          className={`px-3 py-1 rounded text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${
+                            r.scope === "案件"
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
                         >
-                          <SelectTrigger className="h-8">
-                            <SelectValue placeholder="案件を選択" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {r.matches.map((m) => (
-                              <SelectItem
-                                key={m.caseId}
-                                value={String(m.caseId)}
-                              >
-                                {m.requestNumber}・{m.storeName}（一致度{m.score}）
-                              </SelectItem>
-                            ))}
-                            {cases
-                              .filter(
-                                (c) =>
-                                  !r.matches.find((m) => m.caseId === c.id),
-                              )
-                              .map((c) => (
-                                <SelectItem key={c.id} value={String(c.id)}>
-                                  {c.requestNumber}・{c.storeName}
+                          <FolderKanban className="h-3.5 w-3.5" />
+                          案件経費
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateRow(r.localId, { scope: "全体" })}
+                          className={`px-3 py-1 rounded text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${
+                            r.scope === "全体"
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <Building2 className="h-3.5 w-3.5" />
+                          全体（共通）
+                        </button>
+                      </div>
+                      {r.scope === "全体" && (
+                        <span className="text-xs text-muted-foreground">
+                          案件に紐付けず、全体共通経費として登録します。
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-3">
+                        <div>
+                          <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
+                            AI 抽出情報
+                          </Label>
+                          <div className="rounded-md border bg-muted/40 p-3 space-y-1 text-sm">
+                            <div className="flex justify-between gap-2">
+                              <span className="text-muted-foreground">支払先</span>
+                              <span className="font-medium truncate">{r.vendorName || "—"}</span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-muted-foreground">依頼番号</span>
+                              <span className="font-mono">{r.extractedRequestNumber ?? "—"}</span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-muted-foreground">店舗</span>
+                              <span className="truncate">{r.extractedStoreName ?? "—"}</span>
+                            </div>
+                            {r.extractedCaseHint && (
+                              <div className="flex justify-between gap-2">
+                                <span className="text-muted-foreground">ヒント</span>
+                                <span className="truncate">{r.extractedCaseHint}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {r.scope === "案件" ? (
+                          <div>
+                            <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
+                              紐付け案件
+                            </Label>
+                            <Select
+                              value={r.caseId ? String(r.caseId) : ""}
+                              onValueChange={(v) => updateRow(r.localId, { caseId: Number(v) })}
+                            >
+                              <SelectTrigger className="h-8">
+                                <SelectValue placeholder="案件を選択" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {r.matches.map((m) => (
+                                  <SelectItem key={m.caseId} value={String(m.caseId)}>
+                                    {m.requestNumber}・{m.storeName}（一致度{m.score}）
+                                  </SelectItem>
+                                ))}
+                                {cases
+                                  .filter((c) => !r.matches.find((m) => m.caseId === c.id))
+                                  .map((c) => (
+                                    <SelectItem key={c.id} value={String(c.id)}>
+                                      {c.requestNumber}・{c.storeName}
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ) : (
+                          <div className="rounded-md border border-dashed bg-muted/20 p-3 text-xs text-muted-foreground flex items-center gap-2">
+                            <Building2 className="h-4 w-4 shrink-0" />
+                            全体共通経費として登録します（特定の案件原価には反映されません）。
+                          </div>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
+                            金額（税込・円）
+                          </Label>
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            value={r.amount ?? ""}
+                            onChange={(e) =>
+                              updateRow(r.localId, {
+                                amount: e.target.value ? Number(e.target.value) : null,
+                              })
+                            }
+                            className="h-9 font-mono text-right"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
+                            支払日
+                          </Label>
+                          <Input
+                            type="date"
+                            value={r.expenseDate}
+                            onChange={(e) => updateRow(r.localId, { expenseDate: e.target.value })}
+                            className="h-9"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
+                            区分
+                          </Label>
+                          <Select
+                            value={r.category}
+                            onValueChange={(v) => updateRow(r.localId, { category: v as Category })}
+                          >
+                            <SelectTrigger className="h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {CATEGORIES.map((c) => (
+                                <SelectItem key={c} value={c}>
+                                  {c}
                                 </SelectItem>
                               ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
-                          金額（税込・円）
-                        </Label>
-                        <Input
-                          type="number"
-                          inputMode="numeric"
-                          value={r.amount ?? ""}
-                          onChange={(e) =>
-                            updateRow(r.localId, {
-                              amount: e.target.value
-                                ? Number(e.target.value)
-                                : null,
-                            })
-                          }
-                          className="h-9 font-mono text-right"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
-                          支払日
-                        </Label>
-                        <Input
-                          type="date"
-                          value={r.expenseDate}
-                          onChange={(e) =>
-                            updateRow(r.localId, {
-                              expenseDate: e.target.value,
-                            })
-                          }
-                          className="h-9"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">区分</Label>
-                        <Select
-                          value={r.category}
-                          onValueChange={(v) =>
-                            updateRow(r.localId, { category: v as Category })
-                          }
-                        >
-                          <SelectTrigger className="h-9">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {CATEGORIES.map((c) => (
-                              <SelectItem key={c} value={c}>
-                                {c}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
-                          消費税
-                        </Label>
-                        <Input
-                          type="number"
-                          inputMode="numeric"
-                          value={r.taxAmount ?? ""}
-                          onChange={(e) =>
-                            updateRow(r.localId, {
-                              taxAmount: e.target.value
-                                ? Number(e.target.value)
-                                : null,
-                            })
-                          }
-                          className="h-9 font-mono text-right"
-                        />
-                      </div>
-                      <div className="col-span-2">
-                        <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">摘要</Label>
-                        <Input
-                          value={r.note}
-                          onChange={(e) =>
-                            updateRow(r.localId, { note: e.target.value })
-                          }
-                          className="h-9"
-                          placeholder="メモ（任意）"
-                        />
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
+                            消費税
+                          </Label>
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            value={r.taxAmount ?? ""}
+                            onChange={(e) =>
+                              updateRow(r.localId, {
+                                taxAmount: e.target.value ? Number(e.target.value) : null,
+                              })
+                            }
+                            className="h-9 font-mono text-right"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
+                            摘要
+                          </Label>
+                          <Input
+                            value={r.note}
+                            onChange={(e) => updateRow(r.localId, { note: e.target.value })}
+                            className="h-9"
+                            placeholder="メモ（任意）"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -542,8 +638,9 @@ export default function ExpenseImport() {
         </Card>
       )}
 
-      <div className="text-xs text-muted-foreground border-t border-border/60 pt-3">
-        ・ 登録すると、紐付けた案件の実績原価が自動で再計算されます（actualCost = 経費合計）。
+      <div className="text-xs text-muted-foreground border-t border-border/60 pt-3 space-y-1">
+        <div>・ 案件経費は紐付けた案件の実績原価に自動反映されます。全体経費は案件原価には含まれません。</div>
+        <div>・ 立替者（アップロードした人）ごとの使用額は「立替者別経費」レポートで確認できます。</div>
       </div>
     </div>
   );

@@ -464,8 +464,42 @@ export async function getExpenseById(id: number) {
 export async function syncCaseActualCost(caseId: number) {
   const db = await getDb();
   if (!db) return;
-  const expRows = await db.select().from(expenses).where(eq(expenses.caseId, caseId));
+  // 案件スコープの経費のみを実績原価に反映（全体共通経費は含めない）
+  const expRows = await db
+    .select()
+    .from(expenses)
+    .where(and(eq(expenses.caseId, caseId), eq(expenses.scope, "案件")));
   const expenseTotal = expRows.reduce((s, e) => s + (e.amount ?? 0), 0);
   // 経費合計を actualCost にセット（請求書ベースの実績）
   await db.update(cases).set({ actualCost: expenseTotal }).where(eq(cases.id, caseId));
+}
+
+/** 全体（案件に紐づかない共通）経費の一覧 */
+export async function listGeneralExpenses() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select()
+    .from(expenses)
+    .where(eq(expenses.scope, "全体"))
+    .orderBy(desc(expenses.expenseDate), desc(expenses.id));
+}
+
+/**
+ * 期間内の経費を立替者(uploadedBy)別に集計する。
+ * fromMs/toMs は expenseDate を基準（未設定の経費は createdAt で代替）。
+ * 返却: 立替者ごとの合計・件数・区分別内訳・案件/全体別内訳。
+ */
+export async function listExpensesForAggregation(fromMs?: number, toMs?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select().from(expenses);
+  return rows.filter((e) => {
+    const basis = e.expenseDate ?? e.createdAt;
+    const t = basis ? new Date(basis).getTime() : null;
+    if (t == null) return fromMs == null && toMs == null;
+    if (fromMs != null && t < fromMs) return false;
+    if (toMs != null && t > toMs) return false;
+    return true;
+  });
 }

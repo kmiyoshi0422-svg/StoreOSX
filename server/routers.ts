@@ -27,6 +27,8 @@ import {
   listAllExpenses,
   listExpensesByCase,
   listUnmatchedExpenses,
+  listGeneralExpenses,
+  listExpensesForAggregation,
   createExpense,
   updateExpense,
   deleteExpense,
@@ -56,6 +58,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { BUDGET_RATIO, calcBudget } from "../shared/budget";
 import { calcCaseProfit } from "../shared/profit";
+import { aggregateExpensesByUser } from "../shared/expense-aggregate";
 import { contentToText, parseLlmJson } from "../shared/extract";
 import { extractPdfEmbeddedImages } from "./_core/pdfImages";
 import { scoreCandidates, topMatches, pickBestMatch } from "../shared/estimate-matcher";
@@ -66,6 +69,18 @@ import { ENV } from "./_core/env";
 // ============================================================
 // Zod schemas
 // ============================================================
+// 経費区分（v28: 車両費/宿泊費/接待交際費を追加）
+const EXPENSE_CATEGORY = z.enum([
+  "材料費",
+  "外注費",
+  "交通費",
+  "消耗品",
+  "車両費",
+  "宿泊費",
+  "接待交際費",
+  "その他",
+]);
+
 const caseInputSchema = z.object({
   requestNumber: z.string().min(1),
   brand: z.enum(["ほっともっと", "やよい軒", "その他"]).default("ほっともっと"),
@@ -1731,7 +1746,7 @@ export const appRouter = router({
         const userContent: any[] = [
           {
             type: "text",
-            text: `この経費書類（領収書/請求書）から以下を抽出しJSONで返してください: vendorName(支払先), amount(税込合計、整数円), taxAmount(消費税、不明ならnull), expenseDate(YYYY-MM-DD、不明ならnull), category(材料費|外注費|交通費|消耗品|その他のいずれか), requestNumber(関連する依頼番号、例284909-1。なければnull), storeName(関連店舗名、なければnull), caseHint(案件名や工事内容のヒント、なければnull), note(短い摘要)。`,
+            text: `この経費書類（領収書/請求書）から以下を抽出しJSONで返してください: vendorName(支払先), amount(税込合計、整数円), taxAmount(消費税、不明ならnull), expenseDate(YYYY-MM-DD、不明ならnull), category(材料費|外注費|交通費|消耗品|車両費|宿泊費|接待交際費|その他のいずれか), requestNumber(関連する依頼番号、例284909-1。なければnull), storeName(関連店舗名、なければnull), caseHint(案件名や工事内容のヒント、なければnull), note(短い摘要)。`,
           },
         ];
         if (isImage) {
@@ -1810,7 +1825,7 @@ export const appRouter = router({
             amount: parsed.amount ?? null,
             taxAmount: parsed.taxAmount ?? null,
             expenseDate: parsed.expenseDate ?? null,
-            category: ["材料費", "外注費", "交通費", "消耗品", "その他"].includes(parsed.category)
+            category: EXPENSE_CATEGORY.options.includes(parsed.category)
               ? parsed.category
               : "その他",
             note: parsed.note ?? null,
@@ -1837,7 +1852,7 @@ export const appRouter = router({
               amount: z.number().int(),
               taxAmount: z.number().int().nullish(),
               expenseDate: z.string().nullish(), // YYYY-MM-DD
-              category: z.enum(["材料費", "外注費", "交通費", "消耗品", "その他"]).default("その他"),
+              category: EXPENSE_CATEGORY.default("その他"),
               note: z.string().nullish(),
             }),
           ),
@@ -1849,6 +1864,7 @@ export const appRouter = router({
         for (const item of input.items) {
           const id = await createExpense({
             caseId: item.caseId,
+            scope: "案件",
             fileKey: item.fileKey ?? null,
             fileUrl: item.fileUrl ?? null,
             fileName: item.fileName ?? null,
@@ -1869,6 +1885,65 @@ export const appRouter = router({
         }
         return { count: ids.length, ids };
       }),
+    // 全体（案件に紐づかない共通）経費を保存。案件選択不要。
+    saveGeneral: protectedProcedure
+      .input(
+        z.object({
+          items: z.array(
+            z.object({
+              fileKey: z.string().nullish(),
+              fileUrl: z.string().nullish(),
+              fileName: z.string().nullish(),
+              mimeType: z.string().nullish(),
+              vendorName: z.string().nullish(),
+              amount: z.number().int(),
+              taxAmount: z.number().int().nullish(),
+              expenseDate: z.string().nullish(),
+              category: EXPENSE_CATEGORY.default("その他"),
+              note: z.string().nullish(),
+            }),
+          ),
+        }),
+      )
+      .mutation(async ({ input, ctx }) => {
+        const ids: number[] = [];
+        for (const item of input.items) {
+          const id = await createExpense({
+            caseId: null,
+            scope: "全体",
+            fileKey: item.fileKey ?? null,
+            fileUrl: item.fileUrl ?? null,
+            fileName: item.fileName ?? null,
+            mimeType: item.mimeType ?? null,
+            vendorName: item.vendorName ?? null,
+            amount: item.amount,
+            taxAmount: item.taxAmount ?? null,
+            expenseDate: item.expenseDate ? new Date(item.expenseDate) : null,
+            category: item.category,
+            note: item.note ?? null,
+            uploadedBy: ctx.user.id,
+          });
+          ids.push(id);
+        }
+        return { count: ids.length, ids };
+      }),
+    // 立替者(uploadedBy)別の集計。期間、区分内訳、案件/全体内訳を返す。管理者のみ。
+    byUser: adminProcedure
+      .input(
+        z
+          .object({ fromMs: z.number().int().nullish(), toMs: z.number().int().nullish() })
+          .optional(),
+      )
+      .query(async ({ input }) => {
+        const rows = await listExpensesForAggregation(
+          input?.fromMs ?? undefined,
+          input?.toMs ?? undefined,
+        );
+        const users = await getAllUsers();
+        const userName = new Map<number, string>();
+        for (const u of users) userName.set(u.id, u.name ?? `ID:${u.id}`);
+        return aggregateExpensesByUser(rows, userName);
+      }),
     update: protectedProcedure
       .input(
         z.object({
@@ -1879,7 +1954,7 @@ export const appRouter = router({
             amount: z.number().int().optional(),
             taxAmount: z.number().int().nullish(),
             expenseDate: z.string().nullish(),
-            category: z.enum(["材料費", "外注費", "交通費", "消耗品", "その他"]).optional(),
+            category: EXPENSE_CATEGORY.optional(),
             note: z.string().nullish(),
           }),
         }),
