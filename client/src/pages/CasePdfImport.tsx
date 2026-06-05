@@ -9,6 +9,7 @@ import { useRef, useState } from "react";
 import { Upload, FileText, Loader2, CheckCircle2, Sparkles, ArrowRight, RotateCcw, ImageIcon, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
+import { parseAmount } from "@shared/extract";
 
 type Extracted = {
   requestNumber: string;
@@ -32,6 +33,9 @@ type Extracted = {
   contractorPic: string;
   contractorPhone: string;
   urgency: "S" | "A" | "B" | "C";
+  // 見積金額（円）。手入力・AI抽出いずれも文字列で保持し、登録時に数値化する。
+  plenusQuoteAmount: string; // プレナス出し見積額（売上/請求額）
+  estimatedCost: string; // 協力業者への実行（指値）見積額（原価）
 };
 
 function fileToBase64(file: File): Promise<string> {
@@ -94,6 +98,8 @@ export default function CasePdfImport() {
       setData({
         ...ex,
         requestDate: ex.requestDate ? new Date(ex.requestDate) : null,
+        plenusQuoteAmount: ex.plenusQuoteAmount != null ? String(ex.plenusQuoteAmount) : "",
+        estimatedCost: ex.estimatedCost != null ? String(ex.estimatedCost) : "",
       });
       if ((res as any).parseFailed) {
         toast.warning(
@@ -115,6 +121,19 @@ export default function CasePdfImport() {
     if (!data) return;
     if (!data.requestNumber || !data.storeName) {
       toast.error("依頼番号と店舗名は必須です");
+      return;
+    }
+    // 見積金額（任意）を数値化。空欄は null、不正な入力はエラー。
+    const plenusAmount =
+      data.plenusQuoteAmount.trim() === "" ? null : parseAmount(data.plenusQuoteAmount);
+    const vendorAmount =
+      data.estimatedCost.trim() === "" ? null : parseAmount(data.estimatedCost);
+    if (data.plenusQuoteAmount.trim() !== "" && plenusAmount == null) {
+      toast.error("プレナス出し見積額は数字で入力してください");
+      return;
+    }
+    if (data.estimatedCost.trim() !== "" && vendorAmount == null) {
+      toast.error("実行（指値）見積額は数字で入力してください");
       return;
     }
     createMutation.mutate({
@@ -139,6 +158,9 @@ export default function CasePdfImport() {
       contractorPic: data.contractorPic || null,
       contractorPhone: data.contractorPhone || null,
       urgency: data.urgency,
+      plenusQuoteAmount: plenusAmount,
+      estimatedCost: vendorAmount,
+      is10mYen: (plenusAmount ?? 0) >= 100000,
       status: "受付",
     });
   };
@@ -361,6 +383,50 @@ export default function CasePdfImport() {
               <Field label="取引先連絡先">
                 <Input value={data.contractorPhone} onChange={(e) => update("contractorPhone", e.target.value)} />
               </Field>
+            </div>
+
+            {/* 見積金額（手入力・AI抽出を補完） */}
+            <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium">見積金額（任意）</p>
+                <span className="text-xs text-muted-foreground">
+                  PDFから読み取れた場合は自動入力されます。空欄でも登録できます。
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Field label="プレナス出し見積額（円・売上/請求額）">
+                  <Input
+                    inputMode="numeric"
+                    placeholder="例: 350000"
+                    value={data.plenusQuoteAmount}
+                    onChange={(e) =>
+                      update("plenusQuoteAmount", e.target.value.replace(/[^0-9０-９,，円\s]/g, ""))
+                    }
+                  />
+                  {data.plenusQuoteAmount.trim() !== "" &&
+                    parseAmount(data.plenusQuoteAmount) != null && (
+                      <p className="text-xs text-muted-foreground">
+                        ￥{parseAmount(data.plenusQuoteAmount)!.toLocaleString()}
+                      </p>
+                    )}
+                </Field>
+                <Field label="実行（指値）見積額（円・協力業者/原価）">
+                  <Input
+                    inputMode="numeric"
+                    placeholder="例: 250000"
+                    value={data.estimatedCost}
+                    onChange={(e) =>
+                      update("estimatedCost", e.target.value.replace(/[^0-9０-９,，円\s]/g, ""))
+                    }
+                  />
+                  {data.estimatedCost.trim() !== "" &&
+                    parseAmount(data.estimatedCost) != null && (
+                      <p className="text-xs text-muted-foreground">
+                        ￥{parseAmount(data.estimatedCost)!.toLocaleString()}
+                      </p>
+                    )}
+                </Field>
+              </div>
             </div>
 
             <div className="flex justify-end pt-2">

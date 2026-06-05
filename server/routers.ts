@@ -59,7 +59,7 @@ import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_
 import { BUDGET_RATIO, calcBudget } from "../shared/budget";
 import { calcCaseProfit } from "../shared/profit";
 import { aggregateExpensesByUser } from "../shared/expense-aggregate";
-import { contentToText, parseLlmJson } from "../shared/extract";
+import { contentToText, parseLlmJson, parseAmount } from "../shared/extract";
 import { extractPdfEmbeddedImages } from "./_core/pdfImages";
 import { scoreCandidates, topMatches, pickBestMatch } from "../shared/estimate-matcher";
 import { pickLatestEstimate } from "../shared/estimate-aggregator";
@@ -497,6 +497,16 @@ export const appRouter = router({
             contractorPic: { type: "string", description: "取引先責任者名" },
             contractorPhone: { type: "string", description: "取引先責任者連絡先" },
             urgency: { type: "string", enum: ["S", "A", "B", "C"], description: "緊急度" },
+            plenusQuoteAmountText: {
+              type: "string",
+              description:
+                "プレナスへ提出する見積金額（出し見積・税抜の合計請求額）。PDFに記載があれば数字のみ（カンマ可）で。無ければ空文字列。",
+            },
+            estimatedCostText: {
+              type: "string",
+              description:
+                "協力業者への実行（指値）見積金額・実行予算（原価）。PDFに記載があれば数字のみ（カンマ可）で。無ければ空文字列。",
+            },
           },
           required: ["requestNumber", "storeName"],
           additionalProperties: false,
@@ -515,7 +525,7 @@ export const appRouter = router({
                 {
                   type: "text",
                   text:
-                    "以下の「依頼進捗更新」PDFから店舗情報・依頼内容・修理区分・取引先を抽出してJSONで返してください。",
+                    "以下の「依頼進捗更新」PDFから店舗情報・依頼内容・修理区分・取引先を抽出してJSONで返してください。見積金額の記載（プレナスへの出し見積額、協力業者への実行・指値見積額）があれば plenusQuoteAmountText / estimatedCostText に数字で記入し、無ければ空文字列にしてください。",
                 },
                 {
                   type: "file_url",
@@ -578,6 +588,8 @@ export const appRouter = router({
             contractorPic: parsed.contractorPic ?? "",
             contractorPhone: parsed.contractorPhone ?? "",
             urgency: ["S", "A", "B", "C"].includes(parsed.urgency) ? parsed.urgency : "B",
+            plenusQuoteAmount: parseAmount(parsed.plenusQuoteAmountText),
+            estimatedCost: parseAmount(parsed.estimatedCostText),
           },
           rawText: text,
           // 構造化抽出に失敗した場合のフラグ（フロントで注意喚起に利用）

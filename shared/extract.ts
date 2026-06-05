@@ -110,3 +110,41 @@ export function parseLlmJson(rawText: string): Record<string, unknown> | null {
   }
   return null;
 }
+
+/**
+ * 金額文字列を整数（円）にパースする純粋関数。
+ * - 全角数字（０-９）を半角に変換
+ * - カンマ・円記号・「円」・空白・全角空白などの装飾を除去
+ * - 小数点以下は切り捨て（円単位前提）
+ * - 数字が1文字も無い／負値になる場合は null
+ *
+ * 例:
+ *   parseAmount("¥1,200,000") -> 1200000
+ *   parseAmount("１２３４") -> 1234
+ *   parseAmount("350000円") -> 350000
+ *   parseAmount("") -> null
+ *   parseAmount(null) -> null
+ */
+export function parseAmount(input: unknown): number | null {
+  if (input == null) return null;
+  if (typeof input === "number") {
+    if (!Number.isFinite(input) || input < 0) return null;
+    return Math.floor(input);
+  }
+  if (typeof input !== "string") return null;
+
+  // 全角数字 → 半角
+  let s = input.replace(/[０-９]/g, (ch) =>
+    String.fromCharCode(ch.charCodeAt(0) - 0xfee0)
+  );
+  // 全角ピリオド → 半角
+  s = s.replace(/．/g, ".");
+  // 数字・ピリコ・マイナス以外を除去（カンマ・円記号・「円」・空白等）
+  s = s.replace(/[^0-9.\-]/g, "");
+
+  if (s === "" || s === "-" || s === ".") return null;
+
+  const n = Number(s);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.floor(n);
+}

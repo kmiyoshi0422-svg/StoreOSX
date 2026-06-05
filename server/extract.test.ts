@@ -4,6 +4,7 @@ import {
   stripCodeFences,
   extractFirstJsonObject,
   parseLlmJson,
+  parseAmount,
 } from "@shared/extract";
 
 describe("v26: contentToText", () => {
@@ -104,5 +105,41 @@ describe("v26: parseLlmJson", () => {
 
   it("配列はオブジェクトでないため null を返す", () => {
     expect(parseLlmJson("[1,2,3]")).toBeNull();
+  });
+});
+
+describe("v30: parseAmount", () => {
+  it("カンマ・円記号付き文字列を整数化する", () => {
+    expect(parseAmount("¥1,200,000")).toBe(1200000);
+    expect(parseAmount("350,000円")).toBe(350000);
+  });
+
+  it("全角数字を半角化して整数化する", () => {
+    expect(parseAmount("１２３４")).toBe(1234);
+    expect(parseAmount("２５０，０００")).toBe(250000);
+  });
+
+  it("数値はそのまま（小数は切り捨て）", () => {
+    expect(parseAmount(350000)).toBe(350000);
+    expect(parseAmount(1200.99)).toBe(1200);
+  });
+
+  it("空文字・null・記号のみは null", () => {
+    expect(parseAmount("")).toBeNull();
+    expect(parseAmount(null)).toBeNull();
+    expect(parseAmount(undefined)).toBeNull();
+    expect(parseAmount("円")).toBeNull();
+    expect(parseAmount("-")).toBeNull();
+  });
+
+  it("負値や不正値は null", () => {
+    expect(parseAmount(-100)).toBeNull();
+    expect(parseAmount("-5000")).toBeNull();
+    expect(parseAmount(NaN)).toBeNull();
+  });
+
+  it("装飾を含む通常入力をパースできる", () => {
+    expect(parseAmount(" 350000 ")).toBe(350000);
+    expect(parseAmount("¥０")).toBe(0);
   });
 });

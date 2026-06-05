@@ -276,3 +276,10 @@
 - [x] 型チェックOK・本番ビルド成功・サーバー再起動
 - [x] 実ブラウザ検証: oklch継承要素を html2canvas-pro でエラーなく canvas 生成（696x406）
 - [x] 検証用ファイル削除・チェックポイント保存
+## v30 PDF案件取込画面に見積金額（出し見積・実行指値）の手入力を追加
+- [x] CasePdfImport.tsx の Extracted 型に plenusQuoteAmount（出し見積）と estimatedCost（実行指値）を追加（string管理）
+- [x] 抽出結果フォームに「プレナス出し見積額」「実行（指値）見積額」の数値入力欄を追加（任意・円単位・空欄でも登録可）
+- [x] handleRegister で createMutation に plenusQuoteAmount / estimatedCost / is10mYen を含めて送信
+- [x] extractFromPdf の LLM スキーマ・プロンプトに見積金額の抽出指示を追加（読み取れた場合は自動入力）
+- [x] shared に金額文字列→数値の純粋関数 parseAmount を追加しテスト（全角・カンマ・円記号許容、計25件に拡充）
+- [x] 型チェックOK・全183件PASS・チェックポイント保存
