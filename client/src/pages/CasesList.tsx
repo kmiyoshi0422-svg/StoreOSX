@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
+import { calcCaseProfit } from "@shared/profit";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useLocation } from "wouter";
 import { useMemo, useState } from "react";
@@ -402,18 +403,73 @@ export default function CasesList() {
                               {new Date(c.requestDate).toLocaleDateString("ja-JP")}
                             </span>
                           )}
-                          {c.estimatedCost != null && (
-                            <span className="font-mono">
-                              見積: ¥{c.estimatedCost.toLocaleString()}
-                            </span>
-                          )}
-                          {c.actualCost != null && (
+                          {c.requestDate && c.actualCost != null && (
                             <span className="font-mono text-emerald-700">
                               実績: ¥{c.actualCost.toLocaleString()}
                             </span>
                           )}
                         </div>
                       </div>
+
+                      {/* 出し見積 / 実行見積 / 粗利（一覧で即時確認用） */}
+                      {(() => {
+                        const hasAmount =
+                          c.plenusQuoteAmount != null || c.estimatedCost != null;
+                        if (!hasAmount) return null;
+                        // 一覧用粗利は経費を除いた「見積ベース」（expensesTotal=0）
+                        const profit = calcCaseProfit({
+                          plenusQuoteAmount: c.plenusQuoteAmount,
+                          estimatedCost: c.estimatedCost,
+                          expensesTotal: 0,
+                        });
+                        const gp = profit.grossProfit;
+                        const gpColor =
+                          gp > 0
+                            ? "text-emerald-700"
+                            : gp < 0
+                              ? "text-red-600"
+                              : "text-muted-foreground";
+                        return (
+                          <div className="mt-3 flex flex-wrap items-stretch gap-2">
+                            <div className="rounded-md border bg-stone-50/80 px-3 py-1.5">
+                              <p className="text-[10px] text-muted-foreground leading-none mb-1">
+                                出し見積{profit.salesIsEstimated ? "（想定）" : ""}
+                              </p>
+                              <p className="font-mono text-sm font-semibold">
+                                {c.plenusQuoteAmount != null
+                                  ? `¥${c.plenusQuoteAmount.toLocaleString()}`
+                                  : profit.sales > 0
+                                    ? `¥${profit.sales.toLocaleString()}`
+                                    : "—"}
+                              </p>
+                            </div>
+                            <div className="rounded-md border bg-stone-50/80 px-3 py-1.5">
+                              <p className="text-[10px] text-muted-foreground leading-none mb-1">
+                                実行見積
+                              </p>
+                              <p className="font-mono text-sm font-semibold">
+                                {c.estimatedCost != null
+                                  ? `¥${c.estimatedCost.toLocaleString()}`
+                                  : "—"}
+                              </p>
+                            </div>
+                            <div className={`rounded-md border px-3 py-1.5 ${gp > 0 ? "bg-emerald-50/70 border-emerald-200" : gp < 0 ? "bg-red-50/70 border-red-200" : "bg-stone-50/80"}`}>
+                              <p className="text-[10px] text-muted-foreground leading-none mb-1">
+                                粗利
+                              </p>
+                              <p className={`font-mono text-sm font-semibold ${gpColor}`}>
+                                {gp >= 0 ? "¥" : "-¥"}
+                                {Math.abs(gp).toLocaleString()}
+                                {profit.sales > 0 && (
+                                  <span className="ml-1 text-[10px] font-normal">
+                                    ({Math.round(profit.grossMargin * 100)}%)
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Assignee badge & actions */}
