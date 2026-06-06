@@ -14,6 +14,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { trpc } from "@/lib/trpc";
+import {
+  syncStatusFromStage,
+  syncStageFromStatus,
+  type ProgressStage,
+  type CaseStatus,
+} from "@shared/stageStatus";
 import { useLocation } from "wouter";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -331,7 +337,13 @@ function InfoTab({
                 <Label className="text-xs text-muted-foreground">進捗ステージ（フォルダ）</Label>
                 <Select
                   value={form.progressStage}
-                  onValueChange={(v) => setForm((p) => ({ ...p, progressStage: v as never }))}
+                  onValueChange={(v) =>
+                    setForm((p) => {
+                      const stage = v as ProgressStage;
+                      const status = syncStatusFromStage(stage, p.status as CaseStatus);
+                      return { ...p, progressStage: stage as never, status: status as never };
+                    })
+                  }
                 >
                   <SelectTrigger className="mt-1">
                     <SelectValue />
@@ -349,7 +361,16 @@ function InfoTab({
                   <Label className="text-xs text-muted-foreground">ステータス</Label>
                   <Select
                     value={form.status}
-                    onValueChange={(v) => setForm((p) => ({ ...p, status: v as never }))}
+                    onValueChange={(v) =>
+                      setForm((p) => {
+                        const status = v as CaseStatus;
+                        const stage = syncStageFromStatus(
+                          status,
+                          p.progressStage as ProgressStage,
+                        );
+                        return { ...p, status: status as never, progressStage: stage as never };
+                      })
+                    }
                   >
                     <SelectTrigger className="mt-1">
                       <SelectValue />

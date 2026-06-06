@@ -58,6 +58,8 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { BUDGET_RATIO, calcBudget } from "../shared/budget";
 import { calcCaseProfit } from "../shared/profit";
+import { resolveStageStatus, syncStageFromStatus } from "../shared/stageStatus";
+import type { ProgressStage, CaseStatus } from "../shared/stageStatus";
 import { aggregateExpensesByUser } from "../shared/expense-aggregate";
 import { contentToText, parseLlmJson, parseAmount } from "../shared/extract";
 import { extractPdfEmbeddedImages } from "./_core/pdfImages";
@@ -418,7 +420,22 @@ export const appRouter = router({
     update: protectedProcedure
       .input(z.object({ id: z.number(), data: caseInputSchema.partial() }))
       .mutation(async ({ input }) => {
-        await updateCase(input.id, input.data);
+        const data = { ...input.data };
+        // 進捗ステージ⇔ステータスの連動（前進専用）
+        if (data.progressStage != null || data.status != null) {
+          const current = await getCaseById(input.id);
+          if (current) {
+            const resolved = resolveStageStatus({
+              currentStage: (current.progressStage as ProgressStage) ?? "未対応",
+              currentStatus: (current.status as CaseStatus) ?? "受付",
+              nextStage: data.progressStage as ProgressStage | undefined,
+              nextStatus: data.status as CaseStatus | undefined,
+            });
+            data.progressStage = resolved.progressStage;
+            data.status = resolved.status;
+          }
+        }
+        await updateCase(input.id, data);
         return { success: true };
       }),
 
@@ -784,7 +801,15 @@ export const appRouter = router({
                 // 現在のステータスより進んだもののみ適用（逆行しない）
                 const order = ["受付", "現調中", "見積中", "施工待ち", "施工中", "完了", "クローズ"];
                 if (next && order.indexOf(next) > order.indexOf(caseData.status)) {
-                  await updateCase(items.caseId, { status: next as any });
+                  // ステータス前進に合わせて進捗ステージも連動（前進専用）
+                  const nextStage = syncStageFromStatus(
+                    next as CaseStatus,
+                    (caseData.progressStage as ProgressStage) ?? "未対応",
+                  );
+                  await updateCase(items.caseId, {
+                    status: next as any,
+                    progressStage: nextStage as any,
+                  });
                   autoAdvanced = { from: caseData.status, to: next };
                 }
               }
