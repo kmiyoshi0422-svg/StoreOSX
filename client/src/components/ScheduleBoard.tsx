@@ -842,16 +842,18 @@ function TeamSettingsDialog() {
   const settingsQ = trpc.teamSettings.list.useQuery();
   const usersQ = trpc.users.list.useQuery();
   const upsert = trpc.teamSettings.upsert.useMutation({
-    onSuccess: () => {
-      utils.teamSettings.list.invalidate();
-    },
     onError: (e) => toast.error(`保存失敗: ${e.message}`),
+  });
+  const setMembers = trpc.teamSettings.setMembers.useMutation({
+    onError: (e) => toast.error(`メンバー保存失敗: ${e.message}`),
   });
   const [open, setOpen] = useState(false);
   const [aUser, setAUser] = useState<string>(NULL_USER_VALUE);
   const [bUser, setBUser] = useState<string>(NULL_USER_VALUE);
   const [aLabel, setALabel] = useState<string>("");
   const [bLabel, setBLabel] = useState<string>("");
+  const [aMembers, setAMembers] = useState<number[]>([]);
+  const [bMembers, setBMembers] = useState<number[]>([]);
 
   // ダイアログを開いた瞬間に現状値で初期化
   function handleOpen(v: boolean) {
@@ -862,22 +864,30 @@ function TeamSettingsDialog() {
       setBUser(b?.primaryUserId ? String(b.primaryUserId) : NULL_USER_VALUE);
       setALabel(a?.label ?? "");
       setBLabel(b?.label ?? "");
+      setAMembers(a?.memberIds ?? []);
+      setBMembers(b?.memberIds ?? []);
     }
     setOpen(v);
   }
 
+  function toggleMember(team: "A" | "B", userId: number) {
+    const cur = team === "A" ? aMembers : bMembers;
+    const setter = team === "A" ? setAMembers : setBMembers;
+    setter(cur.includes(userId) ? cur.filter((id) => id !== userId) : [...cur, userId]);
+  }
+
   async function handleSave() {
-    await upsert.mutateAsync({
-      team: "A",
-      primaryUserId: aUser === NULL_USER_VALUE ? null : Number(aUser),
-      label: aLabel || null,
-    });
-    await upsert.mutateAsync({
-      team: "B",
-      primaryUserId: bUser === NULL_USER_VALUE ? null : Number(bUser),
-      label: bLabel || null,
-    });
-    toast.success("チーム担当者を保存しました");
+    const aPrimary = aUser === NULL_USER_VALUE ? null : Number(aUser);
+    const bPrimary = bUser === NULL_USER_VALUE ? null : Number(bUser);
+    await upsert.mutateAsync({ team: "A", primaryUserId: aPrimary, label: aLabel || null });
+    await upsert.mutateAsync({ team: "B", primaryUserId: bPrimary, label: bLabel || null });
+    // 代表担当者は自動でメンバーにも含める
+    const aAll = Array.from(new Set([...(aPrimary ? [aPrimary] : []), ...aMembers]));
+    const bAll = Array.from(new Set([...(bPrimary ? [bPrimary] : []), ...bMembers]));
+    await setMembers.mutateAsync({ team: "A", userIds: aAll });
+    await setMembers.mutateAsync({ team: "B", userIds: bAll });
+    await utils.teamSettings.list.invalidate();
+    toast.success("チーム担当者・メンバーを保存しました");
     setOpen(false);
   }
 
@@ -928,6 +938,41 @@ function TeamSettingsDialog() {
                     </Select>
                   </div>
                   <div>
+                    <Label className="text-xs">メンバー（複数選択可）</Label>
+                    <div className="mt-1 grid grid-cols-2 gap-1.5">
+                      {(usersQ.data ?? []).map((u) => {
+                        const members = team === "A" ? aMembers : bMembers;
+                        const primaryId = (team === "A" ? aUser : bUser) === NULL_USER_VALUE ? null : Number(team === "A" ? aUser : bUser);
+                        const isPrimary = primaryId === u.id;
+                        const checked = isPrimary || members.includes(u.id);
+                        return (
+                          <button
+                            type="button"
+                            key={u.id}
+                            onClick={() => !isPrimary && toggleMember(team, u.id)}
+                            disabled={isPrimary}
+                            className={`flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-left text-xs transition-colors ${
+                              checked
+                                ? "border-foreground/30 bg-foreground/5 font-medium"
+                                : "border-border bg-background hover:bg-muted/50"
+                            } ${isPrimary ? "opacity-70 cursor-not-allowed" : "cursor-pointer"}`}
+                          >
+                            <span
+                              className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border ${
+                                checked ? "border-foreground bg-foreground text-background" : "border-muted-foreground/40"
+                              }`}
+                            >
+                              {checked && <CheckCircle2 className="h-2.5 w-2.5" />}
+                            </span>
+                            <span className="truncate">{u.name ?? `ユーザー#${u.id}`}</span>
+                            {isPrimary && <span className="ml-auto text-[10px] text-muted-foreground">代表</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-1 text-[11px] text-muted-foreground">代表担当者は自動的にメンバーに含まれます。</p>
+                  </div>
+                  <div>
                     <Label className="text-xs">チーム名（任意）</Label>
                     <Input
                       value={label}
@@ -945,7 +990,7 @@ function TeamSettingsDialog() {
           <Button variant="outline" onClick={() => setOpen(false)}>
             キャンセル
           </Button>
-          <Button onClick={handleSave} disabled={upsert.isPending}>
+          <Button onClick={handleSave} disabled={upsert.isPending || setMembers.isPending}>
             <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
             保存
           </Button>

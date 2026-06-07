@@ -41,6 +41,8 @@ import {
   clearRouteAssignmentsInRange,
   listTeamSettings,
   upsertTeamSetting,
+  listTeamMembers,
+  setTeamMembers,
   setCasePartnerToken,
   updateCase,
   updateChecklistItem,
@@ -1470,14 +1472,34 @@ export const appRouter = router({
   teamSettings: router({
     list: protectedProcedure.query(async () => {
       const items = await listTeamSettings();
+      const allMembers = await listTeamMembers();
+      const memberIds = (team: "A" | "B") =>
+        allMembers.filter((m) => m.team === team).map((m) => m.userId);
       // 未設定チームもデフォルトで返す
       const teamA = items.find((t) => t.team === "A");
       const teamB = items.find((t) => t.team === "B");
       return {
-        A: teamA ?? { team: "A" as const, primaryUserId: null, label: null, color: null },
-        B: teamB ?? { team: "B" as const, primaryUserId: null, label: null, color: null },
+        A: {
+          ...(teamA ?? { team: "A" as const, primaryUserId: null, label: null, color: null }),
+          memberIds: memberIds("A"),
+        },
+        B: {
+          ...(teamB ?? { team: "B" as const, primaryUserId: null, label: null, color: null }),
+          memberIds: memberIds("B"),
+        },
       };
     }),
+    setMembers: adminProcedure
+      .input(
+        z.object({
+          team: z.enum(["A", "B"]),
+          userIds: z.array(z.number()).max(50),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const count = await setTeamMembers(input.team, input.userIds);
+        return { count };
+      }),
     upsert: adminProcedure
       .input(
         z.object({

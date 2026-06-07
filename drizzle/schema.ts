@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean, unique } from "drizzle-orm/mysql-core";
 
 /**
  * ユーザーテーブル（OAuth認証）
@@ -251,6 +251,22 @@ export const teamSettings = mysqlTable("team_settings", {
 
 export type TeamSetting = typeof teamSettings.$inferSelect;
 export type InsertTeamSetting = typeof teamSettings.$inferInsert;
+
+/**
+ * チームメンバー（v33: 1チームに複数メンバーを登録）
+ * team ごとに userId を複数保持。代表担当者(team_settings.primaryUserId)とは別軸。
+ */
+export const teamMembers = mysqlTable("team_members", {
+  id: int("id").autoincrement().primaryKey(),
+  team: mysqlEnum("team", ["A", "B"]).notNull(),
+  userId: int("userId").notNull(), // users.id
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  uniqTeamUser: unique("uniq_team_user").on(t.team, t.userId),
+}));
+
+export type TeamMember = typeof teamMembers.$inferSelect;
+export type InsertTeamMember = typeof teamMembers.$inferInsert;
 
 /**
  * 経費テーブル（v19: PDF/画像から取り込む経費を案件に自動紐付け）

@@ -14,6 +14,7 @@ import {
   InsertRouteAssignment,
   InsertTeamSetting,
   InsertUser,
+  teamMembers,
   partners,
   photos,
   routeAssignments,
@@ -408,6 +409,25 @@ export async function upsertTeamSetting(data: InsertTeamSetting) {
   }
   const result = await db.insert(teamSettings).values(data);
   return (result as unknown as { insertId: number }).insertId;
+}
+
+// チームメンバー（v33）
+export async function listTeamMembers() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(teamMembers);
+}
+
+/** 指定チームのメンバーを userIds の内容で総入れ替え（差し替え） */
+export async function setTeamMembers(team: "A" | "B", userIds: number[]) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.delete(teamMembers).where(eq(teamMembers.team, team));
+  const unique = Array.from(new Set(userIds.filter((n) => Number.isFinite(n))));
+  if (unique.length > 0) {
+    await db.insert(teamMembers).values(unique.map((userId) => ({ team, userId })));
+  }
+  return unique.length;
 }
 
 

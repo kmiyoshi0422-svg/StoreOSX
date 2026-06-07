@@ -503,6 +503,30 @@ describe("v13: teamSettings router", () => {
       caller.teamSettings.upsert({ team: "C" as never, primaryUserId: null })
     ).rejects.toThrow();
   });
+
+  it("一般ユーザーは teamSettings.setMembers を呼べない（FORBIDDEN）", async () => {
+    const caller = appRouter.createCaller(createAuthContext("user"));
+    await expect(
+      caller.teamSettings.setMembers({ team: "A", userIds: [] })
+    ).rejects.toThrow();
+  });
+
+  it("管理者は setMembers で複数メンバーを登録し、list に memberIds で返る", async () => {
+    const caller = appRouter.createCaller(createAdminContext());
+    const r = await caller.teamSettings.setMembers({ team: "A", userIds: [1, 1, 2, 3] });
+    expect(r.count).toBe(3); // 重複は除去
+    const list = await caller.teamSettings.list();
+    expect(Array.isArray(list.A.memberIds)).toBe(true);
+    expect([...list.A.memberIds].sort()).toEqual([1, 2, 3]);
+  });
+
+  it("setMembers は総入れ替え（差し替え）で古いメンバーが残らない", async () => {
+    const caller = appRouter.createCaller(createAdminContext());
+    await caller.teamSettings.setMembers({ team: "B", userIds: [1, 2, 3] });
+    await caller.teamSettings.setMembers({ team: "B", userIds: [2] });
+    const list = await caller.teamSettings.list();
+    expect([...list.B.memberIds].sort()).toEqual([2]);
+  });
 });
 
 

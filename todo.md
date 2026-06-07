@@ -298,3 +298,11 @@
 - [x] チェックリスト自動ステータス前進時に progressStage も連動更新
 - [x] CaseDetail 編集UIでステージ選択時にステータスも追従（その逆も）
 - [x] 型チェックOK・全194件PASS・チェックポイント保存
+
+## v33 チームに複数メンバーを登録・選択できるように
+- [x] drizzle schema に team_members テーブルを追加（team, userId, ユニーク制約）
+- [x] pnpm drizzle-kit generate でマイグレーション生成→webdev_execute_sqlで適用
+- [x] db.ts に listTeamMembers / setTeamMembers（差し替え）ヘルパ追加
+- [x] routers.ts teamSettings に members の取得・更新を追加（list返却にmemberIds含める）
+- [x] ScheduleBoard のチーム担当者ダイアログに「メンバー（複数選択可）」UIを追加
+- [x] 型チェックOK・全197件PASS・チェックポイント保存
