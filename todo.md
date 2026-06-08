@@ -314,3 +314,11 @@
 - [x] メンバー未設定チームは全ユーザーから選べるフォールバック
 - [x] 純粋関数を shared/teamAssignee.ts に切り出し、テスト9件追加
 - [x] 型チェックOK・チェックポイント保存
+
+## v35 写真台帳PDFのTainted canvasエラー修正
+- [x] 写真画像をPDF生成前にfetch→Blob→dataURLへ変換し、汚染源の外部画像をDOMから排除
+- [x] 各imgのsrcをdataURLに差し替えた後にhtml2canvasを実行（finallyで元に戻す）
+- [x] 画像読み込み完了を待つ（decode）
+- [x] 取得失敗画像はプレースホルダ表示で生成継続
+- [x] fileUrlが同一オリジン相対パス（/manus-storage/...）であることを確認
+- [x] 型チェックOK・チェックポイント保存
