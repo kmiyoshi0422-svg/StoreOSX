@@ -306,3 +306,11 @@
 - [x] routers.ts teamSettings に members の取得・更新を追加（list返却にmemberIds含める）
 - [x] ScheduleBoard のチーム担当者ダイアログに「メンバー（複数選択可）」UIを追加
 - [x] 型チェックOK・全197件PASS・チェックポイント保存
+
+## v34 タスク担当の選択肢をチームメンバーに限定
+- [x] ScheduleBoard でチーム別メンバーID集合を teamSettingsQ.data.A/B.memberIds から算出（buildTeamMemberIdSet）
+- [x] タスク担当Selectの選択肢を所属チーム（item.team）のメンバーに絞り込む（filterAssigneeOptions）
+- [x] 現担当がメンバー外（旧データ）の場合は現担当を選択肢に残すフォールバック
+- [x] メンバー未設定チームは全ユーザーから選べるフォールバック
+- [x] 純粋関数を shared/teamAssignee.ts に切り出し、テスト9件追加
+- [x] 型チェックOK・チェックポイント保存

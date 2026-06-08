@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { buildTeamMemberIdSet, filterAssigneeOptions } from "@shared/teamAssignee";
+
 const NULL_USER_VALUE = "__none__";
 
 function colorFromName(name: string): string {
@@ -142,6 +144,19 @@ export default function ScheduleBoard() {
     }
     return m;
   }, [usersQ.data]);
+
+  // チーム別メンバーID集合（代表担当者も含む）。タスク担当の選択肢を絞り込むために使う。
+  const teamMemberIds = useMemo(
+    () => ({
+      A: buildTeamMemberIdSet(teamSettingsQ.data?.A),
+      B: buildTeamMemberIdSet(teamSettingsQ.data?.B),
+    }),
+    [teamSettingsQ.data],
+  );
+
+  // 指定チームの担当選択肢を返す（メンバー未設定は全員、設定済みはメンバー＋現担当）。
+  const assigneeOptionsFor = (team: Team, currentAssigneeId: number | null) =>
+    filterAssigneeOptions(usersQ.data ?? [], teamMemberIds[team], currentAssigneeId);
   const apply = trpc.routes.applySuggestion.useMutation({
     onSuccess: () => {
       toast.success("提案スケジュールを反映しました");
@@ -591,7 +606,7 @@ export default function ScheduleBoard() {
                                         </SelectTrigger>
                                         <SelectContent>
                                           <SelectItem value={NULL_USER_VALUE}>未割り当て</SelectItem>
-                                          {(usersQ.data ?? []).map((u) => (
+                                          {assigneeOptionsFor(item.team, item.assigneeId).map((u) => (
                                             <SelectItem key={u.id} value={String(u.id)}>
                                               {u.name ?? `ユーザー#${u.id}`}
                                             </SelectItem>
