@@ -46,6 +46,7 @@ import {
   Link2,
   Copy,
   Sparkles,
+  PenLine,
 } from "lucide-react";
 import { generateQuotePDF, generateCompletionReportPDF } from "@/lib/documentPdf";
 import {
@@ -150,7 +151,7 @@ export default function CaseDetail({ id }: { id: number }) {
               )}
             </div>
           </div>
-          <div className="flex gap-2 shrink-0">
+          <div className="flex flex-wrap gap-2 shrink-0">
             <Button
               variant="outline"
               size="sm"
@@ -162,11 +163,18 @@ export default function CaseDetail({ id }: { id: number }) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => generateCompletionReportPDF(caseData)}
-              disabled={caseData.status !== "完了"}
+              onClick={() => setLocation(`/cases/${id}/survey-report`)}
             >
-              <Download className="h-4 w-4" />
-              完了報告書
+              <PenLine className="h-4 w-4" />
+              現場調査報告書
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setLocation(`/cases/${id}/completion-report`)}
+            >
+              <PenLine className="h-4 w-4" />
+              施工完了報告書
             </Button>
             <Button onClick={() => setLocation(`/cases/${id}/ledger`)} size="sm">
               <FileText className="h-4 w-4" />

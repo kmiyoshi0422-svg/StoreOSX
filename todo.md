@@ -330,3 +330,16 @@
 - [x] 複数案件を選択して写真台帳を一括PDF出力する画面を追加
 - [x] 一括PDFは案件ごとにページ区切り（既存PhotoLedgerのレイアウトを流用）
 - [x] 型チェックOK・全テストPASS・チェックポイント保存
+
+
+## v37 現場調査報告書／施工完了報告書PDF（プレナス責任者サイン付き）
+- [x] case_signatures テーブルを追加（caseId, reportType=survey|completion, signerName, signedAt, fileKey/fileUrl=署名画像）
+- [x] drizzle-kit generate → webdev_execute_sql でマイグレーション適用
+- [x] db.ts に署名の upsert / get（caseId+reportType）ヘルパを追加
+- [x] routers.ts に signatures.save（署名画像をstoragePutでS3保存）/ signatures.getByCase を追加
+- [x] 手書き署名パッド（canvas）コンポーネントを作成（指/マウス対応・クリア・確定）
+- [x] CaseDetail に「現場調査報告書PDF」「施工完了報告書PDF」出力ボタンを追加
+- [x] 現場調査報告書PDF：案件基本情報＋現調写真（photoType=現調/施工前系）＋署名欄
+- [x] 施工完了報告書PDF：案件基本情報＋施工後写真（photoType=施工後系）＋署名欄
+- [x] 署名はDB/S3に保存し、再出力時も同じ署名を埋め込む（PDF生成前にdataURL化）
+- [x] 型チェックOK・全テストPASS（223件）・チェックポイント保存

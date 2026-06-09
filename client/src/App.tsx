@@ -11,6 +11,7 @@ import CaseNew from "./pages/CaseNew";
 import CaseDetail from "./pages/CaseDetail";
 import PhotoLedger from "./pages/PhotoLedger";
 import PhotoLedgerBatch from "./pages/PhotoLedgerBatch";
+import CaseReport from "./pages/CaseReport";
 import CsvImport from "./pages/CsvImport";
 import CasePdfImport from "./pages/CasePdfImport";
 import CasesMap from "./pages/CasesMap";
@@ -72,6 +73,12 @@ function Router() {
         <Route path={"/photo-ledger/batch"} component={PhotoLedgerBatch} />
         <Route path={"/cases/:id/ledger"}>
           {(params) => <PhotoLedger id={Number(params.id)} />}
+        </Route>
+        <Route path={"/cases/:id/survey-report"}>
+          {(params) => <CaseReport id={Number(params.id)} reportType="survey" />}
+        </Route>
+        <Route path={"/cases/:id/completion-report"}>
+          {(params) => <CaseReport id={Number(params.id)} reportType="completion" />}
         </Route>
         <Route path={"/cases/:id"}>
           {(params) => <CaseDetail id={Number(params.id)} />}

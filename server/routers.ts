@@ -45,6 +45,10 @@ import {
   upsertTeamSetting,
   listTeamMembers,
   setTeamMembers,
+  listSignaturesByCase,
+  getSignature,
+  upsertSignature,
+  deleteSignature,
   setCasePartnerToken,
   updateCase,
   updateChecklistItem,
@@ -935,6 +939,68 @@ export const appRouter = router({
     get: protectedProcedure
       .input(z.object({ id: z.number() }))
       .query(({ input }) => getPhotoById(input.id)),
+  }),
+
+  // ==========================================================
+  // 報告書署名（v37: 現場調査報告書／施工完了報告書のプレナス責任者サイン）
+  // ==========================================================
+  signatures: router({
+    // 案件の署名一覧（survey/completion両方）を取得
+    getByCase: protectedProcedure
+      .input(z.object({ caseId: z.number() }))
+      .query(({ input }) => listSignaturesByCase(input.caseId)),
+
+    // 案件×報告書種別で署名を1件取得
+    get: protectedProcedure
+      .input(
+        z.object({
+          caseId: z.number(),
+          reportType: z.enum(["survey", "completion"]),
+        })
+      )
+      .query(({ input }) => getSignature(input.caseId, input.reportType)),
+
+    // 署名画像（PNG dataURL/base64）を受け取りS3保存→DBにupsert
+    save: protectedProcedure
+      .input(
+        z.object({
+          caseId: z.number(),
+          reportType: z.enum(["survey", "completion"]),
+          signerName: z.string().nullish(),
+          imageBase64: z.string(), // data URL or raw base64 (PNG想定)
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const base64 = input.imageBase64.includes(",")
+          ? input.imageBase64.split(",")[1]
+          : input.imageBase64;
+        const buffer = Buffer.from(base64, "base64");
+        const key = `case-${input.caseId}/signatures/${input.reportType}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+        const { url, key: fileKey } = await storagePut(key, buffer, "image/png");
+        const id = await upsertSignature({
+          caseId: input.caseId,
+          reportType: input.reportType,
+          signerName: input.signerName ?? null,
+          fileKey,
+          fileUrl: url,
+          signedAt: new Date(),
+          createdBy: ctx.user.id,
+        });
+        return { id, url, fileKey };
+      }),
+
+    // 署名を削除（案件×報告書種別）
+    delete: protectedProcedure
+      .input(
+        z.object({
+          caseId: z.number(),
+          reportType: z.enum(["survey", "completion"]),
+        })
+      )
+      .mutation(async ({ input }) => {
+        await deleteSignature(input.caseId, input.reportType);
+        return { success: true };
+      }),
   }),
 
   // ==========================================================

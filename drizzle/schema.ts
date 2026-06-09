@@ -301,3 +301,24 @@ export const expenses = mysqlTable("expenses", {
 
 export type Expense = typeof expenses.$inferSelect;
 export type InsertExpense = typeof expenses.$inferInsert;
+
+/**
+ * 報告書署名テーブル（v37: 現場調査報告書／施工完了報告書のプレナス責任者サインを保存）
+ * 案件×報告書種別ごとに1件（upsert）。署名画像はS3に保存し、ここには参照のみ保持する。
+ */
+export const caseSignatures = mysqlTable("case_signatures", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("caseId").notNull(),
+  reportType: mysqlEnum("reportType", ["survey", "completion"]).notNull(), // survey=現場調査 / completion=施工完了
+  signerName: varchar("signerName", { length: 128 }), // サイン者名（プレナス責任者）
+  fileKey: varchar("fileKey", { length: 512 }).notNull(), // S3ファイルキー（署名PNG）
+  fileUrl: varchar("fileUrl", { length: 512 }).notNull(), // /manus-storage/ 参照URL
+  signedAt: timestamp("signedAt").defaultNow().notNull(), // サイン日時
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  uniqCaseReport: unique("uniq_case_report").on(t.caseId, t.reportType),
+}));
+export type CaseSignature = typeof caseSignatures.$inferSelect;
+export type InsertCaseSignature = typeof caseSignatures.$inferInsert;

@@ -2,10 +2,12 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   cases,
+  caseSignatures,
   checklistItems,
   estimates,
   expenses,
   InsertCase,
+  InsertCaseSignature,
   InsertChecklistItem,
   InsertEstimate,
   InsertExpense,
@@ -540,4 +542,64 @@ export async function listExpensesForAggregation(fromMs?: number, toMs?: number)
     if (toMs != null && t > toMs) return false;
     return true;
   });
+}
+
+
+// ============================================================
+// Case Signatures (v37: 現場調査報告書／施工完了報告書の署名)
+// ============================================================
+type ReportType = "survey" | "completion";
+
+/** 案件の署名一覧（survey/completion両方）を取得 */
+export async function listSignaturesByCase(caseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(caseSignatures).where(eq(caseSignatures.caseId, caseId));
+}
+
+/** 案件×報告書種別で署名を1件取得 */
+export async function getSignature(caseId: number, reportType: ReportType) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(caseSignatures)
+    .where(and(eq(caseSignatures.caseId, caseId), eq(caseSignatures.reportType, reportType)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** 案件×報告書種別の署名を upsert（同一なら更新、無ければ挿入） */
+export async function upsertSignature(data: InsertCaseSignature) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const existing = await db
+    .select()
+    .from(caseSignatures)
+    .where(and(eq(caseSignatures.caseId, data.caseId), eq(caseSignatures.reportType, data.reportType)))
+    .limit(1);
+  if (existing.length > 0) {
+    await db
+      .update(caseSignatures)
+      .set({
+        signerName: data.signerName ?? null,
+        fileKey: data.fileKey,
+        fileUrl: data.fileUrl,
+        signedAt: data.signedAt ?? new Date(),
+        createdBy: data.createdBy ?? null,
+      })
+      .where(eq(caseSignatures.id, existing[0].id));
+    return existing[0].id;
+  }
+  const result = await db.insert(caseSignatures).values(data);
+  return (result as unknown as { insertId: number }).insertId;
+}
+
+/** 署名を削除（案件×報告書種別） */
+export async function deleteSignature(caseId: number, reportType: ReportType) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db
+    .delete(caseSignatures)
+    .where(and(eq(caseSignatures.caseId, caseId), eq(caseSignatures.reportType, reportType)));
 }
