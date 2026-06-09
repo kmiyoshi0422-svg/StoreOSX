@@ -259,6 +259,7 @@ export default function PhotoLedger({ id }: { id: number }) {
                           src={photo.fileUrl}
                           alt=""
                           className="w-full h-full object-cover"
+                          style={{ imageOrientation: "from-image" }}
                         />
                       </div>
                       <div className="space-y-2 text-xs">

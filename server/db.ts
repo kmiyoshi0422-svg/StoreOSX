@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   cases,
@@ -200,6 +200,24 @@ export async function getPhotosByCaseId(caseId: number) {
     .from(photos)
     .where(eq(photos.caseId, caseId))
     .orderBy(photos.orderNo, photos.createdAt);
+}
+
+// 複数案件の写真をまとめて取得（一括写真台帳PDF用）
+export async function getPhotosByCaseIds(caseIds: number[]) {
+  const db = await getDb();
+  if (!db || caseIds.length === 0) return [];
+  return db
+    .select()
+    .from(photos)
+    .where(inArray(photos.caseId, caseIds))
+    .orderBy(photos.orderNo, photos.createdAt);
+}
+
+// 複数案件の基本情報をまとめて取得（一括写真台帳PDF用）
+export async function getCasesByIds(caseIds: number[]) {
+  const db = await getDb();
+  if (!db || caseIds.length === 0) return [];
+  return db.select().from(cases).where(inArray(cases.id, caseIds));
 }
 
 export async function createPhoto(data: InsertPhoto) {

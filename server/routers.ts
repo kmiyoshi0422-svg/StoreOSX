@@ -20,6 +20,8 @@ import {
   getPartnerById,
   getPhotoById,
   getPhotosByCaseId,
+  getPhotosByCaseIds,
+  getCasesByIds,
   listCases,
   listCasesByPartner,
   listEstimatesByCase,
@@ -835,6 +837,17 @@ export const appRouter = router({
     listByCase: protectedProcedure
       .input(z.object({ caseId: z.number() }))
       .query(({ input }) => getPhotosByCaseId(input.caseId)),
+
+    // 複数案件の写真+案件情報を一括取得（一括写真台帳PDF用）
+    listByCases: protectedProcedure
+      .input(z.object({ caseIds: z.array(z.number()).min(1).max(100) }))
+      .query(async ({ input }) => {
+        const [photoRows, caseRows] = await Promise.all([
+          getPhotosByCaseIds(input.caseIds),
+          getCasesByIds(input.caseIds),
+        ]);
+        return { photos: photoRows, cases: caseRows };
+      }),
 
     upload: protectedProcedure
       .input(

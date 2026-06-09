@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { trpc } from "@/lib/trpc";
+import { fileToUprightDataUrl } from "@/lib/imageOrientation";
 import {
   syncStatusFromStage,
   syncStageFromStatus,
@@ -941,17 +942,13 @@ function PhotosTab({
     setUploading(true);
     try {
       for (const file of Array.from(files)) {
-        const base64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
+        // EXIF Orientation を読み取り、正立化した画像で保存する
+        const { dataUrl, mimeType } = await fileToUprightDataUrl(file);
         await uploadMutation.mutateAsync({
           caseId,
           fileName: file.name,
-          fileBase64: base64,
-          mimeType: file.type || "image/jpeg",
+          fileBase64: dataUrl,
+          mimeType,
           photoType,
         });
       }
@@ -1091,7 +1088,7 @@ function PhotoCard({
   return (
     <Card className="overflow-hidden">
       <div className="aspect-[4/3] bg-muted relative">
-        <img src={photo.fileUrl} alt="" className="w-full h-full object-cover" />
+        <img src={photo.fileUrl} alt="" className="w-full h-full object-cover" style={{ imageOrientation: "from-image" }} />
         <div className="absolute top-2 left-2">
           <Badge className="bg-black/70 text-white text-[10px] border-0 backdrop-blur-sm">
             {photo.photoType}

@@ -10,6 +10,7 @@ import CasesList from "./pages/CasesList";
 import CaseNew from "./pages/CaseNew";
 import CaseDetail from "./pages/CaseDetail";
 import PhotoLedger from "./pages/PhotoLedger";
+import PhotoLedgerBatch from "./pages/PhotoLedgerBatch";
 import CsvImport from "./pages/CsvImport";
 import CasePdfImport from "./pages/CasePdfImport";
 import CasesMap from "./pages/CasesMap";
@@ -68,6 +69,7 @@ function Router() {
         <Route path={"/partners/:id"}>
           {(params) => <PartnerDetail id={Number(params.id)} />}
         </Route>
+        <Route path={"/photo-ledger/batch"} component={PhotoLedgerBatch} />
         <Route path={"/cases/:id/ledger"}>
           {(params) => <PhotoLedger id={Number(params.id)} />}
         </Route>
