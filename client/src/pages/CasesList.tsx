@@ -417,6 +417,28 @@ export default function CasesList() {
         </Card>
       ) : groupByPref ? (
         <div className="space-y-5">
+          {regionGroups.length > 0 && (
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs bg-background"
+                onClick={() => setCollapsedRegions(new Set())}
+              >
+                <ChevronDown className="h-3.5 w-3.5 mr-1" />
+                すべて展開
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs bg-background"
+                onClick={() => setCollapsedRegions(new Set(regionGroups.map((r) => r.label)))}
+              >
+                <ChevronRight className="h-3.5 w-3.5 mr-1" />
+                すべて折り畳む
+              </Button>
+            </div>
+          )}
           {regionGroups.map((region) => {
             const collapsed = collapsedRegions.has(region.label);
             return (
