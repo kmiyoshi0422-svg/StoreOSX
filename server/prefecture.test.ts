@@ -4,8 +4,12 @@ import {
   prefectureLabel,
   prefectureSortIndex,
   resolveCasePrefecture,
+  regionOfPrefecture,
+  regionSortIndex,
   PREFECTURES,
+  REGIONS,
   UNKNOWN_PREFECTURE,
+  UNKNOWN_REGION,
 } from "../shared/prefecture";
 
 describe("detectPrefecture", () => {
@@ -86,5 +90,42 @@ describe("prefectureSortIndex", () => {
 
   it("東京は神奈川より前", () => {
     expect(prefectureSortIndex("東京都")).toBeLessThan(prefectureSortIndex("神奈川県"));
+  });
+});
+
+describe("regionOfPrefecture", () => {
+  it("代表的な県を正しい地方にマップする", () => {
+    expect(regionOfPrefecture("東京都")).toBe("関東");
+    expect(regionOfPrefecture("神奈川県")).toBe("関東");
+    expect(regionOfPrefecture("大阪府")).toBe("近畿");
+    expect(regionOfPrefecture("愛知県")).toBe("中部");
+    expect(regionOfPrefecture("北海道")).toBe("北海道");
+    expect(regionOfPrefecture("宮城県")).toBe("東北");
+    expect(regionOfPrefecture("広島県")).toBe("中国");
+    expect(regionOfPrefecture("香川県")).toBe("四国");
+    expect(regionOfPrefecture("福岡県")).toBe("九州・沖縄");
+    expect(regionOfPrefecture("沖縄県")).toBe("九州・沖縄");
+  });
+
+  it("全都道府県がいずれかの地方に属する", () => {
+    for (const p of PREFECTURES) {
+      expect(REGIONS).toContain(regionOfPrefecture(p) as never);
+    }
+  });
+
+  it("未分類・不明なラベルは未分類地方", () => {
+    expect(regionOfPrefecture(UNKNOWN_PREFECTURE)).toBe(UNKNOWN_REGION);
+    expect(regionOfPrefecture("存在しない県")).toBe(UNKNOWN_REGION);
+  });
+});
+
+describe("regionSortIndex", () => {
+  it("北海道が先頭、未分類が最後", () => {
+    expect(regionSortIndex("北海道")).toBe(0);
+    expect(regionSortIndex(UNKNOWN_REGION)).toBe(REGIONS.length);
+  });
+
+  it("関東は近畿より前", () => {
+    expect(regionSortIndex("関東")).toBeLessThan(regionSortIndex("近畿"));
   });
 });

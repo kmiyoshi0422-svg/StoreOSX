@@ -16,6 +16,8 @@ import { calcCaseProfit } from "@shared/profit";
 import {
   resolveCasePrefecture,
   prefectureSortIndex,
+  regionOfPrefecture,
+  regionSortIndex,
   UNKNOWN_PREFECTURE,
 } from "@shared/prefecture";
 import { Label } from "@/components/ui/label";
@@ -31,6 +33,7 @@ import {
   Calendar,
   FileText,
   ChevronRight,
+  ChevronDown,
   UserCircle2,
   CircleDashed,
   ClipboardCheck,
@@ -129,6 +132,15 @@ export default function CasesList() {
   const [storeDialogKey, setStoreDialogKey] = useState<string | null>(null);
   const [groupByPref, setGroupByPref] = useState(false);
   const [prefFilter, setPrefFilter] = useState("all");
+  // 折り畳んだ地方ラベルの集合（デフォルトは全展開）
+  const [collapsedRegions, setCollapsedRegions] = useState<Set<string>>(new Set());
+  const toggleRegion = (label: string) =>
+    setCollapsedRegions((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
 
   // 同一店舗グルーピング（storeCode または storeName ごと）
   const storeGroups = useMemo(() => {
@@ -218,6 +230,26 @@ export default function CasesList() {
       .map(([label, list]) => ({ label, list }))
       .sort((a, b) => prefectureSortIndex(a.label) - prefectureSortIndex(b.label));
   }, [filtered]);
+
+  // 地方（エリア）→ 県 の二段グルーピング
+  const regionGroups = useMemo(() => {
+    const map = new Map<string, typeof prefGroups>();
+    for (const pg of prefGroups) {
+      const region = regionOfPrefecture(pg.label);
+      const arr = map.get(region) ?? [];
+      arr.push(pg);
+      map.set(region, arr);
+    }
+    return Array.from(map.entries())
+      .map(([label, prefs]) => ({
+        label,
+        prefs: prefs
+          .slice()
+          .sort((a, b) => prefectureSortIndex(a.label) - prefectureSortIndex(b.label)),
+        count: prefs.reduce((sum, p) => sum + p.list.length, 0),
+      }))
+      .sort((a, b) => regionSortIndex(a.label) - regionSortIndex(b.label));
+  }, [prefGroups]);
 
   return (
     <div className="space-y-6">
@@ -384,20 +416,49 @@ export default function CasesList() {
           </CardContent>
         </Card>
       ) : groupByPref ? (
-        <div className="space-y-6">
-          {prefGroups.map((group) => (
-            <section key={group.label}>
-              <div className="flex items-center gap-2 mb-3 sticky top-0 z-[1] bg-background/95 backdrop-blur py-1.5">
-                <MapIcon className="h-4 w-4 text-primary" />
-                <h2 className="font-serif-jp text-lg font-semibold">{group.label}</h2>
-                <Badge variant="secondary" className="text-[10px]">
-                  {group.list.length}件
-                </Badge>
-                <div className="flex-1 h-px bg-border/60 ml-2" />
-              </div>
-              <div className="grid gap-3">{group.list.map((c) => renderCard(c))}</div>
-            </section>
-          ))}
+        <div className="space-y-5">
+          {regionGroups.map((region) => {
+            const collapsed = collapsedRegions.has(region.label);
+            return (
+              <section key={region.label} className="rounded-lg border border-border/70 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => toggleRegion(region.label)}
+                  aria-expanded={!collapsed}
+                  className="w-full flex items-center gap-2 px-4 py-3 bg-muted/40 hover:bg-muted/70 transition-colors text-left"
+                >
+                  <ChevronDown
+                    className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${collapsed ? "-rotate-90" : ""}`}
+                  />
+                  <MapIcon className="h-4 w-4 text-primary" />
+                  <h2 className="font-serif-jp text-lg font-semibold">{region.label}</h2>
+                  <Badge variant="secondary" className="text-[10px]">
+                    {region.count}件
+                  </Badge>
+                  <span className="text-[10px] text-muted-foreground ml-1">
+                    {region.prefs.length}県
+                  </span>
+                </button>
+                {!collapsed && (
+                  <div className="p-4 space-y-5">
+                    {region.prefs.map((group) => (
+                      <div key={group.label}>
+                        <div className="flex items-center gap-2 mb-3">
+                          <MapPin className="h-3.5 w-3.5 text-primary/70" />
+                          <h3 className="font-serif-jp text-base font-semibold">{group.label}</h3>
+                          <Badge variant="outline" className="text-[10px]">
+                            {group.list.length}件
+                          </Badge>
+                          <div className="flex-1 h-px bg-border/60 ml-2" />
+                        </div>
+                        <div className="grid gap-3">{group.list.map((c) => renderCard(c))}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            );
+          })}
         </div>
       ) : (
         <div className="grid gap-3">{filtered.map((c) => renderCard(c))}</div>
