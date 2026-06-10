@@ -97,6 +97,20 @@ export function prefectureLabel(
   return detectPrefecture(address) ?? UNKNOWN_PREFECTURE;
 }
 
+/**
+ * 案件の県別分類ラベルを決定する。
+ * - 独立項目の prefecture を最優先
+ * - 未設定の場合は住所から推定
+ * - どちらも不明なら未分類
+ */
+export function resolveCasePrefecture(
+  c: { prefecture?: string | null; address?: string | null },
+): string {
+  const explicit = c.prefecture?.trim();
+  if (explicit) return explicit;
+  return detectPrefecture(c.address) ?? UNKNOWN_PREFECTURE;
+}
+
 /** 都道府県ラベルの並び順インデックス（未分類は最後） */
 export function prefectureSortIndex(label: string): number {
   const idx = PREFECTURE_ORDER.get(label);

@@ -66,6 +66,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { BUDGET_RATIO, calcBudget } from "../shared/budget";
 import { calcCaseProfit } from "../shared/profit";
+import { detectPrefecture } from "../shared/prefecture";
 import { resolveStageStatus, syncStageFromStatus } from "../shared/stageStatus";
 import type { ProgressStage, CaseStatus } from "../shared/stageStatus";
 import { aggregateExpensesByUser } from "../shared/expense-aggregate";
@@ -97,6 +98,7 @@ const caseInputSchema = z.object({
   storeName: z.string().min(1),
   storeCode: z.string().nullish(),
   shopId: z.string().nullish(),
+  prefecture: z.string().nullish(),
   address: z.string().nullish(),
   storePhone: z.string().nullish(),
   businessHours: z.string().nullish(),
@@ -412,7 +414,12 @@ export const appRouter = router({
     ),
 
     create: protectedProcedure.input(caseInputSchema).mutation(async ({ ctx, input }) => {
-      const id = await createCase({ ...input, createdBy: ctx.user.id });
+      // 都道府県が未入力なら住所から自動推定して補完（手入力は優先）
+      const prefecture =
+        input.prefecture && input.prefecture.trim()
+          ? input.prefecture.trim()
+          : detectPrefecture(input.address) ?? input.prefecture ?? null;
+      const id = await createCase({ ...input, prefecture, createdBy: ctx.user.id });
       // デフォルトチェックリストを自動投入
       const items = DEFAULT_CHECKLIST.map((tpl) => ({
         caseId: id,
@@ -442,6 +449,13 @@ export const appRouter = router({
             data.progressStage = resolved.progressStage;
             data.status = resolved.status;
           }
+        }
+        // 都道府県の補完：明示値が空で住所が更新されたら住所から推定
+        if ((data.prefecture == null || data.prefecture.trim() === "") && data.address) {
+          const detected = detectPrefecture(data.address);
+          if (detected) data.prefecture = detected;
+        } else if (data.prefecture != null) {
+          data.prefecture = data.prefecture.trim() || null;
         }
         await updateCase(input.id, data);
         return { success: true };
@@ -692,7 +706,11 @@ export const appRouter = router({
         let failed = 0;
         for (const row of input.rows) {
           try {
-            const id = await createCase({ ...row, createdBy: ctx.user.id });
+            const prefecture =
+              row.prefecture && row.prefecture.trim()
+                ? row.prefecture.trim()
+                : detectPrefecture(row.address) ?? row.prefecture ?? null;
+            const id = await createCase({ ...row, prefecture, createdBy: ctx.user.id });
             const items = DEFAULT_CHECKLIST.map((tpl) => ({
               caseId: id,
               phase: tpl.phase,

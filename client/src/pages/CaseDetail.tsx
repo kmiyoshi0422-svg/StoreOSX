@@ -47,6 +47,7 @@ import {
   Copy,
   Sparkles,
   PenLine,
+  Wand2,
 } from "lucide-react";
 import { generateQuotePDF, generateCompletionReportPDF } from "@/lib/documentPdf";
 import {
@@ -55,6 +56,7 @@ import {
   recommendPartnerCategories,
 } from "../../../shared/checklist-template";
 import type { Case, ChecklistItem, Photo } from "../../../drizzle/schema";
+import { PREFECTURES, detectPrefecture } from "@shared/prefecture";
 
 const STATUS_COLORS: Record<string, string> = {
   受付: "bg-slate-100 text-slate-700 border-slate-200",
@@ -137,9 +139,15 @@ export default function CaseDetail({ id }: { id: number }) {
               {caseData.storeName}
             </h1>
             <div className="text-xs text-muted-foreground mt-2 flex flex-wrap gap-x-4 gap-y-1">
-              {caseData.address && (
+              {caseData.prefecture && (
                 <span className="flex items-center gap-1">
                   <MapPin className="h-3 w-3" />
+                  {caseData.prefecture}
+                </span>
+              )}
+              {caseData.address && (
+                <span className="flex items-center gap-1">
+                  {!caseData.prefecture && <MapPin className="h-3 w-3" />}
                   {caseData.address}
                 </span>
               )}
@@ -283,6 +291,8 @@ function InfoTab({
   const [form, setForm] = useState({
     status: caseData.status,
     urgency: caseData.urgency,
+    prefecture: caseData.prefecture ?? "",
+    address: caseData.address ?? "",
     progressStage: (caseData.progressStage as "未対応" | "現調済" | "見積提出済" | "承認済") ?? "未対応",
     requestContent: caseData.requestContent ?? "",
     categoryLarge: caseData.categoryLarge ?? "",
@@ -306,6 +316,8 @@ function InfoTab({
         id: caseData.id,
         data: {
           ...form,
+          prefecture: form.prefecture || null,
+          address: form.address || null,
           categoryLarge: form.categoryLarge || null,
           categoryMedium: form.categoryMedium || null,
           categorySmall: form.categorySmall || null,
@@ -482,6 +494,66 @@ function InfoTab({
                   />
                 </div>
               </div>
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <Label className="text-xs text-muted-foreground">都道府県</Label>
+                  <div className="flex gap-2 mt-1">
+                    <Select
+                      value={form.prefecture || "__none__"}
+                      onValueChange={(v) =>
+                        setForm((p) => ({ ...p, prefecture: v === "__none__" ? "" : v }))
+                      }
+                    >
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="選択..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">未選択</SelectItem>
+                        {PREFECTURES.map((pr) => (
+                          <SelectItem key={pr} value={pr}>
+                            {pr}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="bg-background shrink-0"
+                      title="住所から都道府県を推定"
+                      onClick={() => {
+                        const detected = detectPrefecture(form.address);
+                        if (detected) {
+                          setForm((p) => ({ ...p, prefecture: detected }));
+                          toast.success(`「${detected}」を設定しました`);
+                        } else {
+                          toast.error("住所から都道府県を判定できませんでした");
+                        }
+                      }}
+                    >
+                      <Wand2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">住所</Label>
+                  <Input
+                    className="mt-1"
+                    value={form.address}
+                    onChange={(e) =>
+                      setForm((p) => {
+                        const next = { ...p, address: e.target.value };
+                        if (!p.prefecture) {
+                          const d = detectPrefecture(e.target.value);
+                          if (d) next.prefecture = d;
+                        }
+                        return next;
+                      })
+                    }
+                  />
+                </div>
+              </div>
               <div>
                 <Label className="text-xs text-muted-foreground">見積金額（円）</Label>
                 <Input
@@ -505,6 +577,8 @@ function InfoTab({
             </div>
           ) : (
             <dl className="space-y-2 text-sm">
+              <Row label="都道府県" value={caseData.prefecture || "—"} />
+              <Row label="住所" value={caseData.address || "—"} />
               <Row label="作業区分" value={caseData.workType ?? "—"} />
               <Row label="費用負担" value={caseData.costBearer ?? "—"} />
               <Row

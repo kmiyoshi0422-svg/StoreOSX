@@ -3,6 +3,7 @@ import {
   detectPrefecture,
   prefectureLabel,
   prefectureSortIndex,
+  resolveCasePrefecture,
   PREFECTURES,
   UNKNOWN_PREFECTURE,
 } from "../shared/prefecture";
@@ -39,6 +40,40 @@ describe("prefectureLabel", () => {
   it("判定できない場合は未分類ラベル", () => {
     expect(prefectureLabel("不明")).toBe(UNKNOWN_PREFECTURE);
     expect(prefectureLabel("福岡県福岡市")).toBe("福岡県");
+  });
+});
+
+describe("resolveCasePrefecture", () => {
+  it("独立項目 prefecture を最優先する（住所と違っても）", () => {
+    expect(
+      resolveCasePrefecture({ prefecture: "東京都", address: "神奈川県横浜市" }),
+    ).toBe("東京都");
+  });
+
+  it("prefecture が未設定なら住所から推定する", () => {
+    expect(resolveCasePrefecture({ prefecture: null, address: "大阪府大阪市" })).toBe(
+      "大阪府",
+    );
+    expect(resolveCasePrefecture({ prefecture: "", address: "福岡県福岡市" })).toBe(
+      "福岡県",
+    );
+    expect(resolveCasePrefecture({ prefecture: "   ", address: "北海道札幌市" })).toBe(
+      "北海道",
+    );
+  });
+
+  it("住所未入力でも prefecture があれば分類できる", () => {
+    expect(resolveCasePrefecture({ prefecture: "長野県", address: null })).toBe("長野県");
+    expect(resolveCasePrefecture({ prefecture: "沖縄県", address: "" })).toBe("沖縄県");
+  });
+
+  it("prefectureも住所も不明なら未分類", () => {
+    expect(resolveCasePrefecture({ prefecture: null, address: null })).toBe(
+      UNKNOWN_PREFECTURE,
+    );
+    expect(resolveCasePrefecture({ prefecture: "", address: "住所未登録" })).toBe(
+      UNKNOWN_PREFECTURE,
+    );
   });
 });
 

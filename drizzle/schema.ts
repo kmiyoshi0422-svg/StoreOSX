@@ -29,6 +29,7 @@ export const cases = mysqlTable("cases", {
   storeName: varchar("storeName", { length: 255 }).notNull(), // 店舗名
   storeCode: varchar("storeCode", { length: 64 }), // 店舗コード
   shopId: varchar("shopId", { length: 64 }), // SHOP-ID
+  prefecture: varchar("prefecture", { length: 16 }), // 都道府県（県別分類用の独立項目）
   address: text("address"), // 住所
   latitude: varchar("latitude", { length: 32 }), // ジオコーディング編度
   longitude: varchar("longitude", { length: 32 }), // ジオコーディング経度

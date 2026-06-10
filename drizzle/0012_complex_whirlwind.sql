@@ -1,0 +1,1 @@
+ALTER TABLE `cases` ADD `prefecture` varchar(16);

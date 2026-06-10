@@ -17,8 +17,9 @@ import {
   CATEGORY_LARGE_OPTIONS,
   CATEGORY_MEDIUM_OPTIONS,
 } from "../../../shared/checklist-template";
+import { PREFECTURES, detectPrefecture } from "@shared/prefecture";
 import { toast } from "sonner";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, Wand2 } from "lucide-react";
 
 export default function CaseNew() {
   const [, setLocation] = useLocation();
@@ -40,6 +41,7 @@ export default function CaseNew() {
     storeName: "",
     storeCode: "",
     shopId: "",
+    prefecture: "",
     address: "",
     storePhone: "",
     businessHours: "",
@@ -62,6 +64,29 @@ export default function CaseNew() {
   const update = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) =>
     setForm((p) => ({ ...p, [key]: value }));
 
+  // 住所入力時、都道府県が未選択なら自動推定してセット
+  const handleAddressChange = (value: string) => {
+    setForm((p) => {
+      const next = { ...p, address: value };
+      if (!p.prefecture) {
+        const detected = detectPrefecture(value);
+        if (detected) next.prefecture = detected;
+      }
+      return next;
+    });
+  };
+
+  // 住所から都道府県を再推定（手動ボタン）
+  const detectFromAddress = () => {
+    const detected = detectPrefecture(form.address);
+    if (detected) {
+      update("prefecture", detected);
+      toast.success(`「${detected}」を設定しました`);
+    } else {
+      toast.error("住所から都道府県を判定できませんでした");
+    }
+  };
+
   const handleSubmit = () => {
     if (!form.requestNumber.trim() || !form.storeName.trim()) {
       toast.error("依頼番号と店舗名は必須です");
@@ -69,6 +94,7 @@ export default function CaseNew() {
     }
     createMutation.mutate({
       ...form,
+      prefecture: form.prefecture || null,
       categoryLarge: form.categoryLarge || null,
       categoryMedium: form.categoryMedium || null,
       categorySmall: form.categorySmall || null,
@@ -148,17 +174,47 @@ export default function CaseNew() {
               />
             </Field>
           </div>
-          <Field label="住所" className="md:col-span-2">
-            <Input
-              value={form.address}
-              onChange={(e) => update("address", e.target.value)}
-              placeholder="例: 山口県下関市古ヶ峠1-10"
-            />
+          <Field label="都道府県">
+            <div className="flex gap-2">
+              <Select
+                value={form.prefecture || "__none__"}
+                onValueChange={(v) => update("prefecture", v === "__none__" ? "" : v)}
+              >
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="選択..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">未選択</SelectItem>
+                  {PREFECTURES.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {p}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="bg-background shrink-0"
+                onClick={detectFromAddress}
+                title="住所から都道府県を推定"
+              >
+                <Wand2 className="h-4 w-4" />
+              </Button>
+            </div>
           </Field>
           <Field label="店舗電話">
             <Input
               value={form.storePhone}
               onChange={(e) => update("storePhone", e.target.value)}
+            />
+          </Field>
+          <Field label="住所" className="md:col-span-2">
+            <Input
+              value={form.address}
+              onChange={(e) => handleAddressChange(e.target.value)}
+              placeholder="例: 山口県下関市古ヶ峠1-10"
             />
           </Field>
           <Field label="営業時間">

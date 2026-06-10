@@ -14,7 +14,7 @@ import {
 import { trpc } from "@/lib/trpc";
 import { calcCaseProfit } from "@shared/profit";
 import {
-  prefectureLabel,
+  resolveCasePrefecture,
   prefectureSortIndex,
   UNKNOWN_PREFECTURE,
 } from "@shared/prefecture";
@@ -173,7 +173,7 @@ export default function CasesList() {
       const stage = (c.progressStage as ProgressStage) ?? "未対応";
       if (stageTab !== "all" && stage !== stageTab) return false;
       if (urgency !== "all" && c.urgency !== urgency) return false;
-      if (prefFilter !== "all" && prefectureLabel(c.address) !== prefFilter) return false;
+      if (prefFilter !== "all" && resolveCasePrefecture(c) !== prefFilter) return false;
       if (assignee === "mine" && c.assigneeId !== user?.id) return false;
       if (assignee === "unassigned" && c.assigneeId != null) return false;
       if (assignee !== "all" && assignee !== "mine" && assignee !== "unassigned") {
@@ -197,7 +197,7 @@ export default function CasesList() {
   const prefOptions = useMemo(() => {
     const counts = new Map<string, number>();
     for (const c of cases) {
-      const label = prefectureLabel(c.address);
+      const label = resolveCasePrefecture(c);
       counts.set(label, (counts.get(label) ?? 0) + 1);
     }
     return Array.from(counts.entries())
@@ -209,7 +209,7 @@ export default function CasesList() {
   const prefGroups = useMemo(() => {
     const map = new Map<string, typeof filtered>();
     for (const c of filtered) {
-      const label = prefectureLabel(c.address);
+      const label = resolveCasePrefecture(c);
       const arr = map.get(label) ?? [];
       arr.push(c);
       map.set(label, arr);
