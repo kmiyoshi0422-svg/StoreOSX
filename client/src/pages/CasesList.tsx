@@ -13,6 +13,13 @@ import {
 } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { calcCaseProfit } from "@shared/profit";
+import {
+  prefectureLabel,
+  prefectureSortIndex,
+  UNKNOWN_PREFECTURE,
+} from "@shared/prefecture";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useLocation } from "wouter";
 import { useMemo, useState } from "react";
@@ -33,6 +40,7 @@ import {
   Building2,
   Layers,
   AlertTriangle,
+  Map as MapIcon,
 } from "lucide-react";
 import {
   Dialog,
@@ -119,6 +127,8 @@ export default function CasesList() {
   const [urgency, setUrgency] = useState("all");
   const [assignee, setAssignee] = useState("all");
   const [storeDialogKey, setStoreDialogKey] = useState<string | null>(null);
+  const [groupByPref, setGroupByPref] = useState(false);
+  const [prefFilter, setPrefFilter] = useState("all");
 
   // 同一店舗グルーピング（storeCode または storeName ごと）
   const storeGroups = useMemo(() => {
@@ -163,6 +173,7 @@ export default function CasesList() {
       const stage = (c.progressStage as ProgressStage) ?? "未対応";
       if (stageTab !== "all" && stage !== stageTab) return false;
       if (urgency !== "all" && c.urgency !== urgency) return false;
+      if (prefFilter !== "all" && prefectureLabel(c.address) !== prefFilter) return false;
       if (assignee === "mine" && c.assigneeId !== user?.id) return false;
       if (assignee === "unassigned" && c.assigneeId != null) return false;
       if (assignee !== "all" && assignee !== "mine" && assignee !== "unassigned") {
@@ -180,7 +191,33 @@ export default function CasesList() {
       }
       return true;
     });
-  }, [cases, q, stageTab, urgency, assignee, user?.id]);
+  }, [cases, q, stageTab, urgency, prefFilter, assignee, user?.id]);
+
+  // 県フィルタの選択肢（実際に案件が存在する県のみ・件数付き・標準順）
+  const prefOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const c of cases) {
+      const label = prefectureLabel(c.address);
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => prefectureSortIndex(a.label) - prefectureSortIndex(b.label));
+  }, [cases]);
+
+  // 県別グルーピング（県見出し→案件配列、標準の都道府県順、未分類は最後）
+  const prefGroups = useMemo(() => {
+    const map = new Map<string, typeof filtered>();
+    for (const c of filtered) {
+      const label = prefectureLabel(c.address);
+      const arr = map.get(label) ?? [];
+      arr.push(c);
+      map.set(label, arr);
+    }
+    return Array.from(map.entries())
+      .map(([label, list]) => ({ label, list }))
+      .sort((a, b) => prefectureSortIndex(a.label) - prefectureSortIndex(b.label));
+  }, [filtered]);
 
   return (
     <div className="space-y-6">
@@ -273,6 +310,26 @@ export default function CasesList() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={prefFilter} onValueChange={setPrefFilter}>
+          <SelectTrigger className="md:w-40">
+            <SelectValue placeholder="都道府県" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全県</SelectItem>
+            {prefOptions.map((p) => (
+              <SelectItem key={p.label} value={p.label}>
+                {p.label}（{p.count}）
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-2 px-3 rounded-md border border-border bg-background shrink-0">
+          <MapIcon className="h-4 w-4 text-muted-foreground" />
+          <Label htmlFor="groupByPref" className="text-xs whitespace-nowrap cursor-pointer">
+            県別表示
+          </Label>
+          <Switch id="groupByPref" checked={groupByPref} onCheckedChange={setGroupByPref} />
+        </div>
       </div>
 
       {/* 複数案件を抱える店舗サマリー */}
@@ -326,14 +383,118 @@ export default function CasesList() {
             <p className="text-sm text-muted-foreground max-w-sm">タブや検索キーワード、担当者・緊急度フィルタを切り替えてもう一度お試しください。</p>
           </CardContent>
         </Card>
+      ) : groupByPref ? (
+        <div className="space-y-6">
+          {prefGroups.map((group) => (
+            <section key={group.label}>
+              <div className="flex items-center gap-2 mb-3 sticky top-0 z-[1] bg-background/95 backdrop-blur py-1.5">
+                <MapIcon className="h-4 w-4 text-primary" />
+                <h2 className="font-serif-jp text-lg font-semibold">{group.label}</h2>
+                <Badge variant="secondary" className="text-[10px]">
+                  {group.list.length}件
+                </Badge>
+                <div className="flex-1 h-px bg-border/60 ml-2" />
+              </div>
+              <div className="grid gap-3">{group.list.map((c) => renderCard(c))}</div>
+            </section>
+          ))}
+        </div>
       ) : (
-        <div className="grid gap-3">
-          {filtered.map((c) => {
-            const stage = (c.progressStage as ProgressStage) ?? "未対応";
-            const assigneeUser = c.assigneeId ? userMap.get(c.assigneeId) : null;
-            const sameStoreList = storeGroups.get(storeKey(c)) ?? [];
-            const sameStoreCount = sameStoreList.length;
-            return (
+        <div className="grid gap-3">{filtered.map((c) => renderCard(c))}</div>
+      )}
+
+      {/* 同一店舗案件ダイアログ */}
+      <Dialog open={!!storeDialogKey} onOpenChange={(open) => !open && setStoreDialogKey(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-amber-700" />
+              {dialogStoreCases[0]?.storeName ?? "店舗名"}
+              <Badge variant="outline" className="text-[10px] bg-amber-50 border-amber-200 text-amber-800">
+                {dialogStoreCases.length}件
+              </Badge>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              この店舗で進行中・完了済みの案件一覧です。クリックで詳細へ遷移します。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="divide-y divide-border/60 max-h-[60vh] overflow-y-auto">
+            {dialogStoreCases
+              .slice()
+              .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+              .map((c) => {
+                const stage = (c.progressStage as ProgressStage) ?? "未対応";
+                const assigneeUser = c.assigneeId ? userMap.get(c.assigneeId) : null;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => {
+                      setStoreDialogKey(null);
+                      setLocation(`/cases/${c.id}`);
+                    }}
+                    className="w-full text-left py-3 px-2 hover:bg-muted/40 rounded transition-colors"
+                  >
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <span
+                        className={`inline-flex h-5 min-w-5 px-1.5 items-center justify-center rounded text-[9px] font-bold ${URGENCY_COLORS[c.urgency]}`}
+                      >
+                        {URGENCY_LABEL[c.urgency]}
+                      </span>
+                      <Badge variant="outline" className={`text-[10px] ${STAGE_BADGE[stage]}`}>
+                        {stage}
+                      </Badge>
+                      <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[c.status]}`}>
+                        {c.status}
+                      </Badge>
+                      <span className="text-[10px] font-mono text-muted-foreground">
+                        {c.requestNumber}
+                      </span>
+                      {c.requestDate && (
+                        <span className="text-[10px] text-muted-foreground ml-auto">
+                          {new Date(c.requestDate).toLocaleDateString("ja-JP")}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-muted-foreground">
+                        {c.categoryLarge || "—"} / {c.categoryMedium || "—"}
+                      </span>
+                      {assigneeUser && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          {assigneeUser.name || assigneeUser.email}
+                        </Badge>
+                      )}
+                      {!assigneeUser && (
+                        <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
+                          未割当
+                        </Badge>
+                      )}
+                      {c.estimatedCost != null && (
+                        <span className="font-mono text-[10px] ml-auto">
+                          ¥{c.estimatedCost.toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                    {c.requestContent && (
+                      <p className="text-[11px] text-muted-foreground mt-1 line-clamp-1">
+                        {c.requestContent}
+                      </p>
+                    )}
+                  </button>
+                );
+              })}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+
+  function renderCard(c: (typeof cases)[number]) {
+    const stage = (c.progressStage as ProgressStage) ?? "未対応";
+    const assigneeUser = c.assigneeId ? userMap.get(c.assigneeId) : null;
+    const sameStoreList = storeGroups.get(storeKey(c)) ?? [];
+    const sameStoreCount = sameStoreList.length;
+    return (
               <Card
                 key={c.id}
                 className="hover:shadow-md hover:border-primary/40 transition-all duration-200"
@@ -528,94 +689,6 @@ export default function CasesList() {
                   </div>
                 </CardContent>
               </Card>
-            );
-          })}
-        </div>
-      )}
-
-      {/* 同一店舗案件ダイアログ */}
-      <Dialog open={!!storeDialogKey} onOpenChange={(open) => !open && setStoreDialogKey(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-amber-700" />
-              {dialogStoreCases[0]?.storeName ?? "店舗名"}
-              <Badge variant="outline" className="text-[10px] bg-amber-50 border-amber-200 text-amber-800">
-                {dialogStoreCases.length}件
-              </Badge>
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              この店舗で進行中・完了済みの案件一覧です。クリックで詳細へ遷移します。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="divide-y divide-border/60 max-h-[60vh] overflow-y-auto">
-            {dialogStoreCases
-              .slice()
-              .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
-              .map((c) => {
-                const stage = (c.progressStage as ProgressStage) ?? "未対応";
-                const assigneeUser = c.assigneeId ? userMap.get(c.assigneeId) : null;
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => {
-                      setStoreDialogKey(null);
-                      setLocation(`/cases/${c.id}`);
-                    }}
-                    className="w-full text-left py-3 px-2 hover:bg-muted/40 rounded transition-colors"
-                  >
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span
-                        className={`inline-flex h-5 min-w-5 px-1.5 items-center justify-center rounded text-[9px] font-bold ${URGENCY_COLORS[c.urgency]}`}
-                      >
-                        {URGENCY_LABEL[c.urgency]}
-                      </span>
-                      <Badge variant="outline" className={`text-[10px] ${STAGE_BADGE[stage]}`}>
-                        {stage}
-                      </Badge>
-                      <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[c.status]}`}>
-                        {c.status}
-                      </Badge>
-                      <span className="text-[10px] font-mono text-muted-foreground">
-                        {c.requestNumber}
-                      </span>
-                      {c.requestDate && (
-                        <span className="text-[10px] text-muted-foreground ml-auto">
-                          {new Date(c.requestDate).toLocaleDateString("ja-JP")}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="text-muted-foreground">
-                        {c.categoryLarge || "—"} / {c.categoryMedium || "—"}
-                      </span>
-                      {assigneeUser && (
-                        <Badge variant="secondary" className="text-[10px]">
-                          {assigneeUser.name || assigneeUser.email}
-                        </Badge>
-                      )}
-                      {!assigneeUser && (
-                        <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
-                          未割当
-                        </Badge>
-                      )}
-                      {c.estimatedCost != null && (
-                        <span className="font-mono text-[10px] ml-auto">
-                          ¥{c.estimatedCost.toLocaleString()}
-                        </span>
-                      )}
-                    </div>
-                    {c.requestContent && (
-                      <p className="text-[11px] text-muted-foreground mt-1 line-clamp-1">
-                        {c.requestContent}
-                      </p>
-                    )}
-                  </button>
-                );
-              })}
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
+    );
+  }
 }
