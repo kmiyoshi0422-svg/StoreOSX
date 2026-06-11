@@ -5,12 +5,33 @@ import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { useMemo, useRef, useState } from "react";
-import { ArrowLeft, Download, Loader2, PenLine, RotateCcw } from "lucide-react";
+import {
+  ArrowLeft,
+  Download,
+  Loader2,
+  PenLine,
+  RotateCcw,
+  ImagePlus,
+  Trash2,
+  ArrowUp,
+  ArrowDown,
+  Camera,
+  ImageIcon,
+} from "lucide-react";
 import html2canvas from "html2canvas-pro";
 import jsPDF from "jspdf";
 import { toast } from "sonner";
 import { inlineImages } from "@/lib/imageDataUrl";
+import { fileToUprightDataUrl } from "@/lib/imageOrientation";
 import { SignaturePad } from "@/components/SignaturePad";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import type { Case, Photo } from "../../../drizzle/schema";
 
 export type ReportType = "survey" | "completion";
@@ -46,6 +67,25 @@ const REPORT_CONFIG: Record<
     dateLabel: "施工日",
     dateField: (c) => c.constructionDate,
   },
+};
+
+// 全写真区分（APIのenumと一致）
+const ALL_PHOTO_TYPES = [
+  "現調",
+  "施工前A",
+  "施工前B",
+  "施工後A",
+  "施工後B",
+  "設置状況",
+  "メーカー型番",
+  "その他",
+] as const;
+type PhotoTypeTag = (typeof ALL_PHOTO_TYPES)[number];
+
+// 報告書種別ごとの追加時初期区分
+const DEFAULT_ADD_TYPE: Record<ReportType, PhotoTypeTag> = {
+  survey: "現調",
+  completion: "施工後A",
 };
 
 function fmtDate(d: Date | null | undefined): string {
@@ -104,6 +144,51 @@ export default function CaseReport({
     onError: (e) => toast.error(e.message || "サインの削除に失敗しました"),
   });
 
+  // 写真管理
+  const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const [addType, setAddType] = useState<PhotoTypeTag>(DEFAULT_ADD_TYPE[reportType]);
+  const [uploading, setUploading] = useState(false);
+  const refetchPhotos = () => utils.photos.listByCase.invalidate({ caseId: id });
+
+  const uploadPhoto = trpc.photos.upload.useMutation();
+  const updatePhoto = trpc.photos.update.useMutation({
+    onSuccess: () => refetchPhotos(),
+    onError: (e) => toast.error(e.message || "更新に失敗しました"),
+  });
+  const removePhoto = trpc.photos.delete.useMutation({
+    onSuccess: () => {
+      toast.success("写真を削除しました");
+      refetchPhotos();
+    },
+    onError: (e) => toast.error(e.message || "削除に失敗しました"),
+  });
+
+  const handleAddFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        const { dataUrl, mimeType } = await fileToUprightDataUrl(file);
+        await uploadPhoto.mutateAsync({
+          caseId: id,
+          fileName: file.name,
+          fileBase64: dataUrl,
+          mimeType,
+          photoType: addType,
+        });
+      }
+      toast.success(`${files.length}枚を「${addType}」として追加しました`);
+      await refetchPhotos();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "アップロードに失敗しました");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+      if (cameraRef.current) cameraRef.current.value = "";
+    }
+  };
+
   // 該当区分の写真を抽出（順序: config.photoTypes の順 → orderNo）
   const reportPhotos = useMemo(() => {
     const order = config.photoTypes;
@@ -116,6 +201,24 @@ export default function CaseReport({
         return a.orderNo - b.orderNo;
       });
   }, [photos, config.photoTypes]);
+
+  // 並び替え（隣と orderNo を交換）。区分をまたぐ移動は区分も合わせる。
+  const movePhoto = (index: number, dir: -1 | 1) => {
+    const target = reportPhotos[index];
+    const swap = reportPhotos[index + dir];
+    if (!target || !swap) return;
+    // 表示上の順序をそのまま入れ替えるため、区分とorderNoを交換
+    updatePhoto.mutate({
+      id: target.id,
+      photoType: swap.photoType as PhotoTypeTag,
+      orderNo: swap.orderNo,
+    });
+    updatePhoto.mutate({
+      id: swap.id,
+      photoType: target.photoType as PhotoTypeTag,
+      orderNo: target.orderNo,
+    });
+  };
 
   // 写真ページ（4枚／ページ）
   const photoPages = useMemo(() => {
@@ -274,6 +377,176 @@ export default function CaseReport({
                     キャンセル
                   </Button>
                 )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 掲載写真の管理（PDFには出さない） */}
+      <div className="no-print max-w-[800px] mx-auto mb-6">
+        <Card>
+          <CardContent className="pt-6 space-y-4">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                <h3 className="font-serif-jp text-base font-semibold">
+                  掲載写真の管理
+                </h3>
+                <Badge variant="secondary" className="ml-1">
+                  {reportPhotos.length}枚
+                </Badge>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                {reportType === "survey"
+                  ? "現調・施工前の写真が載ります"
+                  : "施工後・設置状況の写真が載ります"}
+              </p>
+            </div>
+
+            {/* 追加コントロール */}
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              onChange={(e) => handleAddFiles(e.target.files)}
+            />
+            <input
+              ref={cameraRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              hidden
+              onChange={(e) => handleAddFiles(e.target.files)}
+            />
+            <div className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-border/70 bg-muted/30 p-3">
+              <div className="grid gap-1.5">
+                <Label className="text-xs">追加する写真の区分</Label>
+                <Select
+                  value={addType}
+                  onValueChange={(v) => setAddType(v as PhotoTypeTag)}
+                >
+                  <SelectTrigger className="h-9 w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ALL_PHOTO_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="bg-background"
+                disabled={uploading}
+                onClick={() => fileRef.current?.click()}
+              >
+                {uploading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ImagePlus className="h-4 w-4" />
+                )}
+                ファイルから追加
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="bg-background"
+                disabled={uploading}
+                onClick={() => cameraRef.current?.click()}
+              >
+                <Camera className="h-4 w-4" />
+                撮影して追加
+              </Button>
+            </div>
+
+            {/* 写真一覧 */}
+            {reportPhotos.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-6 text-center">
+                この報告書に載る写真はまだありません。上のボタンから追加してください。
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {reportPhotos.map((photo, index) => (
+                  <div
+                    key={photo.id}
+                    className="rounded-lg border border-border/60 overflow-hidden bg-card"
+                  >
+                    <div className="aspect-[4/3] bg-muted overflow-hidden">
+                      <img
+                        src={photo.fileUrl}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        style={{ imageOrientation: "from-image" }}
+                      />
+                    </div>
+                    <div className="p-2 space-y-2">
+                      <Select
+                        value={photo.photoType}
+                        onValueChange={(v) =>
+                          updatePhoto.mutate({ id: photo.id, photoType: v as PhotoTypeTag })
+                        }
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ALL_PHOTO_TYPES.map((t) => (
+                            <SelectItem key={t} value={t}>
+                              {t}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <div className="flex items-center justify-between gap-1">
+                        <div className="flex gap-1">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-7 w-7 bg-background"
+                            disabled={index === 0 || updatePhoto.isPending}
+                            onClick={() => movePhoto(index, -1)}
+                            title="上へ"
+                          >
+                            <ArrowUp className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-7 w-7 bg-background"
+                            disabled={
+                              index === reportPhotos.length - 1 || updatePhoto.isPending
+                            }
+                            onClick={() => movePhoto(index, 1)}
+                            title="下へ"
+                          >
+                            <ArrowDown className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive"
+                          disabled={removePhoto.isPending}
+                          onClick={() => {
+                            if (confirm("この写真を削除しますか？")) {
+                              removePhoto.mutate({ id: photo.id });
+                            }
+                          }}
+                          title="削除"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>
