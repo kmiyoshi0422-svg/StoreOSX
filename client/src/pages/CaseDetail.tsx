@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { trpc } from "@/lib/trpc";
 import { fileToUprightDataUrl } from "@/lib/imageOrientation";
+import { Lightbox, useLightbox } from "@/components/Lightbox";
 import {
   syncStatusFromStage,
   syncStageFromStatus,
@@ -1019,6 +1020,17 @@ function PhotosTab({
   const updateMutation = trpc.photos.update.useMutation({ onSuccess: onUpdated });
   const deleteMutation = trpc.photos.delete.useMutation({ onSuccess: onUpdated });
 
+  const lightbox = useLightbox();
+  const lightboxItems = useMemo(
+    () =>
+      photos.map((p) => ({
+        url: p.fileUrl,
+        title: [p.photoType, p.workItem].filter(Boolean).join(" / "),
+        subtitle: p.memo ?? undefined,
+      })),
+    [photos]
+  );
+
   const handleFiles = async (files: FileList | null, photoType: CamTag = "現調") => {
     if (!files || files.length === 0) return;
     setUploading(true);
@@ -1125,10 +1137,11 @@ function PhotosTab({
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {photos.map((p) => (
+          {photos.map((p, i) => (
             <PhotoCard
               key={p.id}
               photo={p}
+              onOpen={() => lightbox.open(i)}
               onUpdate={(data) => updateMutation.mutate({ id: p.id, ...data })}
               onDelete={() => {
                 if (confirm("この写真を削除します。よろしいですか？")) {
@@ -1139,6 +1152,12 @@ function PhotosTab({
           ))}
         </div>
       )}
+      <Lightbox
+        items={lightboxItems}
+        index={lightbox.index}
+        onClose={lightbox.close}
+        onIndexChange={lightbox.setIndex}
+      />
     </div>
   );
 }
@@ -1147,6 +1166,7 @@ function PhotoCard({
   photo,
   onUpdate,
   onDelete,
+  onOpen,
 }: {
   photo: {
     id: number;
@@ -1163,6 +1183,7 @@ function PhotoCard({
     memo?: string | null;
   }) => void;
   onDelete: () => void;
+  onOpen?: () => void;
 }) {
   const [workItem, setWorkItem] = useState(photo.workItem ?? "");
   const [memo, setMemo] = useState(photo.memo ?? "");
@@ -1170,7 +1191,13 @@ function PhotoCard({
   return (
     <Card className="overflow-hidden">
       <div className="aspect-[4/3] bg-muted relative">
-        <img src={photo.fileUrl} alt="" className="w-full h-full object-cover" style={{ imageOrientation: "from-image" }} />
+        <img
+          src={photo.fileUrl}
+          alt=""
+          className="w-full h-full object-cover cursor-zoom-in"
+          style={{ imageOrientation: "from-image" }}
+          onClick={onOpen}
+        />
         <div className="absolute top-2 left-2">
           <Badge className="bg-black/70 text-white text-[10px] border-0 backdrop-blur-sm">
             {photo.photoType}

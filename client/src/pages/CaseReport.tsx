@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { inlineImages } from "@/lib/imageDataUrl";
 import { fileToUprightDataUrl } from "@/lib/imageOrientation";
 import { SignaturePad } from "@/components/SignaturePad";
+import { Lightbox, useLightbox } from "@/components/Lightbox";
 import {
   Select,
   SelectContent,
@@ -255,6 +256,18 @@ export default function CaseReport({
 
   const draftOf = (photo: Photo) =>
     drafts[photo.id] ?? { workItem: photo.workItem ?? "", memo: photo.memo ?? "" };
+
+  // ライトボックス（拡大プレビュー）
+  const lightbox = useLightbox();
+  const lightboxItems = useMemo(
+    () =>
+      reportPhotos.map((p) => ({
+        url: p.fileUrl,
+        title: [p.photoType, p.workItem].filter(Boolean).join(" / "),
+        subtitle: p.memo ?? undefined,
+      })),
+    [reportPhotos]
+  );
 
   // 写真ページ（perPage 枚／ページ）
   const photoPages = useMemo(() => {
@@ -569,8 +582,9 @@ export default function CaseReport({
                           <img
                             src={photo.fileUrl}
                             alt=""
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover cursor-zoom-in"
                             style={{ imageOrientation: "from-image" }}
+                            onClick={() => lightbox.open(index)}
                           />
                         </div>
                         <div className="flex-1 p-2 space-y-1.5 min-w-0">
@@ -776,8 +790,12 @@ export default function CaseReport({
                       <img
                         src={photo.fileUrl}
                         alt=""
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover cursor-zoom-in"
                         style={{ imageOrientation: "from-image" }}
+                        onClick={() => {
+                          const idx = reportPhotos.findIndex((rp) => rp.id === photo.id);
+                          if (idx >= 0) lightbox.open(idx);
+                        }}
                       />
                     </div>
                     <div className="text-[11px] space-y-0.5">
@@ -796,6 +814,13 @@ export default function CaseReport({
           ))
         )}
       </div>
+
+      <Lightbox
+        items={lightboxItems}
+        index={lightbox.index}
+        onClose={lightbox.close}
+        onIndexChange={lightbox.setIndex}
+      />
 
       <style>{`
         @media print {
