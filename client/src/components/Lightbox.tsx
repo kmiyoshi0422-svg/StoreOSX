@@ -6,6 +6,8 @@ export type LightboxItem = {
   url: string;
   title?: string;
   subtitle?: string;
+  /** 時計回りの回転角度（0/90/180/270） */
+  rotation?: number;
 };
 
 type LightboxProps = {
@@ -103,7 +105,10 @@ export function Lightbox({ items, index, onClose, onIndexChange }: LightboxProps
           src={current.url}
           alt={current.title ?? ""}
           className="max-w-[92vw] max-h-[78vh] object-contain rounded shadow-2xl lightbox-zoom"
-          style={{ imageOrientation: "from-image" }}
+          style={{
+            imageOrientation: "from-image",
+            transform: current.rotation ? `rotate(${current.rotation}deg)` : undefined,
+          }}
         />
         {(current.title || current.subtitle) && (
           <figcaption className="mt-3 text-center text-white/90 max-w-[92vw]">

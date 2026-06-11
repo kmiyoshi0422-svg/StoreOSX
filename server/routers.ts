@@ -938,6 +938,13 @@ export const appRouter = router({
           workCategory: z.string().nullish(),
           workItem: z.string().nullish(),
           memo: z.string().nullish(),
+          rotation: z
+            .number()
+            .int()
+            .refine((v) => [0, 90, 180, 270].includes(v), {
+              message: "rotationは 0/90/180/270 のいずれかである必要があります",
+            })
+            .optional(),
           orderNo: z.number().int().optional(),
         })
       )

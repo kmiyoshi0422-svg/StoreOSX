@@ -1,0 +1,1 @@
+ALTER TABLE `photos` ADD `rotation` int DEFAULT 0 NOT NULL;

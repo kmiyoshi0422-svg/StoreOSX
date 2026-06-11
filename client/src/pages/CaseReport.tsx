@@ -11,6 +11,7 @@ import {
   Loader2,
   PenLine,
   RotateCcw,
+  RotateCw,
   ImagePlus,
   Trash2,
   ArrowUp,
@@ -265,6 +266,7 @@ export default function CaseReport({
         url: p.fileUrl,
         title: [p.photoType, p.workItem].filter(Boolean).join(" / "),
         subtitle: p.memo ?? undefined,
+        rotation: p.rotation ?? 0,
       })),
     [reportPhotos]
   );
@@ -582,10 +584,30 @@ export default function CaseReport({
                           <img
                             src={photo.fileUrl}
                             alt=""
-                            className="w-full h-full object-cover cursor-zoom-in"
-                            style={{ imageOrientation: "from-image" }}
+                            className="w-full h-full object-cover cursor-zoom-in transition-transform duration-200"
+                            style={{
+                              imageOrientation: "from-image",
+                              transform: photo.rotation
+                                ? `rotate(${photo.rotation}deg)`
+                                : undefined,
+                            }}
                             onClick={() => lightbox.open(index)}
                           />
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updatePhoto.mutate({
+                                id: photo.id,
+                                rotation: (((photo.rotation ?? 0) + 90) % 360),
+                              });
+                            }}
+                            disabled={updatePhoto.isPending}
+                            title="右に90°回転"
+                            className="absolute bottom-1 right-1 z-10 h-6 w-6 flex items-center justify-center rounded-full bg-black/70 text-white hover:bg-black/90 transition-colors active:scale-95"
+                          >
+                            <RotateCw className="h-3 w-3" />
+                          </button>
                         </div>
                         <div className="flex-1 p-2 space-y-1.5 min-w-0">
                           <div className="flex items-center gap-1.5">
@@ -791,7 +813,12 @@ export default function CaseReport({
                         src={photo.fileUrl}
                         alt=""
                         className="w-full h-full object-cover cursor-zoom-in"
-                        style={{ imageOrientation: "from-image" }}
+                        style={{
+                          imageOrientation: "from-image",
+                          transform: photo.rotation
+                            ? `rotate(${photo.rotation}deg)`
+                            : undefined,
+                        }}
                         onClick={() => {
                           const idx = reportPhotos.findIndex((rp) => rp.id === photo.id);
                           if (idx >= 0) lightbox.open(idx);

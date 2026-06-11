@@ -145,6 +145,8 @@ export const photos = mysqlTable("photos", {
   workCategory: varchar("workCategory", { length: 128 }), // 例: 内外装・サッシ
   workItem: varchar("workItem", { length: 255 }), // 例: 自動ドア修理
   memo: text("memo"), // メモ・備考
+  // 表示の向き（時計回りの回転角度: 0/90/180/270）
+  rotation: int("rotation").default(0).notNull(),
   // 順序
   orderNo: int("orderNo").default(0).notNull(),
   // メタ

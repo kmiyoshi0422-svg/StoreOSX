@@ -49,6 +49,7 @@ import {
   Sparkles,
   PenLine,
   Wand2,
+  RotateCw,
 } from "lucide-react";
 import { generateQuotePDF, generateCompletionReportPDF } from "@/lib/documentPdf";
 import {
@@ -1027,6 +1028,7 @@ function PhotosTab({
         url: p.fileUrl,
         title: [p.photoType, p.workItem].filter(Boolean).join(" / "),
         subtitle: p.memo ?? undefined,
+        rotation: p.rotation ?? 0,
       })),
     [photos]
   );
@@ -1175,27 +1177,33 @@ function PhotoCard({
     workCategory: string | null;
     workItem: string | null;
     memo: string | null;
+    rotation?: number;
   };
   onUpdate: (data: {
     photoType?: typeof PHOTO_TYPES[number];
     workCategory?: string | null;
     workItem?: string | null;
     memo?: string | null;
+    rotation?: number;
   }) => void;
   onDelete: () => void;
   onOpen?: () => void;
 }) {
+  const rotation = photo.rotation ?? 0;
   const [workItem, setWorkItem] = useState(photo.workItem ?? "");
   const [memo, setMemo] = useState(photo.memo ?? "");
 
   return (
     <Card className="overflow-hidden">
-      <div className="aspect-[4/3] bg-muted relative">
+      <div className="aspect-[4/3] bg-muted relative overflow-hidden">
         <img
           src={photo.fileUrl}
           alt=""
-          className="w-full h-full object-cover cursor-zoom-in"
-          style={{ imageOrientation: "from-image" }}
+          className="w-full h-full object-cover cursor-zoom-in transition-transform duration-200"
+          style={{
+            imageOrientation: "from-image",
+            transform: rotation ? `rotate(${rotation}deg)` : undefined,
+          }}
           onClick={onOpen}
         />
         <div className="absolute top-2 left-2">
@@ -1203,12 +1211,25 @@ function PhotoCard({
             {photo.photoType}
           </Badge>
         </div>
-        <button
-          onClick={onDelete}
-          className="absolute top-2 right-2 h-7 w-7 flex items-center justify-center rounded-full bg-black/70 text-white hover:bg-red-600 transition-colors"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        <div className="absolute top-2 right-2 flex gap-1.5">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onUpdate({ rotation: ((rotation + 90) % 360) });
+            }}
+            title="右に90°回転"
+            className="h-7 w-7 flex items-center justify-center rounded-full bg-black/70 text-white hover:bg-black/90 transition-colors active:scale-95"
+          >
+            <RotateCw className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={onDelete}
+            title="削除"
+            className="h-7 w-7 flex items-center justify-center rounded-full bg-black/70 text-white hover:bg-red-600 transition-colors"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
       <CardContent className="p-3 space-y-2">
         <div>

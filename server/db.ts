@@ -231,7 +231,7 @@ export async function createPhoto(data: InsertPhoto) {
 
 export async function updatePhoto(
   id: number,
-  data: Partial<Pick<InsertPhoto, "photoType" | "workCategory" | "workItem" | "memo" | "orderNo">>
+  data: Partial<Pick<InsertPhoto, "photoType" | "workCategory" | "workItem" | "memo" | "rotation" | "orderNo">>
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
