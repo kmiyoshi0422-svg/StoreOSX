@@ -17,6 +17,8 @@ import {
   ArrowDown,
   Camera,
   ImageIcon,
+  GripVertical,
+  LayoutGrid,
 } from "lucide-react";
 import html2canvas from "html2canvas-pro";
 import jsPDF from "jspdf";
@@ -32,6 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import type { Case, Photo } from "../../../drizzle/schema";
 
 export type ReportType = "survey" | "completion";
@@ -149,6 +152,11 @@ export default function CaseReport({
   const cameraRef = useRef<HTMLInputElement>(null);
   const [addType, setAddType] = useState<PhotoTypeTag>(DEFAULT_ADD_TYPE[reportType]);
   const [uploading, setUploading] = useState(false);
+  const [perPage, setPerPage] = useState<4 | 6>(4);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
+  // コメント編集のローカル下書き（photoId -> { workItem, memo }）
+  const [drafts, setDrafts] = useState<Record<number, { workItem: string; memo: string }>>({});
   const refetchPhotos = () => utils.photos.listByCase.invalidate({ caseId: id });
 
   const uploadPhoto = trpc.photos.upload.useMutation();
@@ -202,32 +210,60 @@ export default function CaseReport({
       });
   }, [photos, config.photoTypes]);
 
-  // 並び替え（隣と orderNo を交換）。区分をまたぐ移動は区分も合わせる。
-  const movePhoto = (index: number, dir: -1 | 1) => {
-    const target = reportPhotos[index];
-    const swap = reportPhotos[index + dir];
-    if (!target || !swap) return;
-    // 表示上の順序をそのまま入れ替えるため、区分とorderNoを交換
-    updatePhoto.mutate({
-      id: target.id,
-      photoType: swap.photoType as PhotoTypeTag,
-      orderNo: swap.orderNo,
-    });
-    updatePhoto.mutate({
-      id: swap.id,
-      photoType: target.photoType as PhotoTypeTag,
-      orderNo: target.orderNo,
+  // 表示順を from → to に並べ替え、区分とorderNoを表示順に合わせて一括更新する。
+  const reorderPhotos = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0) return;
+    const arr = [...reportPhotos];
+    const [moved] = arr.splice(from, 1);
+    if (!moved) return;
+    arr.splice(to, 0, moved);
+    // 並び替え後の表示順を 「区分スロット×orderNo」に写し戻す。
+    // 区分は各スロット（現調/施工後など）の並びを保ちつつorderNoだけを連番にして全体順を確定させる。
+    arr.forEach((p, i) => {
+      if (p.orderNo !== i) {
+        updatePhoto.mutate({ id: p.id, orderNo: i });
+      }
     });
   };
 
-  // 写真ページ（4枚／ページ）
+  // 上下ボタンによる移動（D&Dと同じロジックに集約）
+  const movePhoto = (index: number, dir: -1 | 1) => {
+    reorderPhotos(index, index + dir);
+  };
+
+  // コメント（工事項目/メモ）の保存
+  const saveComment = (photo: Photo) => {
+    const d = drafts[photo.id];
+    if (!d) return;
+    const workItem = d.workItem.trim();
+    const memo = d.memo.trim();
+    if (workItem === (photo.workItem ?? "") && memo === (photo.memo ?? "")) return;
+    updatePhoto.mutate(
+      { id: photo.id, workItem: workItem || null, memo: memo || null },
+      {
+        onSuccess: () => {
+          toast.success("コメントを保存しました");
+          setDrafts((prev) => {
+            const next = { ...prev };
+            delete next[photo.id];
+            return next;
+          });
+        },
+      }
+    );
+  };
+
+  const draftOf = (photo: Photo) =>
+    drafts[photo.id] ?? { workItem: photo.workItem ?? "", memo: photo.memo ?? "" };
+
+  // 写真ページ（perPage 枚／ページ）
   const photoPages = useMemo(() => {
     const result: Photo[][] = [];
-    for (let i = 0; i < reportPhotos.length; i += 4) {
-      result.push(reportPhotos.slice(i, i + 4));
+    for (let i = 0; i < reportPhotos.length; i += perPage) {
+      result.push(reportPhotos.slice(i, i + perPage));
     }
     return result;
-  }, [reportPhotos]);
+  }, [reportPhotos, perPage]);
 
   const handleDownloadPDF = async () => {
     if (!containerRef.current || !caseData) return;
@@ -397,12 +433,28 @@ export default function CaseReport({
                   {reportPhotos.length}枚
                 </Badge>
               </div>
-              <p className="text-[11px] text-muted-foreground">
-                {reportType === "survey"
-                  ? "現調・施工前の写真が載ります"
-                  : "施工後・設置状況の写真が載ります"}
-              </p>
+              <div className="flex items-center gap-2">
+                <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground" />
+                <Label className="text-[11px] text-muted-foreground">1ページの枚数</Label>
+                <Select
+                  value={String(perPage)}
+                  onValueChange={(v) => setPerPage(Number(v) as 4 | 6)}
+                >
+                  <SelectTrigger className="h-8 w-24 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="4">4枚</SelectItem>
+                    <SelectItem value="6">6枚</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+            <p className="text-[11px] text-muted-foreground -mt-1">
+              {reportType === "survey"
+                ? "現調・施工前の写真が載ります。ドラッグで並び替え、各写真のコメントも編集できます。"
+                : "施工後・設置状況の写真が載ります。ドラッグで並び替え、各写真のコメントも編集できます。"}
+            </p>
 
             {/* 追加コントロール */}
             <input
@@ -466,87 +518,153 @@ export default function CaseReport({
               </Button>
             </div>
 
-            {/* 写真一覧 */}
+            {/* 写真一覧（ドラッグ＆ドロップ並び替え） */}
             {reportPhotos.length === 0 ? (
               <p className="text-xs text-muted-foreground py-6 text-center">
                 この報告書に載る写真はまだありません。上のボタンから追加してください。
               </p>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {reportPhotos.map((photo, index) => (
-                  <div
-                    key={photo.id}
-                    className="rounded-lg border border-border/60 overflow-hidden bg-card"
-                  >
-                    <div className="aspect-[4/3] bg-muted overflow-hidden">
-                      <img
-                        src={photo.fileUrl}
-                        alt=""
-                        className="w-full h-full object-cover"
-                        style={{ imageOrientation: "from-image" }}
-                      />
-                    </div>
-                    <div className="p-2 space-y-2">
-                      <Select
-                        value={photo.photoType}
-                        onValueChange={(v) =>
-                          updatePhoto.mutate({ id: photo.id, photoType: v as PhotoTypeTag })
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {reportPhotos.map((photo, index) => {
+                  const d = draftOf(photo);
+                  const dirty =
+                    d.workItem !== (photo.workItem ?? "") || d.memo !== (photo.memo ?? "");
+                  return (
+                    <div
+                      key={photo.id}
+                      draggable
+                      onDragStart={() => setDragIndex(index)}
+                      onDragEnter={() => setOverIndex(index)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDragEnd={() => {
+                        if (dragIndex !== null && overIndex !== null) {
+                          reorderPhotos(dragIndex, overIndex);
                         }
-                      >
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ALL_PHOTO_TYPES.map((t) => (
-                            <SelectItem key={t} value={t}>
-                              {t}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <div className="flex items-center justify-between gap-1">
-                        <div className="flex gap-1">
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-7 w-7 bg-background"
-                            disabled={index === 0 || updatePhoto.isPending}
-                            onClick={() => movePhoto(index, -1)}
-                            title="上へ"
-                          >
-                            <ArrowUp className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-7 w-7 bg-background"
-                            disabled={
-                              index === reportPhotos.length - 1 || updatePhoto.isPending
-                            }
-                            onClick={() => movePhoto(index, 1)}
-                            title="下へ"
-                          >
-                            <ArrowDown className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-destructive"
-                          disabled={removePhoto.isPending}
-                          onClick={() => {
-                            if (confirm("この写真を削除しますか？")) {
-                              removePhoto.mutate({ id: photo.id });
-                            }
-                          }}
-                          title="削除"
+                        setDragIndex(null);
+                        setOverIndex(null);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (dragIndex !== null) reorderPhotos(dragIndex, index);
+                        setDragIndex(null);
+                        setOverIndex(null);
+                      }}
+                      className={`rounded-lg border overflow-hidden bg-card transition-all ${
+                        overIndex === index && dragIndex !== null && dragIndex !== index
+                          ? "border-primary ring-2 ring-primary/40"
+                          : "border-border/60"
+                      } ${dragIndex === index ? "opacity-50" : ""}`}
+                    >
+                      <div className="flex">
+                        <div
+                          className="flex items-center justify-center px-1 bg-muted/60 cursor-grab active:cursor-grabbing touch-none"
+                          title="ドラッグして並び替え"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                          <GripVertical className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                        <div className="relative w-28 shrink-0 aspect-[4/3] bg-muted overflow-hidden">
+                          <span className="absolute top-1 left-1 z-10 text-[10px] font-bold bg-foreground/80 text-background rounded px-1.5 py-0.5">
+                            {index + 1}
+                          </span>
+                          <img
+                            src={photo.fileUrl}
+                            alt=""
+                            className="w-full h-full object-cover"
+                            style={{ imageOrientation: "from-image" }}
+                          />
+                        </div>
+                        <div className="flex-1 p-2 space-y-1.5 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <Select
+                              value={photo.photoType}
+                              onValueChange={(v) =>
+                                updatePhoto.mutate({
+                                  id: photo.id,
+                                  photoType: v as PhotoTypeTag,
+                                })
+                              }
+                            >
+                              <SelectTrigger className="h-7 text-xs flex-1">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {ALL_PHOTO_TYPES.map((t) => (
+                                  <SelectItem key={t} value={t}>
+                                    {t}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-7 w-7 bg-background shrink-0"
+                              disabled={index === 0 || updatePhoto.isPending}
+                              onClick={() => movePhoto(index, -1)}
+                              title="上へ"
+                            >
+                              <ArrowUp className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-7 w-7 bg-background shrink-0"
+                              disabled={
+                                index === reportPhotos.length - 1 || updatePhoto.isPending
+                              }
+                              onClick={() => movePhoto(index, 1)}
+                              title="下へ"
+                            >
+                              <ArrowDown className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-destructive shrink-0"
+                              disabled={removePhoto.isPending}
+                              onClick={() => {
+                                if (confirm("この写真を削除しますか？")) {
+                                  removePhoto.mutate({ id: photo.id });
+                                }
+                              }}
+                              title="削除"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                          <Input
+                            value={d.workItem}
+                            placeholder="工事項目（例：照明交換）"
+                            className="h-7 text-xs"
+                            onChange={(e) =>
+                              setDrafts((prev) => ({
+                                ...prev,
+                                [photo.id]: { ...draftOf(photo), workItem: e.target.value },
+                              }))
+                            }
+                            onBlur={() => saveComment(photo)}
+                          />
+                          <Textarea
+                            value={d.memo}
+                            placeholder="コメント・メモ"
+                            rows={2}
+                            className="text-xs min-h-0 resize-none"
+                            onChange={(e) =>
+                              setDrafts((prev) => ({
+                                ...prev,
+                                [photo.id]: { ...draftOf(photo), memo: e.target.value },
+                              }))
+                            }
+                            onBlur={() => saveComment(photo)}
+                          />
+                          {dirty && (
+                            <p className="text-[10px] text-amber-600">未保存（フォーカスを外すと保存）</p>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>
@@ -651,7 +769,7 @@ export default function CaseReport({
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-5">
+              <div className={`grid grid-cols-2 ${perPage === 6 ? "gap-4" : "gap-5"}`}>
                 {pagePhotos.map((photo) => (
                   <div key={photo.id} className="space-y-2">
                     <div className="aspect-[4/3] bg-muted overflow-hidden rounded">
