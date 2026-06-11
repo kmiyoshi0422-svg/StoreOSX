@@ -1022,6 +1022,41 @@ export const appRouter = router({
   }),
 
   // ==========================================================
+  // メディア（PDF生成用に画像を base64 dataURL 化するフォールバック）
+  // ==========================================================
+  media: router({
+    // /manus-storage/... の画像をサーバー側で取得し base64 dataURL で返す。
+    // クライアントの直fetchが CORS/リダイレクトで失敗した場合のフォールバック。
+    toDataUrl: protectedProcedure
+      .input(z.object({ src: z.string().min(1) }))
+      .mutation(async ({ input }) => {
+        // 受け取るのは /manus-storage/{key} もしくは {key} を想定
+        let src = input.src;
+        try {
+          // 絶対URLで渡ってきた場合はパス部分だけ使う
+          if (/^https?:\/\//i.test(src)) {
+            src = new URL(src).pathname;
+          }
+        } catch {
+          // noop
+        }
+        const key = src.replace(/^\/manus-storage\//, "").replace(/^\/+/, "");
+        if (!key) throw new Error("画像キーが不正です");
+        const signedUrl = await storageGetSignedUrl(key);
+        const resp = await fetch(signedUrl);
+        if (!resp.ok) {
+          throw new Error(`画像の取得に失敗しました (${resp.status})`);
+        }
+        const contentType =
+          resp.headers.get("content-type") || "application/octet-stream";
+        const buf = Buffer.from(await resp.arrayBuffer());
+        if (!buf.length) throw new Error("画像が空です");
+        const dataUrl = `data:${contentType};base64,${buf.toString("base64")}`;
+        return { dataUrl };
+      }),
+  }),
+
+  // ==========================================================
   // 見積書（PDF/画像アップロード + LLM金額抽出）
   // ==========================================================
   estimates: router({

@@ -384,3 +384,10 @@
 - [x] CaseDetail の写真グリッドに適用
 - [x] CaseReport の管理パネル・PDFプレビュー写真に適用
 - [x] 型チェックOK・全テストPASS（239件）・チェックポイント保存
+
+## 不具合: PDFダウンロードで写真が写らない
+- [x] 原因をブラウザで検証（credentials:"include"のため5xxリダイレクト先S3へのfetchがFailed to fetch）
+- [x] toDataUrl の credentials を外し redirect:follow に修正
+- [x] tRPC media.toDataUrl を追加しサーバーで base64 化するフォールバック化
+- [x] inlineImages を堅牢化（直fetch→サーバーAPIの2段）
+- [ ] PDF生成で写真が出ることを検証・型チェック・全テストPASS・チェックポイント保存
