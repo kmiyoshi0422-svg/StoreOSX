@@ -297,14 +297,9 @@ export default function CaseReport({
           logging: false,
         });
         const imgData = canvas.toDataURL("image/jpeg", 0.92);
-        const canvasRatio = canvas.height / canvas.width;
-        const targetHeight = pdfWidth * canvasRatio;
-        const finalHeight = Math.min(targetHeight, pdfHeight);
-        const finalWidth = finalHeight < targetHeight ? finalHeight / canvasRatio : pdfWidth;
-        const x = (pdfWidth - finalWidth) / 2;
-        const y = (pdfHeight - finalHeight) / 2;
         if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, "JPEG", x, y, finalWidth, finalHeight);
+        // 各ページはA4縦に正確固定（210x297mm）。ページ要素自体がA4比率なので全面に貼り付ける。
+        pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
       }
       const safe = `${caseData.requestNumber}_${caseData.storeName}`.replace(
         /[\\/:*?"<>|]/g,
@@ -726,9 +721,10 @@ export default function CaseReport({
       </div>
 
       {/* 報告書本体（PDFソース） */}
-      <div ref={containerRef} className="report-container max-w-[820px] mx-auto">
+      <div ref={containerRef} className="report-container mx-auto">
         {/* 1ページ目：基本情報 */}
-        <section className="report-page bg-white border border-border/60 shadow-sm mb-6">
+        <section className="report-page bg-white border border-border/60 shadow-sm mb-6 flex flex-col">
+          <div className="flex-1 min-h-0 overflow-hidden">
           <div className="text-center pb-3 mb-6">
             <h1 className="font-serif-jp text-[26px] font-bold tracking-[0.18em] text-primary">
               {config.title}
@@ -822,8 +818,11 @@ export default function CaseReport({
             </>
           )}
 
-          {/* 署名欄 */}
-          <SignatureBlock signature={signature} />
+          </div>
+          {/* 確認欄はページ下部に固定配置 */}
+          <div className="shrink-0 pt-4">
+            <SignatureBlock signature={signature} />
+          </div>
         </section>
 
         {/* 写真ページ */}
@@ -853,14 +852,20 @@ export default function CaseReport({
                 </span>
               </div>
 
-              <div className={`grid grid-cols-2 ${perPage === 6 ? "gap-x-4 gap-y-3" : "gap-x-5 gap-y-4"}`}>
+              <div
+                className={`grid grid-cols-2 ${perPage === 6 ? "gap-x-4 gap-y-3" : "gap-x-5 gap-y-4"}`}
+                style={{ gridTemplateRows: `repeat(${perPage / 2}, 1fr)`, height: "248mm" }}
+              >
                 {pagePhotos.map((photo) => (
-                  <div key={photo.id} className="border border-border/60 rounded overflow-hidden">
-                    <div className="aspect-[4/3] bg-muted overflow-hidden">
+                  <div
+                    key={photo.id}
+                    className="border border-border/60 rounded overflow-hidden flex flex-col min-h-0"
+                  >
+                    <div className="flex-1 min-h-0 bg-muted overflow-hidden">
                       <img
                         src={photo.fileUrl}
                         alt=""
-                        className="w-full h-full object-cover cursor-zoom-in"
+                        className="w-full h-full object-contain cursor-zoom-in"
                         style={{
                           imageOrientation: "from-image",
                           transform: photo.rotation
@@ -873,11 +878,13 @@ export default function CaseReport({
                         }}
                       />
                     </div>
-                    <div className="text-[11px] px-2 py-1.5 space-y-0.5 border-t border-border/60">
+                    <div className="text-[11px] px-2 py-1.5 space-y-0.5 border-t border-border/60 shrink-0">
                       <p className="font-semibold font-serif-jp text-primary">▲ {photo.photoType}</p>
-                      {photo.workItem && <p className="text-muted-foreground">{photo.workItem}</p>}
+                      {photo.workItem && (
+                        <p className="text-muted-foreground truncate">{photo.workItem}</p>
+                      )}
                       {photo.memo && (
-                        <p className="text-muted-foreground leading-snug whitespace-pre-wrap">
+                        <p className="text-muted-foreground leading-snug whitespace-pre-wrap line-clamp-2">
                           {photo.memo}
                         </p>
                       )}
@@ -898,18 +905,28 @@ export default function CaseReport({
       />
 
       <style>{`
-        .report-page { padding: 14mm 12mm; min-height: 297mm; box-sizing: border-box; }
+        .report-container { width: 210mm; }
+        .report-page {
+          width: 210mm;
+          height: 297mm;
+          padding: 14mm 12mm;
+          box-sizing: border-box;
+          overflow: hidden;
+        }
         @media print {
-          @page { size: A4; margin: 0; }
+          @page { size: A4 portrait; margin: 0; }
           body { background: white !important; }
           .no-print { display: none !important; }
+          .report-container { width: 210mm !important; }
           .report-page {
             box-shadow: none !important;
             border: none !important;
             page-break-after: always;
             margin: 0 !important;
+            width: 210mm !important;
+            height: 297mm !important;
             padding: 14mm 12mm !important;
-            min-height: 297mm;
+            overflow: hidden;
           }
           .report-page:last-child { page-break-after: auto; }
         }
@@ -963,7 +980,7 @@ function SignatureBlock({
   signature: { fileUrl: string; signerName: string | null; signedAt: Date } | null | undefined;
 }) {
   return (
-    <div className="mt-10">
+    <div>
       <SectionBand>確認欄</SectionBand>
       <div className="grid grid-cols-2 gap-5">
         {/* プレナス責任者 */}
