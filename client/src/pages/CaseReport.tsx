@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   Download,
@@ -593,21 +593,39 @@ export default function CaseReport({
                             }}
                             onClick={() => lightbox.open(index)}
                           />
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              updatePhoto.mutate({
-                                id: photo.id,
-                                rotation: (((photo.rotation ?? 0) + 90) % 360),
-                              });
-                            }}
-                            disabled={updatePhoto.isPending}
-                            title="右に90°回転"
-                            className="absolute bottom-1 right-1 z-10 h-6 w-6 flex items-center justify-center rounded-full bg-black/70 text-white hover:bg-black/90 transition-colors active:scale-95"
-                          >
-                            <RotateCw className="h-3 w-3" />
-                          </button>
+                          <div className="absolute bottom-1 right-1 z-10 flex items-center rounded-full bg-black/70 backdrop-blur-sm overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updatePhoto.mutate({
+                                  id: photo.id,
+                                  rotation: (((photo.rotation ?? 0) + 270) % 360),
+                                });
+                              }}
+                              disabled={updatePhoto.isPending}
+                              title="左に90°回転"
+                              className="h-6 w-6 flex items-center justify-center text-white hover:bg-white/20 transition-colors active:scale-95"
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                            </button>
+                            <span className="w-px h-3.5 bg-white/30" />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updatePhoto.mutate({
+                                  id: photo.id,
+                                  rotation: (((photo.rotation ?? 0) + 90) % 360),
+                                });
+                              }}
+                              disabled={updatePhoto.isPending}
+                              title="右に90°回転"
+                              className="h-6 w-6 flex items-center justify-center text-white hover:bg-white/20 transition-colors active:scale-95"
+                            >
+                              <RotateCw className="h-3 w-3" />
+                            </button>
+                          </div>
                         </div>
                         <div className="flex-1 p-2 space-y-1.5 min-w-0">
                           <div className="flex items-center gap-1.5">
@@ -708,68 +726,100 @@ export default function CaseReport({
       </div>
 
       {/* 報告書本体（PDFソース） */}
-      <div ref={containerRef} className="report-container max-w-[800px] mx-auto">
+      <div ref={containerRef} className="report-container max-w-[820px] mx-auto">
         {/* 1ページ目：基本情報 */}
-        <section className="report-page bg-white border border-border/60 shadow-sm p-12 mb-6">
-          <div className="text-center border-b-2 border-foreground/80 pb-4 mb-8">
-            <p className="text-[11px] tracking-[0.3em] text-muted-foreground uppercase">
+        <section className="report-page bg-white border border-border/60 shadow-sm mb-6">
+          <div className="text-center pb-3 mb-6">
+            <h1 className="font-serif-jp text-[26px] font-bold tracking-[0.18em] text-primary">
+              {config.title}
+            </h1>
+            <p className="text-[10px] tracking-[0.3em] text-muted-foreground uppercase mt-1">
               {config.eyebrow}
             </p>
-            <h1 className="font-serif-jp text-3xl font-bold mt-2">{config.title}</h1>
+            <div className="mt-3 h-[3px] bg-primary rounded-full" />
           </div>
 
-          <div className="flex items-start justify-between mb-8">
+          <div className="flex items-end justify-between mb-5">
             <div>
-              <p className="text-sm mb-1">
-                <strong className="font-serif-jp text-base">{caseData.storeName}</strong> 御中
+              <p className="text-[15px] mb-1">
+                <strong className="font-serif-jp">{caseData.storeName}</strong>　御中
               </p>
-              <p className="text-xs text-muted-foreground">{config.leadText}</p>
+              <p className="text-[11px] text-muted-foreground">{config.leadText}</p>
             </div>
-            <div className="text-[11px] text-muted-foreground text-right space-y-1">
+            <div className="text-[11px] text-muted-foreground text-right space-y-0.5 tabular-nums">
               <p>案件番号：{caseData.requestNumber}</p>
               <p>報告日：{fmtDate(new Date())}</p>
             </div>
           </div>
 
-          <table className="w-full border-collapse text-xs mb-8">
+          <SectionBand>物件情報</SectionBand>
+          <table className="w-full border-collapse text-[12px] mb-7 table-fixed">
+            <colgroup>
+              <col className="w-[26%]" />
+              <col className="w-[24%]" />
+              <col className="w-[26%]" />
+              <col className="w-[24%]" />
+            </colgroup>
             <tbody>
-              <ReportRow label="ブランド" value={caseData.brand} />
-              <ReportRow label="店舗名" value={caseData.storeName} />
-              <ReportRow label="店舗住所" value={caseData.address || "—"} />
-              <ReportRow label="店舗電話" value={caseData.storePhone || "—"} />
-              <ReportRow
-                label="工事種別"
-                value={`${caseData.categoryLarge || "—"} / ${caseData.categoryMedium || "—"} / ${caseData.categorySmall || "—"}`}
-              />
-              <ReportRow label="作業区分" value={caseData.workType || "—"} />
-              <ReportRow label={config.dateLabel} value={fmtDate(config.dateField(caseData))} />
+              <tr>
+                <ReportTh>ブランド</ReportTh>
+                <ReportTd>{caseData.brand}</ReportTd>
+                <ReportTh>店舗名</ReportTh>
+                <ReportTd>{caseData.storeName}</ReportTd>
+              </tr>
+              <tr>
+                <ReportTh>店舗住所</ReportTh>
+                <ReportTd colSpan={3}>{caseData.address || "—"}</ReportTd>
+              </tr>
+              <tr>
+                <ReportTh>店舗電話</ReportTh>
+                <ReportTd>{caseData.storePhone || "—"}</ReportTd>
+                <ReportTh>作業区分</ReportTh>
+                <ReportTd>{caseData.workType || "—"}</ReportTd>
+              </tr>
+              <tr>
+                <ReportTh>工事種別</ReportTh>
+                <ReportTd colSpan={3}>
+                  {[caseData.categoryLarge, caseData.categoryMedium, caseData.categorySmall]
+                    .filter(Boolean)
+                    .join("　/　") || "—"}
+                </ReportTd>
+              </tr>
+              <tr>
+                <ReportTh>{config.dateLabel}</ReportTh>
+                <ReportTd>{fmtDate(config.dateField(caseData))}</ReportTd>
+                <ReportTh>協力会社</ReportTh>
+                <ReportTd>{caseData.contractorName || "—"}</ReportTd>
+              </tr>
               {reportType === "completion" && (
                 <>
-                  <ReportRow label="完了日" value={fmtDate(caseData.completedAt ?? caseData.updatedAt)} />
-                  <ReportRow label="見積金額" value={fmtYen(caseData.estimatedCost)} />
-                  <ReportRow label="実績金額" value={fmtYen(caseData.actualCost)} />
+                  <tr>
+                    <ReportTh>完了日</ReportTh>
+                    <ReportTd>{fmtDate(caseData.completedAt ?? caseData.updatedAt)}</ReportTd>
+                    <ReportTh>見積金額</ReportTh>
+                    <ReportTd className="tabular-nums">{fmtYen(caseData.estimatedCost)}</ReportTd>
+                  </tr>
+                  <tr>
+                    <ReportTh>実績金額</ReportTh>
+                    <ReportTd className="tabular-nums" colSpan={3}>{fmtYen(caseData.actualCost)}</ReportTd>
+                  </tr>
                 </>
               )}
-              <ReportRow label="協力会社" value={caseData.contractorName || "—"} />
             </tbody>
           </table>
 
-          <div className="mb-8">
-            <p className="text-[13px] font-semibold border-l-[3px] border-foreground/80 pl-2.5 mb-2.5">
-              {reportType === "survey" ? "調査内容・依頼内容" : "作業内容"}
-            </p>
-            <p className="text-xs whitespace-pre-wrap leading-relaxed ml-3">
-              {caseData.requestContent || "—"}
-            </p>
-          </div>
+          <SectionBand>{reportType === "survey" ? "調査内容・依頼内容" : "作業内容"}</SectionBand>
+          <p className="text-[12px] whitespace-pre-wrap leading-relaxed mb-7 px-0.5">
+            {caseData.requestContent || "—"}
+          </p>
 
           {caseData.notes && (
-            <div className="mb-8">
-              <p className="text-[13px] font-semibold border-l-[3px] border-foreground/80 pl-2.5 mb-2.5">
-                備考
+            <>
+              <SectionBand>備考</SectionBand>
+              <p className="text-[12px] whitespace-pre-wrap leading-relaxed mb-7 px-0.5">
+                {caseData.notes}
               </p>
-              <p className="text-xs whitespace-pre-wrap leading-relaxed ml-3">{caseData.notes}</p>
-            </div>
+            </>
           )}
 
           {/* 署名欄 */}
@@ -778,7 +828,7 @@ export default function CaseReport({
 
         {/* 写真ページ */}
         {photoPages.length === 0 ? (
-          <section className="report-page bg-white border border-border/60 shadow-sm p-12 mb-6">
+          <section className="report-page bg-white border border-border/60 shadow-sm mb-6">
             <p className="text-center text-sm text-muted-foreground py-12">
               {reportType === "survey"
                 ? "現場調査写真（現調／施工前）が登録されていません。"
@@ -789,26 +839,24 @@ export default function CaseReport({
           photoPages.map((pagePhotos, pi) => (
             <section
               key={pi}
-              className="report-page bg-white border border-border/60 shadow-sm p-10 mb-6"
+              className="report-page bg-white border border-border/60 shadow-sm mb-6"
             >
-              <div className="flex items-center justify-between mb-6 pb-3 border-b border-border/60">
-                <div>
-                  <p className="text-[10px] tracking-widest text-muted-foreground uppercase">
+              <div className="flex items-end justify-between mb-4 pb-2 border-b-2 border-primary">
+                <h2 className="font-serif-jp text-[15px] font-semibold text-primary">
+                  {config.title}　写真
+                  <span className="ml-2 text-[10px] tracking-widest text-muted-foreground font-sans">
                     {caseData.requestNumber}
-                  </p>
-                  <h2 className="font-serif-jp text-base font-semibold">
-                    {config.title} 写真
-                  </h2>
-                </div>
-                <span className="text-xs text-muted-foreground">
+                  </span>
+                </h2>
+                <span className="text-[11px] text-muted-foreground tabular-nums">
                   Page {pi + 1} / {photoPages.length}
                 </span>
               </div>
 
-              <div className={`grid grid-cols-2 ${perPage === 6 ? "gap-4" : "gap-5"}`}>
+              <div className={`grid grid-cols-2 ${perPage === 6 ? "gap-x-4 gap-y-3" : "gap-x-5 gap-y-4"}`}>
                 {pagePhotos.map((photo) => (
-                  <div key={photo.id} className="space-y-2">
-                    <div className="aspect-[4/3] bg-muted overflow-hidden rounded">
+                  <div key={photo.id} className="border border-border/60 rounded overflow-hidden">
+                    <div className="aspect-[4/3] bg-muted overflow-hidden">
                       <img
                         src={photo.fileUrl}
                         alt=""
@@ -825,8 +873,8 @@ export default function CaseReport({
                         }}
                       />
                     </div>
-                    <div className="text-[11px] space-y-0.5">
-                      <p className="font-semibold font-serif-jp">{photo.photoType}</p>
+                    <div className="text-[11px] px-2 py-1.5 space-y-0.5 border-t border-border/60">
+                      <p className="font-semibold font-serif-jp text-primary">▲ {photo.photoType}</p>
                       {photo.workItem && <p className="text-muted-foreground">{photo.workItem}</p>}
                       {photo.memo && (
                         <p className="text-muted-foreground leading-snug whitespace-pre-wrap">
@@ -850,6 +898,7 @@ export default function CaseReport({
       />
 
       <style>{`
+        .report-page { padding: 14mm 12mm; min-height: 297mm; box-sizing: border-box; }
         @media print {
           @page { size: A4; margin: 0; }
           body { background: white !important; }
@@ -859,7 +908,7 @@ export default function CaseReport({
             border: none !important;
             page-break-after: always;
             margin: 0 !important;
-            padding: 20mm 18mm !important;
+            padding: 14mm 12mm !important;
             min-height: 297mm;
           }
           .report-page:last-child { page-break-after: auto; }
@@ -869,42 +918,91 @@ export default function CaseReport({
   );
 }
 
-function ReportRow({ label, value }: { label: string; value: string }) {
+function SectionBand({ children }: { children: ReactNode }) {
   return (
-    <tr>
-      <th className="py-2 px-3 border border-border/60 bg-muted/40 text-left font-medium w-36 align-top">
-        {label}
-      </th>
-      <td className="py-2 px-3 border border-border/60 align-top">{value}</td>
-    </tr>
+    <div className="bg-primary text-primary-foreground font-serif-jp text-[13px] font-semibold px-3 py-1.5 mb-3 rounded-sm">
+      {children}
+    </div>
   );
 }
 
+function ReportTh({ children, colSpan }: { children: ReactNode; colSpan?: number }) {
+  return (
+    <th
+      colSpan={colSpan}
+      className="py-1.5 px-2.5 border border-border/70 bg-muted/50 text-left font-semibold align-middle whitespace-nowrap"
+    >
+      {children}
+    </th>
+  );
+}
+
+function ReportTd({
+  children,
+  colSpan,
+  className = "",
+}: {
+  children: ReactNode;
+  colSpan?: number;
+  className?: string;
+}) {
+  return (
+    <td colSpan={colSpan} className={`py-1.5 px-2.5 border border-border/70 align-middle ${className}`}>
+      {children}
+    </td>
+  );
+}
+
+/**
+ * 署名欄。電子サインがあれば画像を表示し、無ければ紙に手書きでサインできる
+ * 記入枠（氏名・日付）を残す。印刷運用を想定。
+ */
 function SignatureBlock({
   signature,
 }: {
   signature: { fileUrl: string; signerName: string | null; signedAt: Date } | null | undefined;
 }) {
   return (
-    <div className="mt-12 pt-6 border-t border-border/60">
-      <div className="flex items-end justify-end gap-8">
-        <div className="text-right">
-          <p className="text-[11px] text-muted-foreground mb-1">プレナス責任者サイン</p>
-          <div className="w-56 h-24 border-b-2 border-foreground/70 flex items-end justify-center pb-1">
+    <div className="mt-10">
+      <SectionBand>確認欄</SectionBand>
+      <div className="grid grid-cols-2 gap-5">
+        {/* プレナス責任者 */}
+        <div className="border border-border/70 rounded-sm p-3">
+          <p className="text-[11px] font-semibold mb-2">プレナス責任者</p>
+          <div className="relative h-20 border-b border-foreground/40 flex items-end justify-center">
             {signature ? (
-              <img src={signature.fileUrl} alt="サイン" className="max-h-20 object-contain" />
+              <img
+                src={signature.fileUrl}
+                alt="サイン"
+                className="max-h-[72px] object-contain pb-0.5"
+              />
             ) : (
-              <span className="text-xs text-muted-foreground/60 mb-6">（未署名）</span>
+              <span className="absolute left-1 bottom-1 text-[10px] text-muted-foreground/50">
+                サイン
+              </span>
             )}
           </div>
-          {signature?.signerName && (
-            <p className="text-xs mt-2 font-serif-jp">{signature.signerName}</p>
-          )}
-          {signature && (
-            <p className="text-[10px] text-muted-foreground mt-1">
-              {new Date(signature.signedAt).toLocaleDateString("ja-JP")}
-            </p>
-          )}
+          <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
+            <span>
+              氏名：
+              <span className="text-foreground">{signature?.signerName ?? "　　　　　　"}</span>
+            </span>
+            <span>
+              日付：
+              <span className="text-foreground tabular-nums">
+                {signature ? new Date(signature.signedAt).toLocaleDateString("ja-JP") : "　年　月　日"}
+              </span>
+            </span>
+          </div>
+        </div>
+        {/* 先方確認欄（手書き用） */}
+        <div className="border border-border/70 rounded-sm p-3">
+          <p className="text-[11px] font-semibold mb-2">先方確認サイン</p>
+          <div className="h-20 border-b border-foreground/40" />
+          <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
+            <span>氏名：　　　　　　</span>
+            <span>日付：　年　月　日</span>
+          </div>
         </div>
       </div>
     </div>

@@ -50,6 +50,7 @@ import {
   PenLine,
   Wand2,
   RotateCw,
+  RotateCcw,
 } from "lucide-react";
 import { generateQuotePDF, generateCompletionReportPDF } from "@/lib/documentPdf";
 import {
@@ -1212,16 +1213,29 @@ function PhotoCard({
           </Badge>
         </div>
         <div className="absolute top-2 right-2 flex gap-1.5">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onUpdate({ rotation: ((rotation + 90) % 360) });
-            }}
-            title="右に90°回転"
-            className="h-7 w-7 flex items-center justify-center rounded-full bg-black/70 text-white hover:bg-black/90 transition-colors active:scale-95"
-          >
-            <RotateCw className="h-3.5 w-3.5" />
-          </button>
+          <div className="flex items-center rounded-full bg-black/70 backdrop-blur-sm overflow-hidden">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onUpdate({ rotation: (rotation + 270) % 360 });
+              }}
+              title="左に90°回転"
+              className="h-7 w-7 flex items-center justify-center text-white hover:bg-white/20 transition-colors active:scale-95"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+            <span className="w-px h-4 bg-white/30" />
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onUpdate({ rotation: (rotation + 90) % 360 });
+              }}
+              title="右に90°回転"
+              className="h-7 w-7 flex items-center justify-center text-white hover:bg-white/20 transition-colors active:scale-95"
+            >
+              <RotateCw className="h-3.5 w-3.5" />
+            </button>
+          </div>
           <button
             onClick={onDelete}
             title="削除"
