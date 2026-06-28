@@ -23,6 +23,9 @@ import {
   Search,
   AlertTriangle,
   ArrowRight,
+  CheckCircle2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 /* ============================================================
@@ -114,6 +117,9 @@ export default function CasesMap() {
   const [urgency, setUrgency] = useState("all");
   const [stage, setStage] = useState("all");
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  // 完了/クローズ案件はマップから除外（DBには保持される）。トグルで表示も可能。
+  const [showDone, setShowDone] = useState(false);
+  const DONE_STATUSES = ["完了", "クローズ"];
 
   // マップ・マーカー参照
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -123,10 +129,18 @@ export default function CasesMap() {
   const infoRef = useRef<google.maps.InfoWindow | null>(null);
   const [mapReady, setMapReady] = useState(false);
 
+  // 完了/クローズ件数（除外対象）
+  const doneCount = useMemo(
+    () => (cases as CaseRow[]).filter((c) => DONE_STATUSES.includes(c.status)).length,
+    [cases]
+  );
+
   // フィルタ適用後の案件
   const filtered = useMemo<CaseRow[]>(() => {
     const kw = q.trim().toLowerCase();
     return (cases as CaseRow[]).filter((c) => {
+      // 完了/クローズはデフォルトでマップから除外（DBには保持される）
+      if (!showDone && DONE_STATUSES.includes(c.status)) return false;
       if (urgency !== "all" && c.urgency !== urgency) return false;
       if (stage !== "all" && c.progressStage !== stage) return false;
       if (kw) {
@@ -135,7 +149,8 @@ export default function CasesMap() {
       }
       return true;
     });
-  }, [cases, q, urgency, stage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cases, q, urgency, stage, showDone]);
 
   // 位置あり / なし
   const located = useMemo<Located[]>(
@@ -336,7 +351,7 @@ export default function CasesMap() {
         eyebrow="MAP VIEW"
         title="案件マップ"
         icon={<MapPinned className="h-6 w-6 text-primary" />}
-        description="登録済み案件の住所を地図上にピン表示します。緊急度で色分けし、左の一覧から選ぶと地図が連動します。"
+        description="進行中案件の住所を地図上にピン表示します。完了・クローズした案件は自動で地図から除外され（データは保存済）、必要時は表示もできます。"
         actions={
           <Button
             onClick={() => geocodeMutation.mutate()}
@@ -425,6 +440,35 @@ export default function CasesMap() {
               </span>
             )}
           </div>
+
+          {/* 完了案件の除外状態と表示トグル（DBには保持される） */}
+          {doneCount > 0 && (
+            <div className="flex items-center justify-between rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] text-emerald-800">
+              <span className="inline-flex items-center gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {showDone
+                  ? `完了・クローズ ${doneCount} 件を表示中`
+                  : `完了・クローズ ${doneCount} 件を非表示（データは保存済）`}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowDone((v) => !v)}
+                className="inline-flex items-center gap-1 font-semibold text-emerald-700 hover:text-emerald-900 transition-colors"
+              >
+                {showDone ? (
+                  <>
+                    <EyeOff className="h-3.5 w-3.5" />
+                    隠す
+                  </>
+                ) : (
+                  <>
+                    <Eye className="h-3.5 w-3.5" />
+                    表示
+                  </>
+                )}
+              </button>
+            </div>
+          )}
 
           <div className="border rounded-lg divide-y max-h-[560px] overflow-y-auto bg-card">
             {isLoading ? (
