@@ -79,24 +79,28 @@ export default function Home() {
           label="案件総数"
           value={total}
           accent="text-primary"
+          onClick={() => setLocation("/cases")}
         />
         <KpiCard
           icon={<Clock className="h-4 w-4" />}
           label="進行中"
           value={inProgress}
           accent="text-amber-600"
+          onClick={() => setLocation("/cases?status=進行中")}
         />
         <KpiCard
           icon={<AlertCircle className="h-4 w-4" />}
           label="緊急/高"
           value={urgent}
           accent="text-red-600"
+          onClick={() => setLocation("/cases?urgency=high")}
         />
         <KpiCard
           icon={<CheckCircle2 className="h-4 w-4" />}
           label="完了"
           value={completed}
           accent="text-emerald-600"
+          onClick={() => setLocation("/cases?status=完了")}
         />
       </div>
 
@@ -275,18 +279,31 @@ function KpiCard({
   label,
   value,
   accent,
+  onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number;
   accent: string;
+  onClick?: () => void;
 }) {
   return (
-    <Card className="border-border/60">
+    <Card
+      onClick={onClick}
+      className={
+        "border-border/60 transition-all duration-200 " +
+        (onClick
+          ? "cursor-pointer hover:shadow-md hover:border-primary/40 active:scale-[0.98]"
+          : "")
+      }
+    >
       <CardContent className="p-4 md:p-5">
-        <div className={`flex items-center gap-1.5 ${accent} mb-2`}>
-          {icon}
-          <span className="text-xs font-medium tracking-wide">{label}</span>
+        <div className={`flex items-center justify-between ${accent} mb-2`}>
+          <span className="flex items-center gap-1.5">
+            {icon}
+            <span className="text-xs font-medium tracking-wide">{label}</span>
+          </span>
+          {onClick && <ArrowUpRight className="h-3.5 w-3.5 opacity-50" />}
         </div>
         <p className="font-serif-jp text-3xl md:text-4xl font-semibold tracking-tight">
           {value}

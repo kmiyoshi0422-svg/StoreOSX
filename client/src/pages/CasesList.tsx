@@ -125,9 +125,21 @@ export default function CasesList() {
   const { data: users = [] } = trpc.users.list.useQuery();
   const userMap = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
 
+  // URLクエリを初期フィルタとして読み込む（ダッシュボードKPIからの遷移用）
+  // 例: /cases?status=進行中  /cases?status=完了  /cases?urgency=high
+  const initialParams = useMemo(() => {
+    if (typeof window === "undefined") return { status: "all", urgency: "all" };
+    const sp = new URLSearchParams(window.location.search);
+    const statusParam = sp.get("status") ?? "all";
+    const urgencyRaw = sp.get("urgency") ?? "all";
+    const urgencyParam = urgencyRaw === "high" ? "high" : urgencyRaw;
+    return { status: statusParam, urgency: urgencyParam };
+  }, []);
+
   const [q, setQ] = useState("");
   const [stageTab, setStageTab] = useState<"all" | ProgressStage>("all");
-  const [urgency, setUrgency] = useState("all");
+  const [urgency, setUrgency] = useState(initialParams.urgency);
+  const [statusFilter, setStatusFilter] = useState(initialParams.status);
   const [assignee, setAssignee] = useState("all");
   const [storeDialogKey, setStoreDialogKey] = useState<string | null>(null);
   const [groupByPref, setGroupByPref] = useState(false);
@@ -181,10 +193,19 @@ export default function CasesList() {
   }, [cases]);
 
   const filtered = useMemo(() => {
+    // 「進行中」は複数ステータスのまとめ、「high」は緊急度S/Aのまとめ
+    const IN_PROGRESS = ["受付", "現調中", "見積中", "施工待ち", "施工中"];
     return cases.filter((c) => {
       const stage = (c.progressStage as ProgressStage) ?? "未対応";
       if (stageTab !== "all" && stage !== stageTab) return false;
-      if (urgency !== "all" && c.urgency !== urgency) return false;
+      if (statusFilter !== "all") {
+        if (statusFilter === "進行中") {
+          if (!IN_PROGRESS.includes(c.status)) return false;
+        } else if (c.status !== statusFilter) return false;
+      }
+      if (urgency === "high") {
+        if (c.urgency !== "S" && c.urgency !== "A") return false;
+      } else if (urgency !== "all" && c.urgency !== urgency) return false;
       if (prefFilter !== "all" && resolveCasePrefecture(c) !== prefFilter) return false;
       if (assignee === "mine" && c.assigneeId !== user?.id) return false;
       if (assignee === "unassigned" && c.assigneeId != null) return false;
@@ -203,7 +224,25 @@ export default function CasesList() {
       }
       return true;
     });
-  }, [cases, q, stageTab, urgency, prefFilter, assignee, user?.id]);
+  }, [cases, q, stageTab, urgency, statusFilter, prefFilter, assignee, user?.id]);
+
+  // アクティブなクイックフィルタ（チップ表示用）
+  const activeQuickFilter = useMemo(() => {
+    if (statusFilter === "進行中") return { label: "進行中の案件", kind: "status" as const };
+    if (statusFilter === "完了") return { label: "完了した案件", kind: "status" as const };
+    if (statusFilter !== "all") return { label: `ステータス: ${statusFilter}`, kind: "status" as const };
+    if (urgency === "high") return { label: "緊急/高（S・A）", kind: "urgency" as const };
+    return null;
+  }, [statusFilter, urgency]);
+
+  function clearQuickFilter() {
+    setStatusFilter("all");
+    if (urgency === "high") setUrgency("all");
+    // URLをクリーンに（クエリを除去）
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", "/cases");
+    }
+  }
 
   // 県フィルタの選択肢（実際に案件が存在する県のみ・件数付き・標準順）
   const prefOptions = useMemo(() => {
@@ -260,6 +299,17 @@ export default function CasesList() {
           <p className="text-sm text-muted-foreground mt-2">
             {filtered.length} / {cases.length} 件
           </p>
+          {activeQuickFilter && (
+            <button
+              type="button"
+              onClick={clearQuickFilter}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-primary/10 border border-primary/20 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/15 transition-colors"
+              title="このフィルタを解除"
+            >
+              {activeQuickFilter.label}
+              <span className="text-primary/70">×</span>
+            </button>
+          )}
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setLocation("/cases/import-pdf")}>
@@ -315,7 +365,26 @@ export default function CasesList() {
             className="pl-9"
           />
         </div>
-        <Select value={urgency} onValueChange={setUrgency}>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="md:w-36">
+            <SelectValue placeholder="ステータス" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全ステータス</SelectItem>
+            <SelectItem value="進行中">進行中（受付～施工中）</SelectItem>
+            <SelectItem value="受付">受付</SelectItem>
+            <SelectItem value="現調中">現調中</SelectItem>
+            <SelectItem value="見積中">見積中</SelectItem>
+            <SelectItem value="施工待ち">施工待ち</SelectItem>
+            <SelectItem value="施工中">施工中</SelectItem>
+            <SelectItem value="完了">完了</SelectItem>
+            <SelectItem value="クローズ">クローズ</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select
+          value={urgency === "high" ? "all" : urgency}
+          onValueChange={setUrgency}
+        >
           <SelectTrigger className="md:w-32">
             <SelectValue placeholder="緊急度" />
           </SelectTrigger>
