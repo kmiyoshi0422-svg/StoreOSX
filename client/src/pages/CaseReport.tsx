@@ -103,10 +103,6 @@ function fmtDate(d: Date | null | undefined): string {
     day: "numeric",
   });
 }
-function fmtYen(n: number | null | undefined): string {
-  if (n == null) return "—";
-  return `¥${n.toLocaleString()}`;
-}
 
 export default function CaseReport({
   id,
@@ -808,18 +804,10 @@ export default function CaseReport({
                 <ReportTd>{caseData.contractorName || "—"}</ReportTd>
               </tr>
               {reportType === "completion" && (
-                <>
-                  <tr>
-                    <ReportTh>完了日</ReportTh>
-                    <ReportTd>{fmtDate(caseData.completedAt ?? caseData.updatedAt)}</ReportTd>
-                    <ReportTh>見積金額</ReportTh>
-                    <ReportTd className="tabular-nums">{fmtYen(caseData.estimatedCost)}</ReportTd>
-                  </tr>
-                  <tr>
-                    <ReportTh>実績金額</ReportTh>
-                    <ReportTd className="tabular-nums" colSpan={3}>{fmtYen(caseData.actualCost)}</ReportTd>
-                  </tr>
-                </>
+                <tr>
+                  <ReportTh>完了日</ReportTh>
+                  <ReportTd colSpan={3}>{fmtDate(caseData.completedAt ?? caseData.updatedAt)}</ReportTd>
+                </tr>
               )}
             </tbody>
           </table>
