@@ -26,7 +26,6 @@ import jsPDF from "jspdf";
 import { toast } from "sonner";
 import { inlineImages } from "@/lib/imageDataUrl";
 import { fileToUprightDataUrl } from "@/lib/imageOrientation";
-import { buildBeforeAfterPairs, paginatePairs } from "@shared/beforeAfter";
 import { SignaturePad } from "@/components/SignaturePad";
 import { Lightbox, useLightbox } from "@/components/Lightbox";
 import {
@@ -68,7 +67,7 @@ const REPORT_CONFIG: Record<
     title: "施工完了報告書",
     eyebrow: "COMPLETION REPORT",
     leadText: "下記のとおり施工が完了いたしましたのでご報告いたします。",
-    // ビフォーアフター比較のため、現調（施工前）系と施工後系の両方を採用する
+    // 施工前（現調）系と施工後系の両方を掲載対象にし、グループ見出し付きで羅列する
     photoTypes: ["現調", "施工前A", "施工前B", "施工後A", "施工後B", "設置状況"],
     fileLabel: "施工完了報告書",
     dateLabel: "施工日",
@@ -93,6 +92,22 @@ type PhotoTypeTag = (typeof ALL_PHOTO_TYPES)[number];
 const DEFAULT_ADD_TYPE: Record<ReportType, PhotoTypeTag> = {
   survey: "現調",
   completion: "施工後A",
+};
+
+// 完了報告書のグループ定義（施工前 / 施工後）
+type PhotoGroupKey = "before" | "after";
+const BEFORE_TYPES: PhotoTypeTag[] = ["現調", "施工前A", "施工前B"];
+const AFTER_TYPES: PhotoTypeTag[] = ["施工後A", "施工後B", "設置状況"];
+const groupOfType = (t: PhotoTypeTag): PhotoGroupKey =>
+  AFTER_TYPES.includes(t) ? "after" : "before";
+// グループをまたいで移動した際に割り当てる代表区分
+const DEFAULT_TYPE_OF_GROUP: Record<PhotoGroupKey, PhotoTypeTag> = {
+  before: "現調",
+  after: "施工後A",
+};
+const GROUP_LABEL: Record<PhotoGroupKey, string> = {
+  before: "施工前（現調）",
+  after: "施工後",
 };
 
 function fmtDate(d: Date | null | undefined): string {
@@ -197,28 +212,57 @@ export default function CaseReport({
     }
   };
 
-  // 該当区分の写真を抽出（順序: config.photoTypes の順 → orderNo）
+  const isCompletion = reportType === "completion";
+
+  // 該当区分の写真を抽出。
+  // ・完了報告書: グループ（施工前→施工後）→ orderNo 順
+  // ・現場調査報告書: config.photoTypes の順 → orderNo
   const reportPhotos = useMemo(() => {
     const order = config.photoTypes;
-    return [...photos]
-      .filter((p) => order.includes(p.photoType))
-      .sort((a, b) => {
-        const ai = order.indexOf(a.photoType);
-        const bi = order.indexOf(b.photoType);
-        if (ai !== bi) return ai - bi;
+    const filtered = [...photos].filter((p) => order.includes(p.photoType));
+    if (isCompletion) {
+      const groupRank = (t: PhotoTypeTag) => (groupOfType(t) === "before" ? 0 : 1);
+      return filtered.sort((a, b) => {
+        const ga = groupRank(a.photoType);
+        const gb = groupRank(b.photoType);
+        if (ga !== gb) return ga - gb;
         return a.orderNo - b.orderNo;
       });
-  }, [photos, config.photoTypes]);
+    }
+    return filtered.sort((a, b) => {
+      const ai = order.indexOf(a.photoType);
+      const bi = order.indexOf(b.photoType);
+      if (ai !== bi) return ai - bi;
+      return a.orderNo - b.orderNo;
+    });
+  }, [photos, config.photoTypes, isCompletion]);
 
-  // 表示順を from → to に並べ替え、区分とorderNoを表示順に合わせて一括更新する。
+  // 表示順を from → to に並べ替え、orderNoを表示順に合わせて一括更新する。
+  // 完了報告書でグループをまたいで移動した場合は、ドロップ先グループの代表区分に photoType も更新する。
   const reorderPhotos = (from: number, to: number) => {
     if (from === to || from < 0 || to < 0) return;
     const arr = [...reportPhotos];
     const [moved] = arr.splice(from, 1);
     if (!moved) return;
     arr.splice(to, 0, moved);
-    // 並び替え後の表示順を 「区分スロット×orderNo」に写し戻す。
-    // 区分は各スロット（現調/施工後など）の並びを保ちつつorderNoだけを連番にして全体順を確定させる。
+
+    // 完了報告書：移動先位置の前後から属すべきグループを推定し、区分が変わるなら更新する。
+    if (isCompletion) {
+      const prev = arr[to - 1];
+      const next = arr[to + 1];
+      const targetGroup: PhotoGroupKey | null = prev
+        ? groupOfType(prev.photoType)
+        : next
+          ? groupOfType(next.photoType)
+          : null;
+      if (targetGroup && groupOfType(moved.photoType) !== targetGroup) {
+        updatePhoto.mutate({
+          id: moved.id,
+          photoType: DEFAULT_TYPE_OF_GROUP[targetGroup],
+        });
+      }
+    }
+
     arr.forEach((p, i) => {
       if (p.orderNo !== i) {
         updatePhoto.mutate({ id: p.id, orderNo: i });
@@ -269,6 +313,181 @@ export default function CaseReport({
     [reportPhotos]
   );
 
+  // 写真管理カードの描画（index は reportPhotos 全体の通し番号）
+  const renderPhotoCard = (photo: Photo, index: number) => {
+    const d = draftOf(photo);
+    const dirty =
+      d.workItem !== (photo.workItem ?? "") || d.memo !== (photo.memo ?? "");
+    return (
+      <div
+        key={photo.id}
+        draggable
+        onDragStart={() => setDragIndex(index)}
+        onDragEnter={() => setOverIndex(index)}
+        onDragOver={(e) => e.preventDefault()}
+        onDragEnd={() => {
+          if (dragIndex !== null && overIndex !== null) {
+            reorderPhotos(dragIndex, overIndex);
+          }
+          setDragIndex(null);
+          setOverIndex(null);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (dragIndex !== null) reorderPhotos(dragIndex, index);
+          setDragIndex(null);
+          setOverIndex(null);
+        }}
+        className={`rounded-lg border overflow-hidden bg-card transition-all ${
+          overIndex === index && dragIndex !== null && dragIndex !== index
+            ? "border-primary ring-2 ring-primary/40"
+            : "border-border/60"
+        } ${dragIndex === index ? "opacity-50" : ""}`}
+      >
+        <div className="flex">
+          <div
+            className="flex items-center justify-center px-1 bg-muted/60 cursor-grab active:cursor-grabbing touch-none"
+            title="ドラッグして並び替え"
+          >
+            <GripVertical className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div className="relative w-28 shrink-0 aspect-[4/3] bg-muted overflow-hidden">
+            <span className="absolute top-1 left-1 z-10 text-[10px] font-bold bg-foreground/80 text-background rounded px-1.5 py-0.5">
+              {index + 1}
+            </span>
+            <img
+              src={photo.fileUrl}
+              alt=""
+              className="w-full h-full object-cover cursor-zoom-in transition-transform duration-200"
+              style={{
+                imageOrientation: "from-image",
+                transform: photo.rotation ? `rotate(${photo.rotation}deg)` : undefined,
+              }}
+              onClick={() => lightbox.open(index)}
+            />
+            <div className="absolute bottom-1 right-1 z-10 flex items-center rounded-full bg-black/70 backdrop-blur-sm overflow-hidden">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  updatePhoto.mutate({
+                    id: photo.id,
+                    rotation: (((photo.rotation ?? 0) + 270) % 360),
+                  });
+                }}
+                disabled={updatePhoto.isPending}
+                title="左に90°回転"
+                className="h-6 w-6 flex items-center justify-center text-white hover:bg-white/20 transition-colors active:scale-95"
+              >
+                <RotateCcw className="h-3 w-3" />
+              </button>
+              <span className="w-px h-3.5 bg-white/30" />
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  updatePhoto.mutate({
+                    id: photo.id,
+                    rotation: (((photo.rotation ?? 0) + 90) % 360),
+                  });
+                }}
+                disabled={updatePhoto.isPending}
+                title="右に90°回転"
+                className="h-6 w-6 flex items-center justify-center text-white hover:bg-white/20 transition-colors active:scale-95"
+              >
+                <RotateCw className="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 p-2 space-y-1.5 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <Select
+                value={photo.photoType}
+                onValueChange={(v) =>
+                  updatePhoto.mutate({ id: photo.id, photoType: v as PhotoTypeTag })
+                }
+              >
+                <SelectTrigger className="h-7 text-xs flex-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ALL_PHOTO_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-7 w-7 bg-background shrink-0"
+                disabled={index === 0 || updatePhoto.isPending}
+                onClick={() => movePhoto(index, -1)}
+                title="上へ"
+              >
+                <ArrowUp className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-7 w-7 bg-background shrink-0"
+                disabled={index === reportPhotos.length - 1 || updatePhoto.isPending}
+                onClick={() => movePhoto(index, 1)}
+                title="下へ"
+              >
+                <ArrowDown className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-destructive shrink-0"
+                disabled={removePhoto.isPending}
+                onClick={() => {
+                  if (confirm("この写真を削除しますか？")) {
+                    removePhoto.mutate({ id: photo.id });
+                  }
+                }}
+                title="削除"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <Input
+              value={d.workItem}
+              placeholder="工事項目（例：照明交換）"
+              className="h-7 text-xs"
+              onChange={(e) =>
+                setDrafts((prev) => ({
+                  ...prev,
+                  [photo.id]: { ...draftOf(photo), workItem: e.target.value },
+                }))
+              }
+              onBlur={() => saveComment(photo)}
+            />
+            <Textarea
+              value={d.memo}
+              placeholder="コメント・メモ"
+              rows={2}
+              className="text-xs min-h-0 resize-none"
+              onChange={(e) =>
+                setDrafts((prev) => ({
+                  ...prev,
+                  [photo.id]: { ...draftOf(photo), memo: e.target.value },
+                }))
+              }
+              onBlur={() => saveComment(photo)}
+            />
+            {dirty && (
+              <p className="text-[10px] text-amber-600">未保存（フォーカスを外すと保存）</p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // 写真ページ（perPage 枚／ページ）— 現場調査報告書で使用
   const photoPages = useMemo(() => {
     const result: Photo[][] = [];
@@ -277,18 +496,6 @@ export default function CaseReport({
     }
     return result;
   }, [reportPhotos, perPage]);
-
-  // 施工完了報告書：ビフォーアフター比較ページ
-  // 1ページあたりの比較組数（perPage 4→2組 / 6→3組）
-  const pairsPerPage = perPage === 6 ? 3 : 2;
-  const beforeAfterPairs = useMemo(
-    () => buildBeforeAfterPairs(reportPhotos),
-    [reportPhotos],
-  );
-  const comparePages = useMemo(
-    () => paginatePairs(beforeAfterPairs, pairsPerPage),
-    [beforeAfterPairs, pairsPerPage],
-  );
 
   const handleDownloadPDF = async () => {
     if (!containerRef.current || !caseData) return;
@@ -456,7 +663,7 @@ export default function CaseReport({
               <div className="flex items-center gap-2">
                 <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground" />
                 <Label className="text-[11px] text-muted-foreground">
-                  {reportType === "completion" ? "1ページの比較組数" : "1ページの枚数"}
+                  1ページの枚数
                 </Label>
                 <Select
                   value={String(perPage)}
@@ -466,12 +673,8 @@ export default function CaseReport({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="4">
-                      {reportType === "completion" ? "2組" : "4枚"}
-                    </SelectItem>
-                    <SelectItem value="6">
-                      {reportType === "completion" ? "3組" : "6枚"}
-                    </SelectItem>
+                    <SelectItem value="4">4枚</SelectItem>
+                    <SelectItem value="6">6枚</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -479,7 +682,7 @@ export default function CaseReport({
             <p className="text-[11px] text-muted-foreground -mt-1">
               {reportType === "survey"
                 ? "現調・施工前の写真が載ります。ドラッグで並び替え、各写真のコメントも編集できます。"
-                : "現調（施工前）と施工後の写真を取り込むと、「工事項目」をキーにビフォーアフターで自動比較します。同じ工事項目名を付けると正しく対になります。"}
+                : "「施工前（現調）」「施工後」に振り分けて写真を取り込めます。各グループ内はドラッグで並び替えでき、報告書には施工前→施工後の順で上から羅列されます。区分を変更するとグループも移動します。"}
             </p>
 
             {/* 追加コントロール */}
@@ -549,193 +752,67 @@ export default function CaseReport({
               <p className="text-xs text-muted-foreground py-6 text-center">
                 この報告書に載る写真はまだありません。上のボタンから追加してください。
               </p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {reportPhotos.map((photo, index) => {
-                  const d = draftOf(photo);
-                  const dirty =
-                    d.workItem !== (photo.workItem ?? "") || d.memo !== (photo.memo ?? "");
+            ) : isCompletion ? (
+              <div className="space-y-4">
+                {(["before", "after"] as PhotoGroupKey[]).map((gkey) => {
+                  const items = reportPhotos
+                    .map((photo, index) => ({ photo, index }))
+                    .filter(({ photo }) => groupOfType(photo.photoType) === gkey);
                   return (
                     <div
-                      key={photo.id}
-                      draggable
-                      onDragStart={() => setDragIndex(index)}
-                      onDragEnter={() => setOverIndex(index)}
+                      key={gkey}
                       onDragOver={(e) => e.preventDefault()}
-                      onDragEnd={() => {
-                        if (dragIndex !== null && overIndex !== null) {
-                          reorderPhotos(dragIndex, overIndex);
-                        }
-                        setDragIndex(null);
-                        setOverIndex(null);
-                      }}
                       onDrop={(e) => {
                         e.preventDefault();
-                        if (dragIndex !== null) reorderPhotos(dragIndex, index);
+                        // グループの空白部へのドロップ：そのグループの末尾へ移動
+                        if (dragIndex === null) return;
+                        const lastInGroup = items.length
+                          ? items[items.length - 1].index
+                          : reportPhotos.length - 1;
+                        reorderPhotos(dragIndex, lastInGroup);
                         setDragIndex(null);
                         setOverIndex(null);
                       }}
-                      className={`rounded-lg border overflow-hidden bg-card transition-all ${
-                        overIndex === index && dragIndex !== null && dragIndex !== index
-                          ? "border-primary ring-2 ring-primary/40"
-                          : "border-border/60"
-                      } ${dragIndex === index ? "opacity-50" : ""}`}
+                      className="rounded-xl border border-border/60 bg-muted/20 p-3"
                     >
-                      <div className="flex">
-                        <div
-                          className="flex items-center justify-center px-1 bg-muted/60 cursor-grab active:cursor-grabbing touch-none"
-                          title="ドラッグして並び替え"
+                      <div className="mb-2.5 flex items-center gap-2">
+                        <span
+                          className={`inline-flex h-5 items-center rounded-full px-2 text-[11px] font-bold ${
+                            gkey === "before"
+                              ? "bg-muted text-foreground"
+                              : "bg-primary text-primary-foreground"
+                          }`}
                         >
-                          <GripVertical className="h-4 w-4 text-muted-foreground" />
-                        </div>
-                        <div className="relative w-28 shrink-0 aspect-[4/3] bg-muted overflow-hidden">
-                          <span className="absolute top-1 left-1 z-10 text-[10px] font-bold bg-foreground/80 text-background rounded px-1.5 py-0.5">
-                            {index + 1}
-                          </span>
-                          <img
-                            src={photo.fileUrl}
-                            alt=""
-                            className="w-full h-full object-cover cursor-zoom-in transition-transform duration-200"
-                            style={{
-                              imageOrientation: "from-image",
-                              transform: photo.rotation
-                                ? `rotate(${photo.rotation}deg)`
-                                : undefined,
-                            }}
-                            onClick={() => lightbox.open(index)}
-                          />
-                          <div className="absolute bottom-1 right-1 z-10 flex items-center rounded-full bg-black/70 backdrop-blur-sm overflow-hidden">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                updatePhoto.mutate({
-                                  id: photo.id,
-                                  rotation: (((photo.rotation ?? 0) + 270) % 360),
-                                });
-                              }}
-                              disabled={updatePhoto.isPending}
-                              title="左に90°回転"
-                              className="h-6 w-6 flex items-center justify-center text-white hover:bg-white/20 transition-colors active:scale-95"
-                            >
-                              <RotateCcw className="h-3 w-3" />
-                            </button>
-                            <span className="w-px h-3.5 bg-white/30" />
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                updatePhoto.mutate({
-                                  id: photo.id,
-                                  rotation: (((photo.rotation ?? 0) + 90) % 360),
-                                });
-                              }}
-                              disabled={updatePhoto.isPending}
-                              title="右に90°回転"
-                              className="h-6 w-6 flex items-center justify-center text-white hover:bg-white/20 transition-colors active:scale-95"
-                            >
-                              <RotateCw className="h-3 w-3" />
-                            </button>
-                          </div>
-                        </div>
-                        <div className="flex-1 p-2 space-y-1.5 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <Select
-                              value={photo.photoType}
-                              onValueChange={(v) =>
-                                updatePhoto.mutate({
-                                  id: photo.id,
-                                  photoType: v as PhotoTypeTag,
-                                })
-                              }
-                            >
-                              <SelectTrigger className="h-7 text-xs flex-1">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {ALL_PHOTO_TYPES.map((t) => (
-                                  <SelectItem key={t} value={t}>
-                                    {t}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-7 w-7 bg-background shrink-0"
-                              disabled={index === 0 || updatePhoto.isPending}
-                              onClick={() => movePhoto(index, -1)}
-                              title="上へ"
-                            >
-                              <ArrowUp className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-7 w-7 bg-background shrink-0"
-                              disabled={
-                                index === reportPhotos.length - 1 || updatePhoto.isPending
-                              }
-                              onClick={() => movePhoto(index, 1)}
-                              title="下へ"
-                            >
-                              <ArrowDown className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-destructive shrink-0"
-                              disabled={removePhoto.isPending}
-                              onClick={() => {
-                                if (confirm("この写真を削除しますか？")) {
-                                  removePhoto.mutate({ id: photo.id });
-                                }
-                              }}
-                              title="削除"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                          <Input
-                            value={d.workItem}
-                            placeholder="工事項目（例：照明交換）"
-                            className="h-7 text-xs"
-                            onChange={(e) =>
-                              setDrafts((prev) => ({
-                                ...prev,
-                                [photo.id]: { ...draftOf(photo), workItem: e.target.value },
-                              }))
-                            }
-                            onBlur={() => saveComment(photo)}
-                          />
-                          <Textarea
-                            value={d.memo}
-                            placeholder="コメント・メモ"
-                            rows={2}
-                            className="text-xs min-h-0 resize-none"
-                            onChange={(e) =>
-                              setDrafts((prev) => ({
-                                ...prev,
-                                [photo.id]: { ...draftOf(photo), memo: e.target.value },
-                              }))
-                            }
-                            onBlur={() => saveComment(photo)}
-                          />
-                          {dirty && (
-                            <p className="text-[10px] text-amber-600">未保存（フォーカスを外すと保存）</p>
-                          )}
-                        </div>
+                          {gkey === "before" ? "BEFORE" : "AFTER"}
+                        </span>
+                        <h3 className="text-sm font-semibold font-serif-jp">
+                          {GROUP_LABEL[gkey]}
+                        </h3>
+                        <span className="text-[11px] text-muted-foreground">
+                          {items.length}枚
+                        </span>
                       </div>
+                      {items.length === 0 ? (
+                        <p className="text-[11px] text-muted-foreground py-4 text-center border border-dashed border-border/60 rounded-lg">
+                          ここにドラッグすると「{GROUP_LABEL[gkey]}」に移します。
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {items.map(({ photo, index }) => renderPhotoCard(photo, index))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {reportPhotos.map((photo, index) => renderPhotoCard(photo, index))}
               </div>
             )}
           </CardContent>
         </Card>
       </div>
-
       {/* 報告書本体（PDFソース） */}
       <div ref={containerRef} className="report-container mx-auto">
         {/* 1ページ目：基本情報 */}
@@ -833,107 +910,13 @@ export default function CaseReport({
           </div>
         </section>
 
-        {/* 写真ページ：施工完了報告書はビフォーアフター比較 */}
-        {reportType === "completion" ? (
-          comparePages.length === 0 ? (
-            <section className="report-page bg-white border border-border/60 shadow-sm mb-6">
-              <p className="text-center text-sm text-muted-foreground py-12">
-                比較する写真が登録されていません。現調（施工前）および施工後の写真を取り込んでください。
-              </p>
-            </section>
-          ) : (
-            comparePages.map((pagePairs, pi) => (
-              <section
-                key={`cmp-${pi}`}
-                className="report-page bg-white border border-border/60 shadow-sm mb-6"
-              >
-                <div className="flex items-end justify-between mb-4 pb-2 border-b-2 border-primary">
-                  <h2 className="font-serif-jp text-[15px] font-semibold text-primary">
-                    {config.title}　ビフォーアフター写真
-                    <span className="ml-2 text-[10px] tracking-widest text-muted-foreground font-sans">
-                      {caseData.requestNumber}
-                    </span>
-                  </h2>
-                  <span className="text-[11px] text-muted-foreground tabular-nums">
-                    Page {pi + 1} / {comparePages.length}
-                  </span>
-                </div>
-
-                <div
-                  className="grid gap-y-4"
-                  style={{
-                    gridTemplateRows: `repeat(${pairsPerPage}, 1fr)`,
-                    height: "248mm",
-                  }}
-                >
-                  {pagePairs.map((pair, idx) => (
-                    <div
-                      key={`pair-${pi}-${idx}`}
-                      className="flex flex-col min-h-0 border border-border/60 rounded overflow-hidden"
-                    >
-                      {/* 工事項目見出し帯 */}
-                      <div className="shrink-0 bg-primary/5 border-b border-border/60 px-3 py-1">
-                        <p className="font-serif-jp text-[12px] font-semibold text-primary truncate">
-                          {pair.workItem || `比較 ${pi * pairsPerPage + idx + 1}`}
-                        </p>
-                      </div>
-                      {/* 左＝施工前 / 右＝施工後 */}
-                      <div className="flex-1 min-h-0 grid grid-cols-2">
-                        {([
-                          { side: "before" as const, label: "施工前（現調）", photo: pair.before },
-                          { side: "after" as const, label: "施工後", photo: pair.after },
-                        ]).map(({ side, label, photo }) => (
-                          <div
-                            key={side}
-                            className={`flex flex-col min-h-0 ${side === "before" ? "border-r border-border/60" : ""}`}
-                          >
-                            <div className="shrink-0 flex items-center gap-1 px-2 py-0.5 bg-muted/60 border-b border-border/40">
-                              <span
-                                className={`text-[10px] font-semibold ${side === "before" ? "text-muted-foreground" : "text-primary"}`}
-                              >
-                                {side === "before" ? "BEFORE" : "AFTER"}
-                              </span>
-                              <span className="text-[10px] text-muted-foreground">・ {label}</span>
-                            </div>
-                            <div className="flex-1 min-h-0 bg-muted overflow-hidden flex items-center justify-center">
-                              {photo ? (
-                                <img
-                                  src={photo.fileUrl}
-                                  alt=""
-                                  className="w-full h-full object-contain cursor-zoom-in"
-                                  style={{
-                                    imageOrientation: "from-image",
-                                    transform: photo.rotation
-                                      ? `rotate(${photo.rotation}deg)`
-                                      : undefined,
-                                  }}
-                                  onClick={() => {
-                                    const li = reportPhotos.findIndex((rp) => rp.id === photo.id);
-                                    if (li >= 0) lightbox.open(li);
-                                  }}
-                                />
-                              ) : (
-                                <span className="text-[11px] text-muted-foreground">該当なし</span>
-                              )}
-                            </div>
-                            {photo?.memo && (
-                              <div className="shrink-0 text-[10px] px-2 py-1 border-t border-border/40 text-muted-foreground line-clamp-2 whitespace-pre-wrap leading-snug">
-                                {photo.memo}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ))
-          )
-        ) : photoPages.length === 0 ? (
+        {/* 写真ページ：両報告書とも羅列レイアウト（A4縦固定） */}
+        {photoPages.length === 0 ? (
           <section className="report-page bg-white border border-border/60 shadow-sm mb-6">
             <p className="text-center text-sm text-muted-foreground py-12">
-              現場調査写真（現調／施工前）が登録されていません。
+              {reportType === "completion"
+                ? "掲載する写真が登録されていません。施工前（現調）・施工後の写真を取り込んでください。"
+                : "現場調査写真（現調／施工前）が登録されていません。"}
             </p>
           </section>
         ) : (
