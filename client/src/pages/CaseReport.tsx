@@ -26,6 +26,7 @@ import jsPDF from "jspdf";
 import { toast } from "sonner";
 import { inlineImages } from "@/lib/imageDataUrl";
 import { fileToUprightDataUrl } from "@/lib/imageOrientation";
+import { buildBeforeAfterPairs, paginatePairs } from "@shared/beforeAfter";
 import { SignaturePad } from "@/components/SignaturePad";
 import { Lightbox, useLightbox } from "@/components/Lightbox";
 import {
@@ -67,7 +68,8 @@ const REPORT_CONFIG: Record<
     title: "施工完了報告書",
     eyebrow: "COMPLETION REPORT",
     leadText: "下記のとおり施工が完了いたしましたのでご報告いたします。",
-    photoTypes: ["施工後A", "施工後B", "設置状況"],
+    // ビフォーアフター比較のため、現調（施工前）系と施工後系の両方を採用する
+    photoTypes: ["現調", "施工前A", "施工前B", "施工後A", "施工後B", "設置状況"],
     fileLabel: "施工完了報告書",
     dateLabel: "施工日",
     dateField: (c) => c.constructionDate,
@@ -271,7 +273,7 @@ export default function CaseReport({
     [reportPhotos]
   );
 
-  // 写真ページ（perPage 枚／ページ）
+  // 写真ページ（perPage 枚／ページ）— 現場調査報告書で使用
   const photoPages = useMemo(() => {
     const result: Photo[][] = [];
     for (let i = 0; i < reportPhotos.length; i += perPage) {
@@ -279,6 +281,18 @@ export default function CaseReport({
     }
     return result;
   }, [reportPhotos, perPage]);
+
+  // 施工完了報告書：ビフォーアフター比較ページ
+  // 1ページあたりの比較組数（perPage 4→2組 / 6→3組）
+  const pairsPerPage = perPage === 6 ? 3 : 2;
+  const beforeAfterPairs = useMemo(
+    () => buildBeforeAfterPairs(reportPhotos),
+    [reportPhotos],
+  );
+  const comparePages = useMemo(
+    () => paginatePairs(beforeAfterPairs, pairsPerPage),
+    [beforeAfterPairs, pairsPerPage],
+  );
 
   const handleDownloadPDF = async () => {
     if (!containerRef.current || !caseData) return;
@@ -445,7 +459,9 @@ export default function CaseReport({
               </div>
               <div className="flex items-center gap-2">
                 <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground" />
-                <Label className="text-[11px] text-muted-foreground">1ページの枚数</Label>
+                <Label className="text-[11px] text-muted-foreground">
+                  {reportType === "completion" ? "1ページの比較組数" : "1ページの枚数"}
+                </Label>
                 <Select
                   value={String(perPage)}
                   onValueChange={(v) => setPerPage(Number(v) as 4 | 6)}
@@ -454,8 +470,12 @@ export default function CaseReport({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="4">4枚</SelectItem>
-                    <SelectItem value="6">6枚</SelectItem>
+                    <SelectItem value="4">
+                      {reportType === "completion" ? "2組" : "4枚"}
+                    </SelectItem>
+                    <SelectItem value="6">
+                      {reportType === "completion" ? "3組" : "6枚"}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -463,7 +483,7 @@ export default function CaseReport({
             <p className="text-[11px] text-muted-foreground -mt-1">
               {reportType === "survey"
                 ? "現調・施工前の写真が載ります。ドラッグで並び替え、各写真のコメントも編集できます。"
-                : "施工後・設置状況の写真が載ります。ドラッグで並び替え、各写真のコメントも編集できます。"}
+                : "現調（施工前）と施工後の写真を取り込むと、「工事項目」をキーにビフォーアフターで自動比較します。同じ工事項目名を付けると正しく対になります。"}
             </p>
 
             {/* 追加コントロール */}
@@ -825,13 +845,107 @@ export default function CaseReport({
           </div>
         </section>
 
-        {/* 写真ページ */}
-        {photoPages.length === 0 ? (
+        {/* 写真ページ：施工完了報告書はビフォーアフター比較 */}
+        {reportType === "completion" ? (
+          comparePages.length === 0 ? (
+            <section className="report-page bg-white border border-border/60 shadow-sm mb-6">
+              <p className="text-center text-sm text-muted-foreground py-12">
+                比較する写真が登録されていません。現調（施工前）および施工後の写真を取り込んでください。
+              </p>
+            </section>
+          ) : (
+            comparePages.map((pagePairs, pi) => (
+              <section
+                key={`cmp-${pi}`}
+                className="report-page bg-white border border-border/60 shadow-sm mb-6"
+              >
+                <div className="flex items-end justify-between mb-4 pb-2 border-b-2 border-primary">
+                  <h2 className="font-serif-jp text-[15px] font-semibold text-primary">
+                    {config.title}　ビフォーアフター写真
+                    <span className="ml-2 text-[10px] tracking-widest text-muted-foreground font-sans">
+                      {caseData.requestNumber}
+                    </span>
+                  </h2>
+                  <span className="text-[11px] text-muted-foreground tabular-nums">
+                    Page {pi + 1} / {comparePages.length}
+                  </span>
+                </div>
+
+                <div
+                  className="grid gap-y-4"
+                  style={{
+                    gridTemplateRows: `repeat(${pairsPerPage}, 1fr)`,
+                    height: "248mm",
+                  }}
+                >
+                  {pagePairs.map((pair, idx) => (
+                    <div
+                      key={`pair-${pi}-${idx}`}
+                      className="flex flex-col min-h-0 border border-border/60 rounded overflow-hidden"
+                    >
+                      {/* 工事項目見出し帯 */}
+                      <div className="shrink-0 bg-primary/5 border-b border-border/60 px-3 py-1">
+                        <p className="font-serif-jp text-[12px] font-semibold text-primary truncate">
+                          {pair.workItem || `比較 ${pi * pairsPerPage + idx + 1}`}
+                        </p>
+                      </div>
+                      {/* 左＝施工前 / 右＝施工後 */}
+                      <div className="flex-1 min-h-0 grid grid-cols-2">
+                        {([
+                          { side: "before" as const, label: "施工前（現調）", photo: pair.before },
+                          { side: "after" as const, label: "施工後", photo: pair.after },
+                        ]).map(({ side, label, photo }) => (
+                          <div
+                            key={side}
+                            className={`flex flex-col min-h-0 ${side === "before" ? "border-r border-border/60" : ""}`}
+                          >
+                            <div className="shrink-0 flex items-center gap-1 px-2 py-0.5 bg-muted/60 border-b border-border/40">
+                              <span
+                                className={`text-[10px] font-semibold ${side === "before" ? "text-muted-foreground" : "text-primary"}`}
+                              >
+                                {side === "before" ? "BEFORE" : "AFTER"}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">・ {label}</span>
+                            </div>
+                            <div className="flex-1 min-h-0 bg-muted overflow-hidden flex items-center justify-center">
+                              {photo ? (
+                                <img
+                                  src={photo.fileUrl}
+                                  alt=""
+                                  className="w-full h-full object-contain cursor-zoom-in"
+                                  style={{
+                                    imageOrientation: "from-image",
+                                    transform: photo.rotation
+                                      ? `rotate(${photo.rotation}deg)`
+                                      : undefined,
+                                  }}
+                                  onClick={() => {
+                                    const li = reportPhotos.findIndex((rp) => rp.id === photo.id);
+                                    if (li >= 0) lightbox.open(li);
+                                  }}
+                                />
+                              ) : (
+                                <span className="text-[11px] text-muted-foreground">該当なし</span>
+                              )}
+                            </div>
+                            {photo?.memo && (
+                              <div className="shrink-0 text-[10px] px-2 py-1 border-t border-border/40 text-muted-foreground line-clamp-2 whitespace-pre-wrap leading-snug">
+                                {photo.memo}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ))
+          )
+        ) : photoPages.length === 0 ? (
           <section className="report-page bg-white border border-border/60 shadow-sm mb-6">
             <p className="text-center text-sm text-muted-foreground py-12">
-              {reportType === "survey"
-                ? "現場調査写真（現調／施工前）が登録されていません。"
-                : "施工後写真（施工後／設置状況）が登録されていません。"}
+              現場調査写真（現調／施工前）が登録されていません。
             </p>
           </section>
         ) : (
