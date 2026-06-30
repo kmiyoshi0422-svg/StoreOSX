@@ -3,6 +3,8 @@ import { drizzle } from "drizzle-orm/mysql2";
 import {
   cases,
   caseSignatures,
+  caseReportDrafts,
+  InsertCaseReportDraft,
   checklistItems,
   estimates,
   expenses,
@@ -602,4 +604,45 @@ export async function deleteSignature(caseId: number, reportType: ReportType) {
   await db
     .delete(caseSignatures)
     .where(and(eq(caseSignatures.caseId, caseId), eq(caseSignatures.reportType, reportType)));
+}
+
+
+// ============================================================
+// Case Report Drafts (v40: 施工完了報告書のセクション本文をAI生成＋手編集保存)
+// ============================================================
+
+/** 案件の完了報告書ドラフトを1件取得 */
+export async function getReportDraft(caseId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(caseReportDrafts)
+    .where(eq(caseReportDrafts.caseId, caseId))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** 案件の完了報告書ドラフトを upsert（content/JSON文字列を保存） */
+export async function upsertReportDraft(data: InsertCaseReportDraft) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const existing = await db
+    .select()
+    .from(caseReportDrafts)
+    .where(eq(caseReportDrafts.caseId, data.caseId))
+    .limit(1);
+  if (existing.length > 0) {
+    await db
+      .update(caseReportDrafts)
+      .set({
+        content: data.content,
+        generatedAt: data.generatedAt ?? existing[0].generatedAt,
+        updatedBy: data.updatedBy ?? null,
+      })
+      .where(eq(caseReportDrafts.id, existing[0].id));
+    return existing[0].id;
+  }
+  const result = await db.insert(caseReportDrafts).values(data);
+  return (result as unknown as { insertId: number }).insertId;
 }

@@ -49,6 +49,8 @@ import {
   getSignature,
   upsertSignature,
   deleteSignature,
+  getReportDraft,
+  upsertReportDraft,
   setCasePartnerToken,
   updateCase,
   updateChecklistItem,
@@ -76,6 +78,11 @@ import { scoreCandidates, topMatches, pickBestMatch } from "../shared/estimate-m
 import { pickLatestEstimate } from "../shared/estimate-aggregator";
 import { invokeLLM } from "./_core/llm";
 import { ENV } from "./_core/env";
+import {
+  EMPTY_COMPLETION_CONTENT,
+  parseCompletionContent,
+  type CompletionReportContent,
+} from "../shared/completionReport";
 
 // ============================================================
 // Zod schemas
@@ -1025,6 +1032,231 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         await deleteSignature(input.caseId, input.reportType);
         return { success: true };
+      }),
+  }),
+
+  // ==========================================================
+  // 施工完了報告書ドラフト（v40: 参考PDF準拠のセクション文章をAI生成＋手編集保存）
+  // 金額は一切含めない。原因等の断定表現は禁止。不明な点は空欄のままにする。
+  // ==========================================================
+  reportDraft: router({
+    // 案件の完了報告書ドラフトを取得（無ければ空のcontentを返す）
+    get: protectedProcedure
+      .input(z.object({ caseId: z.number() }))
+      .query(async ({ input }) => {
+        const row = await getReportDraft(input.caseId);
+        return {
+          content: parseCompletionContent(row?.content),
+          generatedAt: row?.generatedAt ?? null,
+          updatedAt: row?.updatedAt ?? null,
+          exists: !!row,
+        };
+      }),
+
+    // 手編集後のcontentを保存（JSON文字列化してupsert）
+    save: protectedProcedure
+      .input(
+        z.object({
+          caseId: z.number(),
+          content: z.any(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const content = parseCompletionContent(JSON.stringify(input.content));
+        await upsertReportDraft({
+          caseId: input.caseId,
+          content: JSON.stringify(content),
+          updatedBy: ctx.user.id,
+        });
+        return { success: true };
+      }),
+
+    // AIでセクション文章＋写真キャプションを生成して保存し、生成結果を返す。
+    generate: protectedProcedure
+      .input(z.object({ caseId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new Error("案件が見つかりません");
+        const photos = await getPhotosByCaseId(input.caseId);
+
+        // 写真をAIに渡す（最大16枚まで。区分・工事項目・メモも添える）
+        const photoForLlm = photos
+          .filter((p) =>
+            ["現調", "施工前A", "施工前B", "施工後A", "施工後B", "設置状況", "メーカー型番", "その他"].includes(
+              p.photoType
+            )
+          )
+          .slice(0, 16);
+        const signedPhotoUrls = await Promise.all(
+          photoForLlm.map(async (p) => {
+            try {
+              const key = p.fileUrl.replace(/^\/manus-storage\//, "").replace(/^https?:\/\/[^/]+\/manus-storage\//, "");
+              return { id: p.id, url: await storageGetSignedUrl(key), photo: p };
+            } catch {
+              return { id: p.id, url: null, photo: p };
+            }
+          })
+        );
+
+        const caseSummary = [
+          `店舗名: ${caseData.storeName}`,
+          `ブランド: ${caseData.brand}`,
+          `作業区分: ${caseData.workType ?? ""}`,
+          `工事種別: ${[caseData.categoryLarge, caseData.categoryMedium, caseData.categorySmall].filter(Boolean).join(" / ")}`,
+          `依頼内容: ${caseData.requestContent ?? ""}`,
+          `備考: ${caseData.notes ?? ""}`,
+        ].join("\n");
+
+        const photoListText = photoForLlm
+          .map(
+            (p, i) =>
+              `写真${i + 1}(photoId=${p.id}, 区分=${p.photoType}${p.workItem ? `, 工事項目=${p.workItem}` : ""}${p.memo ? `, メモ=${p.memo}` : ""})`
+          )
+          .join("\n");
+
+        const schema = {
+          type: "object",
+          properties: {
+            workName: { type: "string" },
+            statusBadge: { type: "string" },
+            overview: { type: "string" },
+            purpose: { type: "string" },
+            scope: { type: "string" },
+            summary: { type: "string" },
+            evaluations: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  item: { type: "string" },
+                  before: { type: "string" },
+                  after: { type: "string" },
+                  judgment: { type: "string" },
+                },
+                required: ["item", "before", "after", "judgment"],
+              },
+            },
+            measurements: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { name: { type: "string" }, value: { type: "string" } },
+                required: ["name", "value"],
+              },
+            },
+            materials: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { name: { type: "string" }, spec: { type: "string" }, qty: { type: "string" } },
+                required: ["name", "spec", "qty"],
+              },
+            },
+            procedures: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { step: { type: "string" }, detail: { type: "string" } },
+                required: ["step", "detail"],
+              },
+            },
+            conclusion: { type: "string" },
+            inspections: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { timing: { type: "string" }, target: { type: "string" }, note: { type: "string" } },
+                required: ["timing", "target", "note"],
+              },
+            },
+            risks: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { part: { type: "string" }, risk: { type: "string" }, level: { type: "string" } },
+                required: ["part", "risk", "level"],
+              },
+            },
+            photoCaptions: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { photoId: { type: "number" }, caption: { type: "string" } },
+                required: ["photoId", "caption"],
+              },
+            },
+          },
+          required: [
+            "workName",
+            "statusBadge",
+            "overview",
+            "purpose",
+            "scope",
+            "summary",
+            "evaluations",
+            "measurements",
+            "materials",
+            "procedures",
+            "conclusion",
+            "inspections",
+            "risks",
+            "photoCaptions",
+          ],
+        };
+
+        const systemPrompt = [
+          "あなたは内外装・設備の施工完了報告書を作成する建設アシスタントです。",
+          "以下の案件情報と現場写真をもとに、施工完了報告書のセクション文章を日本語で作成し、指定JSONで返してください。",
+          "厳守事項:",
+          "1. 金額・費用・価格に一切触れないこと（数字・概算も禁止）。",
+          "2. 原因・責任・劣化要因などを断定しないこと。確認できない事項は推測で埋めず、空文字または空配列にすること。",
+          "3. 各文章は簡潔・短めにすること（1〜3文程度）。冗長にしない。",
+          "4. 写真から読み取れる範囲で客観的に記述する。読み取れない場合はキャプションを短い事実記述（例:『施工前の状態』『施工後の状態』）に留める。",
+          "5. evaluations/measurements/materials/procedures/inspections/risks は確証がある範囲のみ。情報が無ければ空配列で良い。",
+          "6. statusBadge は基本『工事完了』。明確に解消が確認できる場合のみ『工事完了 / 損傷レベル：解消済』。",
+          "7. photoCaptions は渡された photoId に対してのみ、短い確認内容を返すこと。",
+        ].join("\n");
+
+        const userContent: any[] = [
+          {
+            type: "text",
+            text: `【案件情報】\n${caseSummary}\n\n【写真一覧】\n${photoListText || "写真なし"}\n\n上記をもとに施工完了報告書のJSONを作成してください。`,
+          },
+        ];
+        for (const sp of signedPhotoUrls) {
+          if (sp.url) {
+            userContent.push({ type: "text", text: `photoId=${sp.id} 区分=${sp.photo.photoType}` });
+            userContent.push({ type: "image_url", image_url: { url: sp.url, detail: "low" } });
+          }
+        }
+
+        let generated: CompletionReportContent = { ...EMPTY_COMPLETION_CONTENT };
+        try {
+          const res = await invokeLLM({
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userContent },
+            ],
+            response_format: {
+              type: "json_schema",
+              json_schema: { name: "completion_report", strict: false, schema },
+            },
+          });
+          const content = res.choices?.[0]?.message?.content ?? "{}";
+          generated = parseCompletionContent(typeof content === "string" ? content : JSON.stringify(content));
+        } catch (e) {
+          console.warn("[reportDraft.generate] LLM生成失敗", e);
+          throw new Error("報告書の自動生成に失敗しました。時間をおいて再度お試しください。");
+        }
+
+        // 既存ドラフトがあれば手編集を尊重しつつマージはせず、生成結果で上書き保存する
+        await upsertReportDraft({
+          caseId: input.caseId,
+          content: JSON.stringify(generated),
+          generatedAt: new Date(),
+          updatedBy: ctx.user.id,
+        });
+        return { content: generated };
       }),
   }),
 

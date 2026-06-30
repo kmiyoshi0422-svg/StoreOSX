@@ -325,3 +325,25 @@ export const caseSignatures = mysqlTable("case_signatures", {
 }));
 export type CaseSignature = typeof caseSignatures.$inferSelect;
 export type InsertCaseSignature = typeof caseSignatures.$inferInsert;
+
+
+/**
+ * 施工完了報告書ドラフト（v40: 参考PDF準拠の完了報告書セクション文章を保存）
+ * 案件ごとに1件（upsert）。AI生成した本文＋手編集後の内容をJSONで保持し、
+ * 再生成しても手編集が消えないように content をそのまま保存する。
+ * 金額は一切保持しない。
+ */
+export const caseReportDrafts = mysqlTable("case_report_drafts", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("caseId").notNull(),
+  // セクション本文・評価表・写真キャプション等をまとめたJSON文字列
+  content: text("content").notNull(),
+  generatedAt: timestamp("generatedAt"), // 最終AI生成日時
+  updatedBy: int("updatedBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  uniqCase: unique("uniq_report_draft_case").on(t.caseId),
+}));
+export type CaseReportDraft = typeof caseReportDrafts.$inferSelect;
+export type InsertCaseReportDraft = typeof caseReportDrafts.$inferInsert;

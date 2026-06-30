@@ -452,3 +452,13 @@
 - [x] survey（現場調査報告書）は従来の単一リストを維持
 - [x] 自動ビフォーアフター比較の残存ロジック(buildBeforeAfterPairs等)を完全撤去し羅列に統一
 - [x] 型チェック【PASS】・全テストPASS【250件】・検証データ復旧・チェックポイント保存
+
+## 完了報告書を参考PDF（株式会社小林工房テンプレート）に統一
+- [x] 会社・施工者・提出先を固定値で埋め込み（shared/completionReport.ts の COMPANY_INFO）
+- [x] AI本文生成（reportDraft.generate）：金額に触れず、断定が必要な原因は空欄、写真キャプション短文を自動生成
+- [x] 生成結果は case_report_drafts に保存し再読込でも保持（get/save）
+- [x] 完了報告書専用コンポーネント CompletionReport.tsx を新規作成しルート差し替え
+- [x] 参考PDF準拠の全13ページ構成（表紙→提出者→物件情報/工事概要→工事範囲/評価表→Before/Process/After写真→採寸/材料/手順→結論/点検/周辺リスク）
+- [x] 各セクション・採寸・材料・手順・点検計画・周辺リスクは行追加/編集可、空欄は非表示
+- [x] 写真は現調=Before/施工中=Process/施工後=After に区分、グループ見出し＆D&D維持
+- [x] 型チェック【PASS】・全テストPASS【7件のreportDraftテスト含む】・実機でAI生成/保存/永続化/レイアウト確認

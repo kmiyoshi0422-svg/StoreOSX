@@ -12,6 +12,7 @@ import CaseDetail from "./pages/CaseDetail";
 import PhotoLedger from "./pages/PhotoLedger";
 import PhotoLedgerBatch from "./pages/PhotoLedgerBatch";
 import CaseReport from "./pages/CaseReport";
+import CompletionReport from "./pages/CompletionReport";
 import CsvImport from "./pages/CsvImport";
 import CasePdfImport from "./pages/CasePdfImport";
 import CasesMap from "./pages/CasesMap";
@@ -78,7 +79,7 @@ function Router() {
           {(params) => <CaseReport id={Number(params.id)} reportType="survey" />}
         </Route>
         <Route path={"/cases/:id/completion-report"}>
-          {(params) => <CaseReport id={Number(params.id)} reportType="completion" />}
+          {(params) => <CompletionReport id={Number(params.id)} />}
         </Route>
         <Route path={"/cases/:id"}>
           {(params) => <CaseDetail id={Number(params.id)} />}
