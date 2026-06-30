@@ -38,6 +38,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import type { Case, Photo } from "../../../drizzle/schema";
+import { toFullWidthDigits, reportLabel } from "../../../shared/reportText";
 
 export type ReportType = "survey" | "completion";
 
@@ -112,11 +113,13 @@ const GROUP_LABEL: Record<PhotoGroupKey, string> = {
 
 function fmtDate(d: Date | null | undefined): string {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("ja-JP", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  return toFullWidthDigits(
+    new Date(d).toLocaleDateString("ja-JP", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })
+  );
 }
 
 export default function CaseReport({
@@ -836,7 +839,7 @@ export default function CaseReport({
               <p className="text-[11px] text-muted-foreground">{config.leadText}</p>
             </div>
             <div className="text-[11px] text-muted-foreground text-right space-y-0.5 tabular-nums">
-              <p>案件番号：{caseData.requestNumber}</p>
+              <p>案件番号：{toFullWidthDigits(caseData.requestNumber)}</p>
               <p>報告日：{fmtDate(new Date())}</p>
             </div>
           </div>
@@ -852,33 +855,34 @@ export default function CaseReport({
             <tbody>
               <tr>
                 <ReportTh>ブランド</ReportTh>
-                <ReportTd>{caseData.brand}</ReportTd>
+                <ReportTd>{reportLabel(caseData.brand)}</ReportTd>
                 <ReportTh>店舗名</ReportTh>
-                <ReportTd>{caseData.storeName}</ReportTd>
+                <ReportTd>{reportLabel(caseData.storeName)}</ReportTd>
               </tr>
               <tr>
                 <ReportTh>店舗住所</ReportTh>
-                <ReportTd colSpan={3}>{caseData.address || "—"}</ReportTd>
+                <ReportTd colSpan={3}>{caseData.address ? toFullWidthDigits(caseData.address) : "—"}</ReportTd>
               </tr>
               <tr>
                 <ReportTh>店舗電話</ReportTh>
-                <ReportTd>{caseData.storePhone || "—"}</ReportTd>
+                <ReportTd>{caseData.storePhone ? toFullWidthDigits(caseData.storePhone) : "—"}</ReportTd>
                 <ReportTh>作業区分</ReportTh>
-                <ReportTd>{caseData.workType || "—"}</ReportTd>
+                <ReportTd>{caseData.workType ? reportLabel(caseData.workType) : "—"}</ReportTd>
               </tr>
               <tr>
                 <ReportTh>工事種別</ReportTh>
                 <ReportTd colSpan={3}>
                   {[caseData.categoryLarge, caseData.categoryMedium, caseData.categorySmall]
                     .filter(Boolean)
-                    .join("　/　") || "—"}
+                    .map((v) => reportLabel(v as string))
+                    .join("　・　") || "—"}
                 </ReportTd>
               </tr>
               <tr>
                 <ReportTh>{config.dateLabel}</ReportTh>
                 <ReportTd>{fmtDate(config.dateField(caseData))}</ReportTd>
                 <ReportTh>協力会社</ReportTh>
-                <ReportTd>{caseData.contractorName || "—"}</ReportTd>
+                <ReportTd>{caseData.contractorName ? reportLabel(caseData.contractorName) : "—"}</ReportTd>
               </tr>
               {reportType === "completion" && (
                 <tr>
@@ -891,14 +895,14 @@ export default function CaseReport({
 
           <SectionBand>{reportType === "survey" ? "調査内容・依頼内容" : "作業内容"}</SectionBand>
           <p className="text-[12px] whitespace-pre-wrap leading-relaxed mb-7 px-0.5">
-            {caseData.requestContent || "—"}
+            {caseData.requestContent ? reportLabel(caseData.requestContent) : "—"}
           </p>
 
           {caseData.notes && (
             <>
               <SectionBand>備考</SectionBand>
               <p className="text-[12px] whitespace-pre-wrap leading-relaxed mb-7 px-0.5">
-                {caseData.notes}
+                {reportLabel(caseData.notes)}
               </p>
             </>
           )}
@@ -929,11 +933,11 @@ export default function CaseReport({
                 <h2 className="font-serif-jp text-[15px] font-semibold text-primary">
                   {config.title}　写真
                   <span className="ml-2 text-[10px] tracking-widest text-muted-foreground font-sans">
-                    {caseData.requestNumber}
+                    {toFullWidthDigits(caseData.requestNumber)}
                   </span>
                 </h2>
                 <span className="text-[11px] text-muted-foreground tabular-nums">
-                  Page {pi + 1} / {photoPages.length}
+                  ページ {toFullWidthDigits(pi + 1)} / {toFullWidthDigits(photoPages.length)}
                 </span>
               </div>
 
@@ -966,11 +970,11 @@ export default function CaseReport({
                     <div className="text-[11px] px-2 py-1.5 space-y-0.5 border-t border-border/60 shrink-0">
                       <p className="font-semibold font-serif-jp text-primary">▲ {photo.photoType}</p>
                       {photo.workItem && (
-                        <p className="text-muted-foreground truncate">{photo.workItem}</p>
+                        <p className="text-muted-foreground truncate">{reportLabel(photo.workItem)}</p>
                       )}
                       {photo.memo && (
                         <p className="text-muted-foreground leading-snug whitespace-pre-wrap line-clamp-2">
-                          {photo.memo}
+                          {reportLabel(photo.memo)}
                         </p>
                       )}
                     </div>
@@ -1092,7 +1096,7 @@ function SignatureBlock({
             <span>
               日付：
               <span className="text-foreground tabular-nums">
-                {signature ? new Date(signature.signedAt).toLocaleDateString("ja-JP") : "　年　月　日"}
+                {signature ? toFullWidthDigits(new Date(signature.signedAt).toLocaleDateString("ja-JP")) : "　年　月　日"}
               </span>
             </span>
           </div>

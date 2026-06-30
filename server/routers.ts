@@ -1215,6 +1215,7 @@ export const appRouter = router({
           "5. evaluations/measurements/materials/procedures/inspections/risks は確証がある範囲のみ。情報が無ければ空配列で良い。",
           "6. statusBadge は基本『工事完了』。明確に解消が確認できる場合のみ『工事完了 / 損傷レベル：解消済』。",
           "7. photoCaptions は渡された photoId に対してのみ、短い確認内容を返すこと。",
+          "8. 丸括弧（ （ ） や ( ) ）は使わず、補足は読点や中黒・で区切ること。",
         ].join("\n");
 
         const userContent: any[] = [

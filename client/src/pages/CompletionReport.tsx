@@ -39,6 +39,7 @@ import { fileToUprightDataUrl } from "@/lib/imageOrientation";
 import { SignaturePad } from "@/components/SignaturePad";
 import { Lightbox, useLightbox } from "@/components/Lightbox";
 import type { Photo, Case, CaseSignature } from "../../../drizzle/schema";
+import { toFullWidthDigits, reportLabel } from "../../../shared/reportText";
 import {
   COMPANY_INFO,
   EMPTY_COMPLETION_CONTENT,
@@ -76,19 +77,19 @@ const PHASE_META: Record<
   { label: string; sub: string; band: string; text: string }
 > = {
   before: {
-    label: "施工前の状態（Before）",
+    label: "施工前の状態　Before",
     sub: "BEFORE",
     band: "bg-[#c0392b]",
     text: "text-[#c0392b]",
   },
   process: {
-    label: "施工中の状況（Process）",
+    label: "施工中の状況　Process",
     sub: "PROCESS",
     band: "bg-[#2471a3]",
     text: "text-[#2471a3]",
   },
   after: {
-    label: "施工後の状態（After）",
+    label: "施工後の状態　After",
     sub: "AFTER",
     band: "bg-[#1e8449]",
     text: "text-[#1e8449]",
@@ -103,11 +104,13 @@ const DEFAULT_TYPE_OF_PHASE: Record<PhotoPhase, PhotoTypeTag> = {
 
 function fmtDate(d: Date | null | undefined): string {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("ja-JP", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  return toFullWidthDigits(
+    new Date(d).toLocaleDateString("ja-JP", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })
+  );
 }
 
 export default function CompletionReport({ id }: { id: number }) {
@@ -372,7 +375,7 @@ export default function CompletionReport({ id }: { id: number }) {
     caseData.requestContent ||
     "工事";
   const headerLine = `${COMPANY_INFO.companyName}　工事完了報告書｜${caseData.storeName}`;
-  const footerLine = `${COMPANY_INFO.companyName}　${COMPANY_INFO.personName} ｜ TEL: ${COMPANY_INFO.tel}`;
+  const footerLine = `${COMPANY_INFO.companyName}　${COMPANY_INFO.personName} ｜ TEL: ${toFullWidthDigits(COMPANY_INFO.tel)}`;
   const completedAt = caseData.completedAt ?? caseData.constructionDate ?? caseData.updatedAt;
 
   return (
@@ -506,7 +509,7 @@ function SectionBar({ no, children }: { no?: string; children: ReactNode }) {
       <div className="flex-1 bg-[#f1f3f5] px-3 py-1.5 flex items-center gap-2">
         {no && (
           <span className="inline-flex items-center justify-center w-5 h-5 bg-[#1f2937] text-white text-[10px] font-bold">
-            {no}
+            {toFullWidthDigits(no)}
           </span>
         )}
         <span className="text-[13px] font-bold tracking-wide text-[#1f2937]">{children}</span>
@@ -525,10 +528,10 @@ function SubHead({ children }: { children: ReactNode }) {
   );
 }
 
-// PDF: 本文ブロック（空なら非表示）
+// PDF: 本文ブロック。空なら非表示。数字は全角化して表示する。
 function Body({ text }: { text: string }) {
   if (!text?.trim()) return null;
-  return <p className="text-[11px] leading-relaxed text-[#222] whitespace-pre-wrap mb-1">{text}</p>;
+  return <p className="text-[11px] leading-relaxed text-[#222] whitespace-pre-wrap mb-1">{toFullWidthDigits(text)}</p>;
 }
 
 // ============================================================
@@ -1001,7 +1004,7 @@ function PageFrame({
       <div className="flex-1 min-h-0">{children}</div>
       <div className="flex items-center justify-center border-t border-[#999] pt-1 mt-3">
         <span className="text-[8px] text-[#666]">
-          {footerLine} ｜ Page {pageNo} / {totalPages}
+          {footerLine} ｜ ページ {toFullWidthDigits(pageNo)} / {toFullWidthDigits(totalPages)}
         </span>
       </div>
     </div>
@@ -1010,10 +1013,12 @@ function PageFrame({
 
 // 物件情報テーブル行
 function InfoRow({ label, value, highlight }: { label: string; value: ReactNode; highlight?: boolean }) {
+  // 値が文字列の場合は数字を全角化して表示する
+  const display = typeof value === "string" || typeof value === "number" ? toFullWidthDigits(value) : value;
   return (
     <tr>
       <td className="bg-[#374151] text-white text-[10px] font-medium px-2 py-1 w-[28%] align-top border border-[#cbd5e1]">{label}</td>
-      <td className={`text-[10px] px-2 py-1 align-top border border-[#cbd5e1] ${highlight ? "bg-[#fff7e6] font-semibold" : "bg-[#fbfcfd]"}`}>{value || "—"}</td>
+      <td className={`text-[10px] px-2 py-1 align-top border border-[#cbd5e1] ${highlight ? "bg-[#fff7e6] font-semibold" : "bg-[#fbfcfd]"}`}>{display || "—"}</td>
     </tr>
   );
 }
@@ -1034,10 +1039,10 @@ function PhotoBlock({ photo, caption }: { photo: Photo; caption?: string }) {
       </div>
       <div className={`${meta.band} text-white text-[9px] font-bold px-2 py-0.5 flex items-center justify-between`}>
         <span>{meta.sub}</span>
-        {photo.workItem && <span className="font-normal opacity-90">{photo.workItem}</span>}
+        {photo.workItem && <span className="font-normal opacity-90">{reportLabel(photo.workItem)}</span>}
       </div>
       <div className="px-2 py-1 text-[9px] leading-snug text-[#333] min-h-[10mm]">
-        {caption?.trim() ? caption : photo.memo?.trim() ? photo.memo : `${meta.sub === "BEFORE" ? "施工前" : meta.sub === "AFTER" ? "施工後" : "施工中"}の状態`}
+        {caption?.trim() ? reportLabel(caption) : photo.memo?.trim() ? reportLabel(photo.memo) : `${meta.sub === "BEFORE" ? "施工前" : meta.sub === "AFTER" ? "施工後" : "施工中"}の状態`}
       </div>
     </div>
   );
@@ -1107,7 +1112,7 @@ function CompletionReportPages({
       {frame(
         <div className="h-full flex flex-col items-center justify-center text-center px-6">
           <div className="border border-[#374151] px-3 py-1 text-[10px] text-[#374151] mb-10">
-            報告書番号：{caseData.requestNumber}
+            報告書番号：{toFullWidthDigits(caseData.requestNumber)}
           </div>
           <div className="w-full border-t-2 border-b-2 border-[#1f2937] py-5 mb-2">
             <h1 className="text-[30px] font-bold tracking-[0.3em] text-[#1f2937]">工事完了報告書</h1>
@@ -1115,10 +1120,10 @@ function CompletionReportPages({
           <p className="text-[11px] tracking-[0.25em] text-[#888] mb-12">Construction Completion Report</p>
           <p className="text-[15px] font-bold text-[#c0392b] mb-2">{caseData.brand}</p>
           <p className="text-[24px] font-bold text-[#1f2937] mb-3">{caseData.storeName}</p>
-          <p className="text-[12px] text-[#444] mb-10">{workName}</p>
+          <p className="text-[12px] text-[#444] mb-10">{reportLabel(workName)}</p>
           <div className="inline-flex items-center gap-1.5 bg-[#1e8449] text-white text-[12px] font-bold rounded-full px-5 py-2 mb-12">
             <span>✓</span>
-            <span>{content.statusBadge || "工事完了"}</span>
+            <span>{reportLabel(content.statusBadge || "工事完了")}</span>
           </div>
           <div className="text-[11px] text-[#333] space-y-1">
             <p>施工完了日：{fmtDate(completedAt)}</p>
@@ -1140,7 +1145,7 @@ function CompletionReportPages({
                 <p className="text-[10px] text-[#888]">{COMPANY_INFO.builder}</p>
                 <p className="text-[15px] font-bold">{COMPANY_INFO.companyName}</p>
                 <p className="text-[13px]">{COMPANY_INFO.personName}</p>
-                <p className="text-[11px] text-[#555]">TEL：{COMPANY_INFO.tel}</p>
+                <p className="text-[11px] text-[#555]">TEL：{toFullWidthDigits(COMPANY_INFO.tel)}</p>
                 <p className="text-[11px] text-[#555]">Email：{COMPANY_INFO.email}</p>
               </div>
             </div>
@@ -1160,7 +1165,7 @@ function CompletionReportPages({
               <InfoRow label="店舗コード" value={caseData.storeCode} />
               <InfoRow label="所在地" value={caseData.address} />
               <InfoRow label="店舗電話" value={caseData.storePhone} />
-              <InfoRow label="工事種別" value={[caseData.categoryLarge, caseData.categoryMedium, caseData.categorySmall].filter(Boolean).join(" / ")} />
+              <InfoRow label="工事種別" value={[caseData.categoryLarge, caseData.categoryMedium, caseData.categorySmall].filter(Boolean).join("　・　")} />
               <InfoRow label="施工日" value={fmtDate(caseData.constructionDate)} highlight />
               <InfoRow label="完了日" value={fmtDate(completedAt)} highlight />
               <InfoRow label="状態" value={<span className="inline-flex items-center gap-1 bg-[#1e8449] text-white text-[9px] font-bold rounded px-2 py-0.5">✓ 完了</span>} />
@@ -1170,9 +1175,9 @@ function CompletionReportPages({
           <SectionBar no="1">工事概要</SectionBar>
           <Body text={content.overview} />
           {!content.overview?.trim() && (
-            <p className="text-[10px] text-[#999] mb-1">（「AIで本文を生成」で自動入力できます）</p>
+            <p className="text-[10px] text-[#999] mb-1">「AIで本文を生成」で自動入力できます</p>
           )}
-          <SubHead>1-1. 施工目的</SubHead>
+          <SubHead>１－１．施工目的</SubHead>
           <Body text={content.purpose} />
         </div>
       )}
@@ -1180,7 +1185,7 @@ function CompletionReportPages({
       {/* ===== 4. 工事範囲・総評・評価表 ===== */}
       {frame(
         <div className="h-full">
-          <SubHead>1-2. 工事範囲</SubHead>
+          <SubHead>１－２．工事範囲</SubHead>
           <Body text={content.scope} />
 
           <SectionBar no="2">工事総評</SectionBar>
@@ -1200,10 +1205,10 @@ function CompletionReportPages({
                 <tbody>
                   {content.evaluations.map((r, i) => (
                     <tr key={i}>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd] align-top">{r.item}</td>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd] align-top">{r.before}</td>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd] align-top">{r.after}</td>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] align-top text-center bg-[#e9f7ef] text-[#1e8449] font-bold">{r.judgment ? `✓ ${r.judgment}` : "—"}</td>
+                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd] align-top">{reportLabel(r.item)}</td>
+                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd] align-top">{reportLabel(r.before)}</td>
+                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd] align-top">{reportLabel(r.after)}</td>
+                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] align-top text-center bg-[#e9f7ef] text-[#1e8449] font-bold">{r.judgment ? `✓ ${reportLabel(r.judgment)}` : "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1222,9 +1227,9 @@ function CompletionReportPages({
           <div key={`photopage-${idx}`}>
             {frame(
               <div className="h-full flex flex-col">
-                {firstOfPhase && idx === 0 && <SectionBar no="4">施工写真（ビフォー・施工中・アフター）</SectionBar>}
+                {firstOfPhase && idx === 0 && <SectionBar no="4">施工写真　ビフォー・施工中・アフター</SectionBar>}
                 <SubHead>
-                  <span className={meta.text}>4-{pg.phase === "before" ? "1" : pg.phase === "process" ? "2" : "3"}. {meta.label}</span>
+                  <span className={meta.text}>４－{pg.phase === "before" ? "１" : pg.phase === "process" ? "２" : "３"}．{meta.label}</span>
                 </SubHead>
                 <div className="grid grid-cols-2 gap-3 flex-1 content-start">
                   {pg.photos.map((p) => (
@@ -1242,13 +1247,13 @@ function CompletionReportPages({
         <div className="h-full">
           {hasMeasure && (
             <>
-              <SectionBar no="5">採寸データ（実測値）</SectionBar>
+              <SectionBar no="5">採寸データ　実測値</SectionBar>
               <table className="w-full border-collapse mb-3">
                 <tbody>
                   {content.measurements.map((m, i) => (
                     <tr key={i}>
-                      <td className="bg-[#374151] text-white text-[10px] px-2 py-1 w-[40%] border border-[#cbd5e1]">{m.name}</td>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{m.value || "—"}</td>
+                      <td className="bg-[#374151] text-white text-[10px] px-2 py-1 w-[40%] border border-[#cbd5e1]">{reportLabel(m.name)}</td>
+                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{m.value ? reportLabel(m.value) : "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1259,7 +1264,7 @@ function CompletionReportPages({
           {(hasMaterial || hasProc) && <SectionBar no="6">使用材料・実施工法詳細</SectionBar>}
           {hasMaterial && (
             <>
-              <SubHead>6-1. 使用材料</SubHead>
+              <SubHead>６－１．使用材料</SubHead>
               <table className="w-full border-collapse mb-3">
                 <thead>
                   <tr>
@@ -1271,9 +1276,9 @@ function CompletionReportPages({
                 <tbody>
                   {content.materials.map((m, i) => (
                     <tr key={i}>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{m.name}</td>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{m.spec || "—"}</td>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd] text-center">{m.qty || "—"}</td>
+                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(m.name)}</td>
+                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{m.spec ? reportLabel(m.spec) : "—"}</td>
+                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd] text-center">{m.qty ? reportLabel(m.qty) : "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1282,13 +1287,13 @@ function CompletionReportPages({
           )}
           {hasProc && (
             <>
-              <SubHead>6-2. 実施工法・施工手順</SubHead>
+              <SubHead>６－２．実施工法・施工手順</SubHead>
               <table className="w-full border-collapse mb-3">
                 <tbody>
                   {content.procedures.map((p, i) => (
                     <tr key={i}>
-                      <td className="bg-[#374151] text-white text-[10px] px-2 py-1 w-[12%] text-center border border-[#cbd5e1]">{p.step || i + 1}</td>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{p.detail}</td>
+                      <td className="bg-[#374151] text-white text-[10px] px-2 py-1 w-[12%] text-center border border-[#cbd5e1]">{toFullWidthDigits(p.step || i + 1)}</td>
+                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(p.detail)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1317,9 +1322,9 @@ function CompletionReportPages({
                 <tbody>
                   {content.inspections.map((r, i) => (
                     <tr key={i}>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{r.timing}</td>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{r.target}</td>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{r.note}</td>
+                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(r.timing)}</td>
+                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(r.target)}</td>
+                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(r.note)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1341,9 +1346,9 @@ function CompletionReportPages({
                 <tbody>
                   {content.risks.map((r, i) => (
                     <tr key={i}>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{r.part}</td>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{r.risk}</td>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd] text-center">{r.level || "—"}</td>
+                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(r.part)}</td>
+                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(r.risk)}</td>
+                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd] text-center">{r.level ? reportLabel(r.level) : "—"}</td>
                     </tr>
                   ))}
                 </tbody>
