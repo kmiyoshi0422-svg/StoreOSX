@@ -1,11 +1,27 @@
 import jsPDF from "jspdf";
 import { toast } from "sonner";
 import type { Case } from "../../../drizzle/schema";
-import { toFullWidthDigits, reportLabel } from "../../../shared/reportText";
+import {
+  toFullWidthDigits as _toFullWidthDigits,
+  reportLabel as _reportLabel,
+} from "../../../shared/reportText";
 
 // jsPDFは日本語フォントが標準で含まれないため、html2canvasベースで作成
 // Tailwind4のoklch色をサポートする html2canvas-pro を使用
 import html2canvas from "html2canvas-pro";
+
+// PDF生成中に適用する除外辞書（全角化・括弧除去の対象外にする語）。
+// generateXxxPDF 呼び出し時にセットし、内部のラッパー経由で参照する。
+let _exclusions: string[] = [];
+
+// 既存の呼び出し名（toFullWidthDigits / reportLabel）を維持したまま、
+// モジュールスコープの除外辞書を自動適用するローカルラッパー。
+function toFullWidthDigits(input: string | number | null | undefined): string {
+  return _toFullWidthDigits(input, _exclusions);
+}
+function reportLabel(input: string | number | null | undefined): string {
+  return _reportLabel(input, _exclusions);
+}
 
 function fmtDate(d: Date | null | undefined): string {
   if (!d) return "—";
@@ -226,10 +242,12 @@ function safeName(c: Case): string {
   return `${toFullWidthDigits(c.requestNumber)}_${c.storeName}`.replace(/[\\/:*?"<>|]/g, "_");
 }
 
-export async function generateQuotePDF(c: Case) {
+export async function generateQuotePDF(c: Case, exclusions: string[] = []) {
+  _exclusions = exclusions;
   await htmlToPDF(buildQuoteHTML(c), `見積書_${safeName(c)}.pdf`);
 }
 
-export async function generateCompletionReportPDF(c: Case) {
+export async function generateCompletionReportPDF(c: Case, exclusions: string[] = []) {
+  _exclusions = exclusions;
   await htmlToPDF(buildCompletionHTML(c), `完了報告書_${safeName(c)}.pdf`);
 }

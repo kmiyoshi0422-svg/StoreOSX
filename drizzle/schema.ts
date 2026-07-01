@@ -347,3 +347,19 @@ export const caseReportDrafts = mysqlTable("case_report_drafts", {
 }));
 export type CaseReportDraft = typeof caseReportDrafts.$inferSelect;
 export type InsertCaseReportDraft = typeof caseReportDrafts.$inferInsert;
+
+/**
+ * 全角化の除外辞書（v41: 型番・メールアドレス・固有名詞など、
+ * PDF出力時に半角のまま残したい語を登録する）。
+ * term は完全一致で保護され、周囲のテキストだけが全角化・括弧除去される。
+ */
+export const fullwidthExclusions = mysqlTable("fullwidth_exclusions", {
+  id: int("id").autoincrement().primaryKey(),
+  term: varchar("term", { length: 255 }).notNull().unique(), // 保護する語（例: ABC-123X）
+  note: varchar("note", { length: 255 }), // メモ（任意）
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type FullwidthExclusion = typeof fullwidthExclusions.$inferSelect;
+export type InsertFullwidthExclusion = typeof fullwidthExclusions.$inferInsert;

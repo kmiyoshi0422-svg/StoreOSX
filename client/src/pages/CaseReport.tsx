@@ -38,7 +38,22 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import type { Case, Photo } from "../../../drizzle/schema";
-import { toFullWidthDigits, reportLabel } from "../../../shared/reportText";
+import {
+  toFullWidthDigits as _toFullWidthDigits,
+  reportLabel as _reportLabel,
+} from "../../../shared/reportText";
+
+// PDF/報告書の全角化・括弧除去の対象外にする除外辞書（コンポーネントからsetReportExclusionsで注入）。
+let _exclusions: string[] = [];
+function setReportExclusions(terms: string[]) {
+  _exclusions = terms;
+}
+function toFullWidthDigits(input: string | number | null | undefined): string {
+  return _toFullWidthDigits(input, _exclusions);
+}
+function reportLabel(input: string | number | null | undefined): string {
+  return _reportLabel(input, _exclusions);
+}
 
 export type ReportType = "survey" | "completion";
 
@@ -141,6 +156,8 @@ export default function CaseReport({
     caseId: id,
     reportType,
   });
+  const { data: exclusionRows = [] } = trpc.fullwidthExclusions.list.useQuery();
+  setReportExclusions(exclusionRows.map((r) => r.term));
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [generating, setGenerating] = useState(false);

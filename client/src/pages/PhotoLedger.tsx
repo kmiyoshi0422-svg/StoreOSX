@@ -6,7 +6,22 @@ import { ArrowLeft, Download, Loader2 } from "lucide-react";
 import html2canvas from "html2canvas-pro";
 import jsPDF from "jspdf";
 import { toast } from "sonner";
-import { toFullWidthDigits, reportLabel } from "../../../shared/reportText";
+import {
+  toFullWidthDigits as _toFullWidthDigits,
+  reportLabel as _reportLabel,
+} from "../../../shared/reportText";
+
+// PDF/写真台帳の全角化・括弧除去の対象外にする除外辞書（コンポーネントからsetReportExclusionsで注入）。
+let _exclusions: string[] = [];
+function setReportExclusions(terms: string[]) {
+  _exclusions = terms;
+}
+function toFullWidthDigits(input: string | number | null | undefined): string {
+  return _toFullWidthDigits(input, _exclusions);
+}
+function reportLabel(input: string | number | null | undefined): string {
+  return _reportLabel(input, _exclusions);
+}
 // 取得失敗画像用の軽量プレースホルダ（淡いグレー）
 const PLACEHOLDER_DATA_URL =
   "data:image/svg+xml;base64," +
@@ -34,6 +49,8 @@ export default function PhotoLedger({ id }: { id: number }) {
   const { data: photos = [], isLoading: photosLoading } = trpc.photos.listByCase.useQuery({
     caseId: id,
   });
+  const { data: exclusionRows = [] } = trpc.fullwidthExclusions.list.useQuery();
+  setReportExclusions(exclusionRows.map((r) => r.term));
   const containerRef = useRef<HTMLDivElement>(null);
   const [generating, setGenerating] = useState(false);
 

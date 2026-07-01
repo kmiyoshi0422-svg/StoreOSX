@@ -479,3 +479,14 @@
 - [x] 写真台帳一括（PhotoLedgerBatch.tsx）表紙・ページ番号・キャプション・一覧UIの全角化・括弧除去
 - [x] 保存ファイル名の数字も全角に統一
 - [x] 型チェック・全テスト268件PASS確認
+
+## 全角化の除外辞書機能（ユーザー指示）
+- [x] reportTextにメールアドレス・URL・型番風トークンの自動保護ロジックを追加
+- [x] ユーザー登録の除外語リストを受け取り、該当部分を半角のまま保持する仕組みを実装
+- [x] 除外辞書のDBテーブル（fullwidth_exclusions）を追加しマイグレーション適用
+- [x] tRPC（一覧・追加・削除）を追加
+- [x] 除外辞書の管理UIページを追加しナビに登録
+- [x] 各PDF出力（documentPdf/PhotoLedger/PhotoLedgerBatch/CompletionReport/CaseReport）で除外辞書を読み込んで適用
+- [x] reportText用vitestを更新（保護ケース追加、全19件PASS）
+- [x] 型チェック・全テスト276件PASS確認
+- [x] ブラウザで登録・一覧・削除・プレビュー動作確認

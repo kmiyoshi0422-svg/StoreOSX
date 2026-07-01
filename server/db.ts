@@ -5,6 +5,8 @@ import {
   caseSignatures,
   caseReportDrafts,
   InsertCaseReportDraft,
+  fullwidthExclusions,
+  InsertFullwidthExclusion,
   checklistItems,
   estimates,
   expenses,
@@ -645,4 +647,58 @@ export async function upsertReportDraft(data: InsertCaseReportDraft) {
   }
   const result = await db.insert(caseReportDrafts).values(data);
   return (result as unknown as { insertId: number }).insertId;
+}
+
+/* ------------------------------------------------------------------ */
+/* 全角化の除外辞書（fullwidth_exclusions）                            */
+/* ------------------------------------------------------------------ */
+
+/** 除外辞書を全件取得（新しい順） */
+export async function listFullwidthExclusions() {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(fullwidthExclusions)
+    .orderBy(desc(fullwidthExclusions.createdAt));
+}
+
+/** 除外語の term だけを配列で取得（PDF出力で利用） */
+export async function getFullwidthExclusionTerms(): Promise<string[]> {
+  const rows = await listFullwidthExclusions();
+  return rows.map((r) => r.term);
+}
+
+/** 除外語を追加（term は一意。重複時は既存を返す） */
+export async function addFullwidthExclusion(data: InsertFullwidthExclusion) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const term = data.term.trim();
+  if (!term) throw new Error("term is required");
+  const existing = await db
+    .select()
+    .from(fullwidthExclusions)
+    .where(eq(fullwidthExclusions.term, term))
+    .limit(1);
+  if (existing.length > 0) {
+    // メモの更新のみ反映
+    if (data.note !== undefined && data.note !== existing[0].note) {
+      await db
+        .update(fullwidthExclusions)
+        .set({ note: data.note ?? null })
+        .where(eq(fullwidthExclusions.id, existing[0].id));
+    }
+    return existing[0].id;
+  }
+  const result = await db
+    .insert(fullwidthExclusions)
+    .values({ ...data, term });
+  return (result as unknown as { insertId: number }).insertId;
+}
+
+/** 除外語を削除 */
+export async function deleteFullwidthExclusion(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.delete(fullwidthExclusions).where(eq(fullwidthExclusions.id, id));
 }

@@ -51,6 +51,9 @@ import {
   deleteSignature,
   getReportDraft,
   upsertReportDraft,
+  listFullwidthExclusions,
+  addFullwidthExclusion,
+  deleteFullwidthExclusion,
   setCasePartnerToken,
   updateCase,
   updateChecklistItem,
@@ -2543,9 +2546,34 @@ export const appRouter = router({
           return { ...r, profit, margin };
         })
         .sort((a, b) => b.profit - a.profit);
-      return { rows };
+            return { rows };
     }),
   }),
-});
 
+  // 全角化の除外辞書（型番・メール・固有名詞などをPDFで半角のまま残す）
+  fullwidthExclusions: router({
+    list: protectedProcedure.query(() => listFullwidthExclusions()),
+    add: protectedProcedure
+      .input(
+        z.object({
+          term: z.string().trim().min(1, "語を入力してください").max(255),
+          note: z.string().max(255).optional(),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        const id = await addFullwidthExclusion({
+          term: input.term,
+          note: input.note ?? null,
+          createdBy: ctx.user.id,
+        });
+        return { id };
+      }),
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteFullwidthExclusion(input.id);
+        return { success: true };
+      }),
+  }),
+});
 export type AppRouter = typeof appRouter;

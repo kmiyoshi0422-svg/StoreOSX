@@ -9,7 +9,22 @@ import { Download, Loader2, Search, Images, CheckSquare, Square } from "lucide-r
 import html2canvas from "html2canvas-pro";
 import jsPDF from "jspdf";
 import { toast } from "sonner";
-import { toFullWidthDigits, reportLabel } from "../../../shared/reportText";
+import {
+  toFullWidthDigits as _toFullWidthDigits,
+  reportLabel as _reportLabel,
+} from "../../../shared/reportText";
+
+// PDF/写真台帳の全角化・括弧除去の対象外にする除外辞書（コンポーネントからsetReportExclusionsで注入）。
+let _exclusions: string[] = [];
+function setReportExclusions(terms: string[]) {
+  _exclusions = terms;
+}
+function toFullWidthDigits(input: string | number | null | undefined): string {
+  return _toFullWidthDigits(input, _exclusions);
+}
+function reportLabel(input: string | number | null | undefined): string {
+  return _reportLabel(input, _exclusions);
+}
 
 // 取得失敗画像用の軽量プレースホルダ
 const PLACEHOLDER_DATA_URL =
@@ -70,6 +85,8 @@ export default function PhotoLedgerBatch() {
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const { data: exclusionRows = [] } = trpc.fullwidthExclusions.list.useQuery();
+  setReportExclusions(exclusionRows.map((r) => r.term));
 
   // 一括取得（選択された案件分の写真）
   const ledgerQuery = trpc.photos.listByCases.useQuery(

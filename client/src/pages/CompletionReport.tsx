@@ -39,7 +39,10 @@ import { fileToUprightDataUrl } from "@/lib/imageOrientation";
 import { SignaturePad } from "@/components/SignaturePad";
 import { Lightbox, useLightbox } from "@/components/Lightbox";
 import type { Photo, Case, CaseSignature } from "../../../drizzle/schema";
-import { toFullWidthDigits, reportLabel } from "../../../shared/reportText";
+import {
+  toFullWidthDigits as _toFullWidthDigits,
+  reportLabel as _reportLabel,
+} from "../../../shared/reportText";
 import {
   COMPANY_INFO,
   EMPTY_COMPLETION_CONTENT,
@@ -51,6 +54,18 @@ import {
   type InspectionRow,
   type RiskRow,
 } from "../../../shared/completionReport";
+
+// PDF/報告書の全角化・括弧除去の対象外にする除外辞書（コンポーネントからsetReportExclusionsで注入）。
+let _exclusions: string[] = [];
+function setReportExclusions(terms: string[]) {
+  _exclusions = terms;
+}
+function toFullWidthDigits(input: string | number | null | undefined): string {
+  return _toFullWidthDigits(input, _exclusions);
+}
+function reportLabel(input: string | number | null | undefined): string {
+  return _reportLabel(input, _exclusions);
+}
 
 // ---- 写真区分（APIのenumと一致） ----
 const ALL_PHOTO_TYPES = [
@@ -129,6 +144,9 @@ export default function CompletionReport({ id }: { id: number }) {
   const { data: draftData, isLoading: draftLoading } = trpc.reportDraft.get.useQuery({
     caseId: id,
   });
+  const { data: exclusionRows = [] } = trpc.fullwidthExclusions.list.useQuery();
+  // 除外辞書をモジュールスコープに反映（レンダリング前に同期的に適用）
+  setReportExclusions(exclusionRows.map((r) => r.term));
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [generating, setGenerating] = useState(false);

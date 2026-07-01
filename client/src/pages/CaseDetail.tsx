@@ -95,6 +95,8 @@ export default function CaseDetail({ id }: { id: number }) {
   const { data: caseData, isLoading } = trpc.cases.get.useQuery({ id });
   const { data: checklist = [] } = trpc.checklist.listByCase.useQuery({ caseId: id });
   const { data: photos = [] } = trpc.photos.listByCase.useQuery({ caseId: id });
+  const { data: exclusionRows = [] } = trpc.fullwidthExclusions.list.useQuery();
+  const exclusionTerms = exclusionRows.map((r) => r.term);
 
   if (isLoading) {
     return (
@@ -166,7 +168,7 @@ export default function CaseDetail({ id }: { id: number }) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => generateQuotePDF(caseData)}
+              onClick={() => generateQuotePDF(caseData, exclusionTerms)}
             >
               <Download className="h-4 w-4" />
               見積書

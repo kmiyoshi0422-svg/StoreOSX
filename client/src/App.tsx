@@ -29,6 +29,7 @@ import PartnerDetail from "./pages/PartnerDetail";
 import PartnerView from "./pages/PartnerView";
 import StoresList from "./pages/StoresList";
 import Workload from "./pages/Workload";
+import FullwidthExclusions from "./pages/FullwidthExclusions";
 
 function Router() {
   return (
@@ -67,6 +68,7 @@ function Router() {
         </Route>
         <Route path={"/stores"} component={StoresList} />
         <Route path={"/workload"} component={Workload} />
+        <Route path={"/settings/exclusions"} component={FullwidthExclusions} />
         <Route path={"/partners"} component={Partners} />
         <Route path={"/partners/:id"}>
           {(params) => <PartnerDetail id={Number(params.id)} />}
