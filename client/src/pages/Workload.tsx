@@ -101,7 +101,7 @@ export default function Workload() {
           <div>
             <h1 className="font-serif-jp text-2xl font-semibold">担当者ワークロード</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {range.start} 〜 {range.end}（{range.label}）の対応件数・移動距離を可視化し、配分の偏りを把握。
+              {range.start} 〜 {range.end}・{range.label}の対応件数・移動距離を可視化し、配分の偏りを把握。
             </p>
           </div>
           <div className="flex items-center gap-2">

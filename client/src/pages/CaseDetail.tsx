@@ -360,7 +360,7 @@ function InfoTab({
           {editing ? (
             <div className="space-y-3">
               <div>
-                <Label className="text-xs text-muted-foreground">進捗ステージ（フォルダ）</Label>
+                <Label className="text-xs text-muted-foreground">進捗ステージ・フォルダ</Label>
                 <Select
                   value={form.progressStage}
                   onValueChange={(v) =>
@@ -560,7 +560,7 @@ function InfoTab({
                 </div>
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">見積金額（円）</Label>
+                <Label className="text-xs text-muted-foreground">見積金額・円</Label>
                 <Input
                   className="mt-1"
                   type="number"
@@ -623,7 +623,7 @@ function InfoTab({
           <div className="border-t pt-4" />
           <h3 className="font-serif-jp font-semibold flex items-center gap-2">
             <Briefcase className="h-4 w-4" />
-            協力会社（マスタ連携）
+            協力会社・マスタ連携
           </h3>
           <PartnerSelect
             caseId={caseData.id}
@@ -1085,7 +1085,7 @@ function PhotosTab({
             onChange={(e) => handleFiles(e.target.files, cameraPhotoType)}
           />
           <div>
-            <p className="font-medium text-sm">現場直撮りモード（スマホ推奨）</p>
+            <p className="font-medium text-sm">現場直撮りモード・スマホ推奨</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               撮影タグを選んでカメラを起動 → 撮影した写真は自動でタグ付けされて保存されます
             </p>
@@ -1445,7 +1445,7 @@ function EstimatesTab({ caseId, partnerToken }: { caseId: number; partnerToken: 
           <div className="border-t border-border/60 pt-4 space-y-2">
             <div className="flex flex-wrap items-center gap-3">
               <Link2 className="h-4 w-4 text-muted-foreground" />
-              <span className="text-xs font-medium">協力業者向け共有リンク（見積75%金額のみ表示）</span>
+              <span className="text-xs font-medium">協力業者向け共有リンク・見積75%金額のみ表示</span>
             </div>
             {partnerUrl ? (
               <div className="flex flex-wrap items-center gap-2">
@@ -1485,7 +1485,7 @@ function EstimatesTab({ caseId, partnerToken }: { caseId: number; partnerToken: 
               </Button>
             )}
             <p className="text-[11px] text-muted-foreground">
-              ※ 協力業者には75%の金額のみ表示され、原価（プレナス向け金額）は非表示です。
+              ※ 協力業者には75%の金額のみ表示され、原価であるプレナス向け金額は非表示です。
             </p>
           </div>
         </CardContent>
@@ -1584,7 +1584,7 @@ function EstimateCard({
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground">合計（円）</Label>
+              <Label className="text-[10px] text-muted-foreground">合計・円</Label>
               <Input
                 inputMode="numeric"
                 value={total}
@@ -1655,7 +1655,7 @@ function EstimateCard({
                 ¥{partnerAmount.toLocaleString()}
               </span>
               <span className="text-xs text-muted-foreground">
-                （プレナス向け原価 ¥{estimate.totalAmount?.toLocaleString()} × 75%）
+                プレナス向け原価 ¥{estimate.totalAmount?.toLocaleString()} × 75%
               </span>
             </div>
           )}
@@ -1749,7 +1749,7 @@ function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => v
 
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label className="text-sm font-medium">プレナスへ提出した見積金額（売上）</Label>
+              <Label className="text-sm font-medium">プレナスへ提出した見積金額・売上</Label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">¥</span>
                 <Input
@@ -1764,7 +1764,7 @@ function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => v
               <p className="text-[11px] text-muted-foreground">プレナスへ請求・提出した金額。これが売上になります。</p>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-sm font-medium">協力業者の見積金額（原価）</Label>
+              <Label className="text-sm font-medium">協力業者の見積金額・原価</Label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">¥</span>
                 <Input
@@ -1777,7 +1777,7 @@ function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => v
                 />
               </div>
               <p className="text-[11px] text-muted-foreground">
-                協力業者へ支払う金額。経費（領収書取込分）と合わせて原価になります。
+                協力業者へ支払う金額。領収書取込分の経費と合わせて原価になります。
                 {estimatesTotal > 0 && (
                   <>
                     {" "}見積書合計: <span className="font-medium">{yen(estimatesTotal)}</span>
@@ -1819,10 +1819,10 @@ function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => v
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="rounded-md border p-3 bg-blue-50 border-blue-200">
-              <div className="text-xs text-blue-700 mb-1">売上（プレナス提出額）</div>
+              <div className="text-xs text-blue-700 mb-1">売上・プレナス提出額</div>
               <div className="text-xl font-semibold tracking-tight">{yen(sales)}</div>
               {salesIsEstimated && (
-                <div className="text-[11px] text-blue-700/80 mt-1">未入力のため協力業者額から想定（÷0.75）</div>
+                <div className="text-[11px] text-blue-700/80 mt-1">未入力のため協力業者額から想定 ÷0.75</div>
               )}
             </div>
             <div className="rounded-md border p-3 bg-emerald-50 border-emerald-200">
@@ -1830,12 +1830,12 @@ function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => v
               <div className="text-xl font-semibold tracking-tight">{yen(vendorAmount)}</div>
             </div>
             <div className="rounded-md border p-3 bg-amber-50 border-amber-200">
-              <div className="text-xs text-amber-700 mb-1">経費（領収書）</div>
+              <div className="text-xs text-amber-700 mb-1">経費・領収書</div>
               <div className="text-xl font-semibold tracking-tight">{yen(expensesTotal)}</div>
               <div className="text-[11px] text-amber-700/80 mt-1">原価計: {yen(cost)}</div>
             </div>
             <div className={`rounded-md border p-3 ${grossProfit >= 0 ? "bg-violet-50 border-violet-200" : "bg-red-50 border-red-200"}`}>
-              <div className="text-xs mb-1 text-muted-foreground">粗利（売上−原価）</div>
+              <div className="text-xs mb-1 text-muted-foreground">粗利・売上−原価</div>
               <div className={`text-xl font-semibold tracking-tight ${grossProfit >= 0 ? "text-violet-700" : "text-red-700"}`}>
                 {yen(grossProfit)}
               </div>
@@ -1846,8 +1846,8 @@ function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => v
           </div>
 
           <div className="text-xs text-muted-foreground space-y-1 leading-relaxed pt-2 border-t">
-            <div>・売上：プレナスへ提出した見積金額（未入力時は協力業者額から想定表示）</div>
-            <div>・原価：協力業者見積額 ＋ 経費（領収書取込分の合計）</div>
+            <div>・売上：プレナスへ提出した見積金額。未入力時は協力業者額から想定表示</div>
+            <div>・原価：協力業者見積額 ＋ 領収書取込分の経費合計</div>
             <div>・粗利・粗利率は金額を保存すると即時に反映されます</div>
           </div>
         </CardContent>
@@ -1856,7 +1856,7 @@ function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => v
       {estimates.length > 0 && (
         <Card>
           <CardContent className="p-4">
-            <div className="text-sm font-medium mb-2">見積書内訳（{estimates.length}件）</div>
+            <div className="text-sm font-medium mb-2">見積書内訳・{estimates.length}件</div>
             <div className="text-xs text-muted-foreground mb-3">合計: {yen(estimatesTotal)}</div>
             <div className="space-y-1">
               {estimates.map((e) => (
@@ -1930,7 +1930,7 @@ function ExpensesTab({ caseId }: { caseId: number }) {
                     <th className="text-left px-3 py-2 font-medium">日付</th>
                     <th className="text-left px-3 py-2 font-medium">業者</th>
                     <th className="text-left px-3 py-2 font-medium">区分</th>
-                    <th className="text-right px-3 py-2 font-medium">金額（税込）</th>
+                    <th className="text-right px-3 py-2 font-medium">金額・税込</th>
                     <th className="text-left px-3 py-2 font-medium">摘要</th>
                     <th className="px-3 py-2"></th>
                   </tr>

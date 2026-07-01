@@ -334,7 +334,7 @@ export default function ScheduleBoard() {
                 最適ルート提案 ＆ スケジュール盤
               </h2>
               <p className="text-xs text-muted-foreground mt-1">
-                推進ロジック：緊急度 → 進捗ステージ → 滞留日数 → 近接性。担当2名（A/B）に均等配分。
+                推進ロジック：緊急度 → 進捗ステージ → 滞留日数 → 近接性。担当2名・A/Bに均等配分。
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -388,7 +388,7 @@ export default function ScheduleBoard() {
         {suggest.data && (suggest.data.teamA.length > 0 || suggest.data.teamB.length > 0) && (
           <div className="px-5 py-3 border-b bg-muted/30">
             <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
-              次にやるべきタスク（提案・上位）
+              次にやるべきタスク・提案・上位
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <TeamSuggestList team="A" tasks={suggest.data.teamA.slice(0, 5)} />
@@ -400,7 +400,7 @@ export default function ScheduleBoard() {
         {/* Scheduled board */}
         <div className="px-5 py-4">
           <div className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider flex items-center justify-between">
-            <span>確定スケジュール（{start} 〜 {end}）</span>
+            <span>確定スケジュール・{start} 〒 {end}</span>
             {isAdmin && <AddAssignmentInline />}
           </div>
 
@@ -712,7 +712,7 @@ function TeamSuggestList({
           team === "A" ? "bg-blue-100 text-blue-900" : "bg-purple-100 text-purple-900"
         }`}
       >
-        チーム{team}（{tasks.length}件）
+        チーム{team}・{tasks.length}件
       </div>
       <div className="divide-y">
         {tasks.length === 0 ? (

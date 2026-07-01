@@ -133,7 +133,7 @@ export default function PartnerView({ token }: { token: string }) {
             <div className="flex items-center gap-2 mb-2">
               <Receipt className="h-4 w-4 text-emerald-700" />
               <p className="text-[10px] uppercase tracking-wider text-emerald-800 font-medium">
-                協力業者向け金額（プレナス見積の 75%）
+                協力業者向け金額・プレナス見積の 75%
               </p>
             </div>
             {data.totalPartnerAmount != null ? (
@@ -157,7 +157,7 @@ export default function PartnerView({ token }: { token: string }) {
             <CardContent className="p-5 space-y-3">
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-muted-foreground" />
-                <h3 className="font-medium text-sm">見積書ごとの金額（75%）</h3>
+                <h3 className="font-medium text-sm">見積書ごとの金額・75%</h3>
               </div>
               <div className="divide-y divide-border/60">
                 {data.estimates.map((e) => (

@@ -490,3 +490,11 @@
 - [x] reportText用vitestを更新（保護ケース追加、全19件PASS）
 - [x] 型チェック・全テスト276件PASS確認
 - [x] ブラウザで登録・一覧・削除・プレビュー動作確認
+
+## 画面表示の丸括弧除去（システム全体で統一）（ユーザー指示）
+- [x] 画面表示のユーザー可視テキストの丸括弧を精査（コメント・正規表現・IME判定など内部コードは除外）
+- [x] 予実サマリー「予算・見積×75%」の括弧除去（Home/BudgetActual）
+- [x] ダッシュボード・BudgetActual・MonthlyReport・Reports等の表示ラベルの括弧除去
+- [x] 各一覧・取込画面（CasesList/CaseDetail/CsvImport/Partners/CasePdfImport/PartnerImport/PartnerView/StoresList/Workload/EstimateImport/ExpenseImport/CasesMap/ExpenseByUser/ScheduleBoard等）の表示テキストの括弧除去
+- [x] 型チェック・全テスト276件PASS確認
+- [x] ナビゲーション・サイドバー表示を確認

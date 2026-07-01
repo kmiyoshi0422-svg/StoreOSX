@@ -41,7 +41,7 @@ export default function Reports() {
         eyebrow="Reports"
         title="実績レポート"
         icon={<TrendingUp className="h-7 w-7 text-primary" />}
-        description="月別の売上・原価・粗利、および担当者別の成績を可視化します。売上はプレナス提出見積額（未入力は協力業者額÷0.75）、原価は協力業者見積額＋経費の合計です。"
+        description="月別の売上・原価・粗利、および担当者別の成績を可視化します。売上はプレナス提出見積額、未入力は協力業者額÷0.75、原価は協力業者見積額＋経費の合計です。"
       />
 
       <Tabs defaultValue="monthly" className="space-y-5">
@@ -108,8 +108,8 @@ export default function Reports() {
                   hue={monthly.data.totals.profit >= 0 ? "violet" : "red"}
                 />
                 <KpiCard
-                  label="件数（完了）"
-                  value={`${monthly.data.totals.caseCount}件 (${monthly.data.totals.completedCount})`}
+                  label="件数・完了"
+                  value={`${monthly.data.totals.caseCount}件 完了${monthly.data.totals.completedCount}`}
                   hue="emerald"
                 />
               </div>

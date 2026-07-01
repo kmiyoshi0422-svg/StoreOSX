@@ -333,7 +333,7 @@ export default function Partners() {
                   onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
                   className="h-4 w-4"
                 />
-                <Label htmlFor="isActive" className="cursor-pointer">有効（現役の協力会社）</Label>
+                <Label htmlFor="isActive" className="cursor-pointer">有効・現役の協力会社</Label>
               </div>
             </div>
             <DialogFooter>

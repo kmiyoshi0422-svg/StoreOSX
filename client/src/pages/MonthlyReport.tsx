@@ -36,7 +36,7 @@ export default function MonthlyReport() {
   const exportMonthlyCsv = () => {
     if (!data) return;
     const rows: (string | number)[][] = [
-      ["年月", "案件数", "完了数", "見積合計", `予算（見積×${ratioPct}%）`, "実績合計", "予算差"],
+      ["年月", "案件数", "完了数", "見積合計", `予算 見積×${ratioPct}%`, "実績合計", "予算差"],
       ...data.monthly.map((m) => [
         m.yearMonth,
         m.count,
@@ -54,7 +54,7 @@ export default function MonthlyReport() {
   const exportStoreCsv = () => {
     if (!data) return;
     const rows: (string | number)[][] = [
-      ["店舗名", "案件数", "完了数", "見積合計", `予算（見積×${ratioPct}%）`, "実績合計", "予算差"],
+      ["店舗名", "案件数", "完了数", "見積合計", `予算 見積×${ratioPct}%`, "実績合計", "予算差"],
       ...data.byStore.map((s) => [
         s.storeName,
         s.count,
@@ -123,7 +123,7 @@ export default function MonthlyReport() {
         </Card>
         <Card>
           <CardContent className="p-5">
-            <p className="text-xs text-muted-foreground">差分（実績 - 見積）</p>
+            <p className="text-xs text-muted-foreground">差分 実績 - 見積</p>
             <p className={`text-2xl font-serif mt-1 ${totalActual - totalEstimated > 0 ? "text-destructive" : "text-emerald-700"}`}>
               {yen(totalActual - totalEstimated)}
             </p>
@@ -194,7 +194,7 @@ export default function MonthlyReport() {
         <TabsContent value="store" className="mt-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base">店舗別集計（実績の多い順）</CardTitle>
+              <CardTitle className="text-base">店舗別集計・実績の多い順</CardTitle>
               <Button size="sm" variant="outline" className="bg-background" onClick={exportStoreCsv} disabled={byStore.length === 0}>
                 <Download className="h-4 w-4" />CSV
               </Button>

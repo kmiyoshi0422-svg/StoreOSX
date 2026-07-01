@@ -131,7 +131,7 @@ export default function Home() {
             />
             <BudgetCard
               icon={<Wallet className="h-4 w-4" />}
-              label="予算（見積×75%）"
+              label="予算 見積×75%"
               value={`¥${(summary?.totalBudget ?? 0).toLocaleString()}`}
               accent="navy"
             />

@@ -166,7 +166,7 @@ export default function EstimateImport() {
         <div>
           <h1 className="text-2xl font-semibold">見積書取込</h1>
           <p className="text-sm text-muted-foreground">
-            プレナス向け見積書（PDF/画像）を一括投入。AIが金額と依頼番号・案件名・店舗名を抽出し、既存案件にマッチさせます。
+            プレナス向け見積書をPDF・画像で一括投入。AIが金額と依頼番号・案件名・店舗名を抽出し、既存案件にマッチさせます。
           </p>
         </div>
         <div className="flex gap-2">
@@ -188,7 +188,7 @@ export default function EstimateImport() {
           </Button>
           <Button onClick={handleBulkSave} disabled={readyRows.length === 0 || bulkSaveMutation.isPending}>
             {bulkSaveMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-            一括登録（{readyRows.length}件）
+            一括登録・{readyRows.length}件
           </Button>
         </div>
       </div>
@@ -250,7 +250,7 @@ export default function EstimateImport() {
           <div className="font-medium text-sm">
             {isDragging ? "ここにドロップしてください" : "ファイルをドラッグ＆ドロップ または クリックして選択"}
           </div>
-          <div className="text-xs text-muted-foreground mt-1">PDF / 画像（複数同時可）</div>
+          <div className="text-xs text-muted-foreground mt-1">PDF / 画像・複数同時可</div>
         </button>
       </div>
 
@@ -308,7 +308,7 @@ export default function EstimateImport() {
                           <SelectContent>
                             {r.matches.map((m) => (
                               <SelectItem key={m.caseId} value={String(m.caseId)}>
-                                {m.requestNumber}・{m.storeName}（一致度{m.score}）
+                                {m.requestNumber}・{m.storeName}・一致度{m.score}
                               </SelectItem>
                             ))}
                             {cases.filter((c) => !r.matches.find((m) => m.caseId === c.id)).map((c) => (
@@ -322,7 +322,7 @@ export default function EstimateImport() {
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <div className="text-muted-foreground mb-1">合計金額（円）</div>
+                        <div className="text-muted-foreground mb-1">合計金額・円</div>
                         <Input
                           type="number"
                           value={r.totalAmount ?? ""}

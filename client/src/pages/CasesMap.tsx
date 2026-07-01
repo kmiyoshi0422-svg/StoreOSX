@@ -106,7 +106,7 @@ export default function CasesMap() {
   const geocodeMutation = trpc.routes.geocodeMissing.useMutation({
     onSuccess: (res) => {
       toast.success(
-        `位置情報を ${res.updated} 件取得しました（対象 ${res.total} 件）`
+        `位置情報を ${res.updated} 件取得しました・対象 ${res.total} 件`
       );
       utils.cases.list.invalidate();
     },
@@ -203,7 +203,7 @@ export default function CasesMap() {
       const marker = new g.maps.marker.AdvancedMarkerElement({
         map,
         position: { lat: c.lat, lng: c.lng },
-        title: `${c.storeName}（${c.requestNumber}）`,
+        title: `${c.storeName}・${c.requestNumber}`,
         content,
         zIndex: emphasized ? 999 : undefined,
       });
@@ -351,7 +351,7 @@ export default function CasesMap() {
         eyebrow="MAP VIEW"
         title="案件マップ"
         icon={<MapPinned className="h-6 w-6 text-primary" />}
-        description="進行中案件の住所を地図上にピン表示します。完了・クローズした案件は自動で地図から除外され（データは保存済）、必要時は表示もできます。"
+        description="進行中案件の住所を地図上にピン表示します。完了・クローズした案件は自動で地図から除外され、データは保存済で、必要時は表示もできます。"
         actions={
           <Button
             onClick={() => geocodeMutation.mutate()}
@@ -383,7 +383,7 @@ export default function CasesMap() {
               className="inline-block h-3 w-3 rounded-full border border-white shadow"
               style={{ background: URGENCY_PIN[u] }}
             />
-            {u}（{URGENCY_LABEL[u]}）
+            {u}・{URGENCY_LABEL[u]}
           </span>
         ))}
       </div>
@@ -448,7 +448,7 @@ export default function CasesMap() {
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 {showDone
                   ? `完了・クローズ ${doneCount} 件を表示中`
-                  : `完了・クローズ ${doneCount} 件を非表示（データは保存済）`}
+                  : `完了・クローズ ${doneCount} 件を非表示・データは保存済`}
               </span>
               <button
                 type="button"

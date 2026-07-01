@@ -133,7 +133,7 @@ export default function CasePdfImport() {
       return;
     }
     if (data.estimatedCost.trim() !== "" && vendorAmount == null) {
-      toast.error("実行（指値）見積額は数字で入力してください");
+      toast.error("実行指値見積額は数字で入力してください");
       return;
     }
     createMutation.mutate({
@@ -227,7 +227,7 @@ export default function CasePdfImport() {
         </CardHeader>
         <CardContent className="space-y-4">
           <ol className="text-sm space-y-2 list-decimal list-inside text-muted-foreground">
-            <li>修理依頼システム書面（依頼進捗更新）のPDFを準備</li>
+            <li>修理依頼システム書面・依頼進捗更新のPDFを準備</li>
             <li>下のボタンから選択 → AIが自動で項目を抽出</li>
             <li>内容を確認・微修正して「この内容で登録」</li>
           </ol>
@@ -278,7 +278,7 @@ export default function CasePdfImport() {
           <CardHeader>
             <CardTitle className="font-serif-jp text-lg flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              抽出結果（編集可）
+              抽出結果・編集可
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -388,13 +388,13 @@ export default function CasePdfImport() {
             {/* 見積金額（手入力・AI抽出を補完） */}
             <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
               <div className="flex items-center gap-2">
-                <p className="text-sm font-medium">見積金額（任意）</p>
+                <p className="text-sm font-medium">見積金額・任意</p>
                 <span className="text-xs text-muted-foreground">
                   PDFから読み取れた場合は自動入力されます。空欄でも登録できます。
                 </span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Field label="プレナス出し見積額（円・売上/請求額）">
+                <Field label="プレナス出し見積額・円・売上請求額">
                   <Input
                     inputMode="numeric"
                     placeholder="例: 350000"
@@ -410,7 +410,7 @@ export default function CasePdfImport() {
                       </p>
                     )}
                 </Field>
-                <Field label="実行（指値）見積額（円・協力業者/原価）">
+                <Field label="実行指値見積額・円・協力業者原価">
                   <Input
                     inputMode="numeric"
                     placeholder="例: 250000"
@@ -468,7 +468,7 @@ export default function CasePdfImport() {
             <div className="rounded-lg border bg-white/70 p-4">
               <div className="flex items-center gap-2 mb-3">
                 <ImageIcon className="h-4 w-4 text-emerald-600" />
-                <p className="text-sm font-medium">PDFから取り込んだ現況写真（現調）</p>
+                <p className="text-sm font-medium">PDFから取り込んだ現況写真・現調</p>
                 {photoExtracting && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
               </div>
 

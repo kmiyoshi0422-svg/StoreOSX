@@ -231,7 +231,7 @@ export default function CasesList() {
     if (statusFilter === "進行中") return { label: "進行中の案件", kind: "status" as const };
     if (statusFilter === "完了") return { label: "完了した案件", kind: "status" as const };
     if (statusFilter !== "all") return { label: `ステータス: ${statusFilter}`, kind: "status" as const };
-    if (urgency === "high") return { label: "緊急/高（S・A）", kind: "urgency" as const };
+    if (urgency === "high") return { label: "緊急/高 S・A", kind: "urgency" as const };
     return null;
   }, [statusFilter, urgency]);
 
@@ -371,7 +371,7 @@ export default function CasesList() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">全ステータス</SelectItem>
-            <SelectItem value="進行中">進行中（受付～施工中）</SelectItem>
+            <SelectItem value="進行中">進行中・受付～施工中</SelectItem>
             <SelectItem value="受付">受付</SelectItem>
             <SelectItem value="現調中">現調中</SelectItem>
             <SelectItem value="見積中">見積中</SelectItem>
@@ -419,7 +419,7 @@ export default function CasesList() {
             <SelectItem value="all">全県</SelectItem>
             {prefOptions.map((p) => (
               <SelectItem key={p.label} value={p.label}>
-                {p.label}（{p.count}）
+                {p.label}・{p.count}
               </SelectItem>
             ))}
           </SelectContent>
@@ -746,7 +746,7 @@ export default function CasesList() {
                           <div className="mt-3 flex flex-wrap items-stretch gap-2">
                             <div className="rounded-md border bg-stone-50/80 px-3 py-1.5">
                               <p className="text-[10px] text-muted-foreground leading-none mb-1">
-                                出し見積{profit.salesIsEstimated ? "（想定）" : ""}
+                                出し見積{profit.salesIsEstimated ? " 想定" : ""}
                               </p>
                               <p className="font-mono text-sm font-semibold">
                                 {c.plenusQuoteAmount != null

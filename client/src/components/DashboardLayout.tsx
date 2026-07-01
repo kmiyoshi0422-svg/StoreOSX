@@ -33,7 +33,7 @@ const menuItems: MenuItem[] = [
   { icon: ClipboardList, label: "案件一覧", path: "/cases" },
   { icon: Building2, label: "店舗一覧", path: "/stores" },
   { icon: MapPinned, label: "案件マップ", path: "/cases/map" },
-  { icon: Images, label: "写真台帳（一括PDF）", path: "/photo-ledger/batch" },
+  { icon: Images, label: "写真台帳・一括PDF", path: "/photo-ledger/batch" },
   { icon: Gauge, label: "ワークロード", path: "/workload", adminOnly: true },
   { icon: FilePlus, label: "案件登録", path: "/cases/new" },
   { icon: FileSearch, label: "PDFから案件登録", path: "/cases/import-pdf" },

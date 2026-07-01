@@ -97,7 +97,7 @@ export default function BudgetActual() {
         />
         <SummaryCard
           icon={<Wallet className="h-4 w-4" />}
-          label={`予算（見積×${Math.round(BUDGET_RATIO * 100)}%）`}
+          label={`予算 見積×${Math.round(BUDGET_RATIO * 100)}%`}
           value={fmtYen(totals.totalBudget)}
           accent="navy"
         />
@@ -117,7 +117,7 @@ export default function BudgetActual() {
               <Minus className="h-4 w-4" />
             )
           }
-          label="差分（実績 − 予算）"
+          label="差分 実績 − 予算"
           value={`${totals.diff >= 0 ? "+" : ""}${fmtYen(totals.diff)}`}
           accent={totals.diff > 0 ? "red" : totals.diff < 0 ? "emerald" : "gray"}
         />
@@ -340,7 +340,7 @@ function EditDialog({
           {/* 見積 */}
           <div className="space-y-3">
             <p className="text-sm font-semibold border-l-2 border-l-[#1a2238] pl-2">
-              見積（予算）
+              見積・予算
             </p>
             <Field
               label="材料費"

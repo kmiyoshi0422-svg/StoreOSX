@@ -210,7 +210,7 @@ export default function ExpenseImport() {
 
   async function handleBulkSave() {
     if (readyRows.length === 0) {
-      toast.error("登録できる行がありません（金額と、案件経費は紐付け案件が必要です）");
+      toast.error("登録できる行がありません。金額と、案件経費は紐付け案件が必要です");
       return;
     }
     try {
@@ -250,7 +250,7 @@ export default function ExpenseImport() {
         });
         saved += res.count;
       }
-      toast.success(`${saved}件の経費を登録しました（案件${caseRows.length}・全体${generalRows.length}）`);
+      toast.success(`${saved}件の経費を登録しました。案件${caseRows.length}・全体${generalRows.length}`);
       utils.expenses.list.invalidate();
       utils.cases.list.invalidate();
       setRows((prev) =>
@@ -300,7 +300,7 @@ export default function ExpenseImport() {
         eyebrow="Expense Import"
         title="経費取込"
         icon={<Receipt className="h-7 w-7 text-primary" />}
-        description="領収書・請求書（PDF / 画像）をアップロードまたはカメラ撮影すると、AI が金額・支払先・関連案件を抽出します。各経費は「案件」か「全体（共通）」を選んで登録できます。"
+        description="領収書・請求書をPDF・画像でアップロードまたはカメラ撮影すると、AI が金額・支払先・関連案件を抽出します。各経費は「案件」か「全体・共通」を選んで登録できます。"
         actions={
           <>
             <Button onClick={() => cameraRef.current?.click()} variant="outline">
@@ -315,7 +315,7 @@ export default function ExpenseImport() {
               ) : (
                 <Save className="h-4 w-4 mr-2" />
               )}
-              一括登録（{readyRows.length}件）
+              一括登録・{readyRows.length}件
             </Button>
           </>
         }
@@ -481,7 +481,7 @@ export default function ExpenseImport() {
                           }`}
                         >
                           <Building2 className="h-3.5 w-3.5" />
-                          全体（共通）
+                          全体・共通
                         </button>
                       </div>
                       {r.scope === "全体" && (
@@ -533,7 +533,7 @@ export default function ExpenseImport() {
                               <SelectContent>
                                 {r.matches.map((m) => (
                                   <SelectItem key={m.caseId} value={String(m.caseId)}>
-                                    {m.requestNumber}・{m.storeName}（一致度{m.score}）
+                                    {m.requestNumber}・{m.storeName}・一致度{m.score}
                                   </SelectItem>
                                 ))}
                                 {cases
@@ -549,14 +549,14 @@ export default function ExpenseImport() {
                         ) : (
                           <div className="rounded-md border border-dashed bg-muted/20 p-3 text-xs text-muted-foreground flex items-center gap-2">
                             <Building2 className="h-4 w-4 shrink-0" />
-                            全体共通経費として登録します（特定の案件原価には反映されません）。
+                            全体共通経費として登録します。特定の案件原価には反映されません。
                           </div>
                         )}
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <Label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
-                            金額（税込・円）
+                            金額・税込・円
                           </Label>
                           <Input
                             type="number"
@@ -625,7 +625,7 @@ export default function ExpenseImport() {
                             value={r.note}
                             onChange={(e) => updateRow(r.localId, { note: e.target.value })}
                             className="h-9"
-                            placeholder="メモ（任意）"
+                            placeholder="メモ・任意"
                           />
                         </div>
                       </div>
@@ -640,7 +640,7 @@ export default function ExpenseImport() {
 
       <div className="text-xs text-muted-foreground border-t border-border/60 pt-3 space-y-1">
         <div>・ 案件経費は紐付けた案件の実績原価に自動反映されます。全体経費は案件原価には含まれません。</div>
-        <div>・ 立替者（アップロードした人）ごとの使用額は「立替者別経費」レポートで確認できます。</div>
+        <div>・ 立替者であるアップロードした人ごとの使用額は「立替者別経費」レポートで確認できます。</div>
       </div>
     </div>
   );

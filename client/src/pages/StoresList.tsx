@@ -192,7 +192,7 @@ export default function StoresList() {
           <CardContent className="py-16 text-center flex flex-col items-center gap-3">
             <Building2 className="h-10 w-10 text-muted-foreground/70" />
             <p className="font-medium">該当する店舗がありません</p>
-            <p className="text-sm text-muted-foreground max-w-sm">検索キーワードやタブ（複数案件・進行中あり）を切り替えてもう一度お試しください。</p>
+            <p className="text-sm text-muted-foreground max-w-sm">検索キーワードやタブを切り替えてもう一度お試しください。</p>
           </CardContent>
         </Card>
       ) : (

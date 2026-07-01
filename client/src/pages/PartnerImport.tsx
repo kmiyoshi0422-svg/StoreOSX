@@ -105,7 +105,7 @@ export default function PartnerImport() {
   const importMutation = trpc.partners.bulkCreate.useMutation({
     onSuccess: ({ results, inserted, failed }) => {
       setResult(results);
-      if (inserted > 0) toast.success(`${inserted}件を登録しました${failed > 0 ? `（失敗 ${failed}件）` : ""}`);
+      if (inserted > 0) toast.success(`${inserted}件を登録しました${failed > 0 ? ` 失敗 ${failed}件` : ""}`);
       else toast.error("登録できませんでした");
       utils.partners.list.invalidate();
     },
@@ -194,7 +194,7 @@ export default function PartnerImport() {
         <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-2">Partner Import</p>
         <h1 className="font-serif-jp text-3xl font-semibold tracking-tight">協力会社の一括取り込み</h1>
         <p className="text-sm text-muted-foreground mt-2">
-          名刺・会社一覧表（Excel）・PDF・写真から、協力会社マスタにまとめて登録できます。
+          名刺・Excelの会社一覧表・PDF・写真から、協力会社マスタにまとめて登録できます。
         </p>
       </div>
 
@@ -217,7 +217,7 @@ export default function PartnerImport() {
             <div className="rounded border p-3 bg-muted/20">
               <div className="flex items-center gap-2 mb-1">
                 <ImageIcon className="h-3.5 w-3.5" />
-                <span className="font-medium">画像（名刺・写真）</span>
+                <span className="font-medium">画像・名刺・写真</span>
               </div>
               <p className="text-muted-foreground">名刺の写真や一覧表のスクショからAIが抽出します</p>
             </div>
@@ -264,7 +264,7 @@ export default function PartnerImport() {
       {rows.length > 0 && !result && (
         <Card>
           <CardHeader>
-            <CardTitle className="font-serif-jp text-lg">プレビュー（{rows.length}件・編集可）</CardTitle>
+            <CardTitle className="font-serif-jp text-lg">プレビュー・{rows.length}件・編集可</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto border rounded">

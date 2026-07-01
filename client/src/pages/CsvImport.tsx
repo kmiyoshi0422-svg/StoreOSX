@@ -111,7 +111,7 @@ export default function CsvImport() {
   const importMutation = trpc.cases.bulkImport.useMutation({
     onSuccess: ({ results, inserted, failed }) => {
       setResult(results);
-      if (inserted > 0) toast.success(`${inserted}件を登録しました${failed > 0 ? `（失敗 ${failed}件）` : ""}`);
+      if (inserted > 0) toast.success(`${inserted}件を登録しました${failed > 0 ? ` 失敗 ${failed}件` : ""}`);
       else toast.error("登録できませんでした");
       utils.cases.list.invalidate();
       utils.cases.summary.invalidate();
@@ -188,7 +188,7 @@ export default function CsvImport() {
       "修理交換",
       "S",
       "85000",
-      "(株)小林工房",
+      "株式会社小林工房",
     ];
     const csv = bom + TEMPLATE_HEADERS.join(",") + "\n" + sample.join(",") + "\n";
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -225,7 +225,7 @@ export default function CsvImport() {
         <CardContent className="space-y-4">
           <ol className="text-sm space-y-2 list-decimal list-inside text-muted-foreground">
             <li>テンプレートCSVをダウンロード</li>
-            <li>必要事項を入力（依頼番号・店舗名は必須）</li>
+            <li>必要事項を入力。依頼番号・店舗名は必須</li>
             <li>CSVをアップロードしてプレビュー → 取り込み実行</li>
           </ol>
 
@@ -271,7 +271,7 @@ export default function CsvImport() {
           <CardHeader>
             <CardTitle className="font-serif-jp text-lg flex items-center gap-2">
               <FileText className="h-4 w-4" />
-              プレビュー（{rows.length}件）
+              プレビュー・{rows.length}件
             </CardTitle>
           </CardHeader>
           <CardContent>

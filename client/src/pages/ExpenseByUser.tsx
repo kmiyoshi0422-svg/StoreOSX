@@ -57,7 +57,7 @@ export default function ExpenseByUser() {
         eyebrow="Expense by Payer"
         title="立替者別経費"
         icon={<Wallet className="h-7 w-7 text-primary" />}
-        description="経費を立替えた人（アップロードした担当者）ごとに、使用額・件数・案件/全体の内訳・区分別の内訳を集計します。"
+        description="経費を立替えた担当者ごとに、使用額・件数・案件/全体の内訳・区分別の内訳を集計します。"
         actions={
           <div className="inline-flex rounded-md border p-0.5 bg-muted/40">
             {(["thisMonth", "lastMonth", "all"] as Period[]).map((p) => (
@@ -98,7 +98,7 @@ export default function ExpenseByUser() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                  合計経費（{PERIOD_LABELS[period]}）
+                  合計経費・{PERIOD_LABELS[period]}
                 </CardTitle>
               </CardHeader>
               <CardContent>
