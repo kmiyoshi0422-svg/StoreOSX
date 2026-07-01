@@ -471,3 +471,11 @@
 - [x] AIプロンプト（routers.ts）も括弧不使用で生成するよう調整
 - [x] reportTextユーティリティとvitest追加（11件）
 - [x] 型チェック・LSPエラーなし、全テスト268件PASS確認
+
+## 他のPDF出力画面の表記統一（ユーザー指示）
+- [x] 見積書PDF（documentPdf.ts buildQuoteHTML）の数字全角化・丸括弧除去（金額・税率・見積番号・工事種別区切り）
+- [x] 完了報告書PDF（documentPdf.ts buildCompletionHTML）の数字全角化・丸括弧除去
+- [x] 写真台帳（PhotoLedger.tsx）表紙・ページ番号・キャプションの全角化・括弧除去
+- [x] 写真台帳一括（PhotoLedgerBatch.tsx）表紙・ページ番号・キャプション・一覧UIの全角化・括弧除去
+- [x] 保存ファイル名の数字も全角に統一
+- [x] 型チェック・全テスト268件PASS確認

@@ -9,6 +9,7 @@ import { Download, Loader2, Search, Images, CheckSquare, Square } from "lucide-r
 import html2canvas from "html2canvas-pro";
 import jsPDF from "jspdf";
 import { toast } from "sonner";
+import { toFullWidthDigits, reportLabel } from "../../../shared/reportText";
 
 // 取得失敗画像用の軽量プレースホルダ
 const PLACEHOLDER_DATA_URL =
@@ -196,7 +197,7 @@ export default function PhotoLedgerBatch() {
       const today = new Date()
         .toLocaleDateString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit" })
         .replace(/\//g, "");
-      pdf.save(`写真台帳_一括_${ledgerData.length}件_${today}.pdf`);
+      pdf.save(`写真台帳_一括_${toFullWidthDigits(ledgerData.length)}件_${today}.pdf`);
       toast.success(`${ledgerData.length}件の写真台帳をPDF出力しました`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "PDF生成に失敗しました";
@@ -256,7 +257,7 @@ export default function PhotoLedgerBatch() {
             <div className="text-sm text-muted-foreground">
               <span className="font-semibold text-foreground">{selectedIds.length}</span> 件選択中
               {selectedIds.length > 0 && ledgerQuery.data && (
-                <span className="ml-2">（写真 {totalPhotos} 枚）</span>
+                <span className="ml-2">写真 {toFullWidthDigits(totalPhotos)} 枚</span>
               )}
             </div>
             <Button
@@ -306,7 +307,7 @@ export default function PhotoLedgerBatch() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] tracking-wider text-muted-foreground">
-                      {c.requestNumber}
+                      {toFullWidthDigits(c.requestNumber)}
                     </span>
                     {c.brand && (
                       <Badge variant="secondary" className="text-[9px] px-1.5 py-0">
@@ -340,18 +341,20 @@ export default function PhotoLedgerBatch() {
                   <div className="w-16 h-px bg-foreground/30 mx-auto mt-6" />
                 </div>
                 <div className="space-y-3 max-w-md mx-auto mt-12">
-                  <LedgerRow label="案件番号" value={caseInfo.requestNumber} />
-                  <LedgerRow label="ブランド" value={caseInfo.brand || "—"} />
-                  <LedgerRow label="店舗名" value={caseInfo.storeName} />
-                  <LedgerRow label="店舗住所" value={caseInfo.address || "—"} />
-                  <LedgerRow label="協力会社" value={caseInfo.contractorName || "—"} />
+                  <LedgerRow label="案件番号" value={toFullWidthDigits(caseInfo.requestNumber)} />
+                  <LedgerRow label="ブランド" value={caseInfo.brand ? reportLabel(caseInfo.brand) : "—"} />
+                  <LedgerRow label="店舗名" value={reportLabel(caseInfo.storeName)} />
+                  <LedgerRow label="店舗住所" value={caseInfo.address ? toFullWidthDigits(caseInfo.address) : "—"} />
+                  <LedgerRow label="協力会社" value={caseInfo.contractorName ? reportLabel(caseInfo.contractorName) : "—"} />
                   <LedgerRow
                     label="作成日"
-                    value={new Date().toLocaleDateString("ja-JP", {
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })}
+                    value={toFullWidthDigits(
+                      new Date().toLocaleDateString("ja-JP", {
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      })
+                    )}
                   />
                 </div>
               </section>
@@ -366,14 +369,14 @@ export default function PhotoLedgerBatch() {
                   <div className="flex items-center justify-between mb-6 pb-3 border-b border-border/60">
                     <div>
                       <p className="text-[10px] tracking-widest text-muted-foreground uppercase">
-                        {caseInfo.requestNumber}
+                        {toFullWidthDigits(caseInfo.requestNumber)}
                       </p>
                       <h2 className="font-serif-jp text-base font-semibold">
-                        {caseInfo.storeName}
+                        {reportLabel(caseInfo.storeName)}
                       </h2>
                     </div>
                     <span className="text-xs text-muted-foreground">
-                      Page {pi + 1} / {pages.length}
+                      ページ {toFullWidthDigits(pi + 1)} / {toFullWidthDigits(pages.length)}
                     </span>
                   </div>
                   <div className="grid grid-cols-1 gap-6">
@@ -398,26 +401,26 @@ export default function PhotoLedgerBatch() {
                               <p className="text-[9px] tracking-widest text-muted-foreground uppercase">
                                 Type
                               </p>
-                              <p className="font-semibold font-serif-jp">{photo.photoType}</p>
+                              <p className="font-semibold font-serif-jp">{reportLabel(photo.photoType)}</p>
                             </div>
                             <div>
                               <p className="text-[9px] tracking-widest text-muted-foreground uppercase">
                                 工事項目
                               </p>
-                              <p>{photo.workCategory || "—"}</p>
+                              <p>{photo.workCategory ? reportLabel(photo.workCategory) : "—"}</p>
                             </div>
                             <div>
                               <p className="text-[9px] tracking-widest text-muted-foreground uppercase">
                                 作業内容
                               </p>
-                              <p className="leading-snug">{photo.workItem || "—"}</p>
+                              <p className="leading-snug">{photo.workItem ? reportLabel(photo.workItem) : "—"}</p>
                             </div>
                             {photo.memo && (
                               <div className="pt-2 border-t border-border/40">
                                 <p className="text-[9px] tracking-widest text-muted-foreground uppercase">
                                   Memo
                                 </p>
-                                <p className="leading-snug whitespace-pre-wrap">{photo.memo}</p>
+                                <p className="leading-snug whitespace-pre-wrap">{reportLabel(photo.memo)}</p>
                               </div>
                             )}
                           </div>

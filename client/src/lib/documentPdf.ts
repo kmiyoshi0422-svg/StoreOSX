@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import { toast } from "sonner";
 import type { Case } from "../../../drizzle/schema";
+import { toFullWidthDigits, reportLabel } from "../../../shared/reportText";
 
 // jsPDFは日本語フォントが標準で含まれないため、html2canvasベースで作成
 // Tailwind4のoklch色をサポートする html2canvas-pro を使用
@@ -8,11 +9,11 @@ import html2canvas from "html2canvas-pro";
 
 function fmtDate(d: Date | null | undefined): string {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("ja-JP");
+  return toFullWidthDigits(new Date(d).toLocaleDateString("ja-JP"));
 }
 function fmtYen(n: number | null | undefined): string {
   if (n == null) return "—";
-  return `¥${n.toLocaleString()}`;
+  return `￥${toFullWidthDigits(n.toLocaleString())}`;
 }
 
 function buildQuoteHTML(c: Case): string {
@@ -27,17 +28,17 @@ function buildQuoteHTML(c: Case): string {
 
     <div style="display:flex; justify-content:space-between; margin-bottom:32px;">
       <div>
-        <p style="font-size:14px; margin:0 0 8px;"><strong>${c.storeName}</strong> 御中</p>
+        <p style="font-size:14px; margin:0 0 8px;"><strong>${reportLabel(c.storeName)}</strong> 御中</p>
         <p style="font-size:12px; color:#555; margin:0;">下記のとおりお見積り申し上げます。</p>
       </div>
       <div style="font-size:11px; text-align:right;">
-        <p style="margin:0 0 4px;">見積番号: ${c.requestNumber}</p>
+        <p style="margin:0 0 4px;">見積番号: ${toFullWidthDigits(c.requestNumber)}</p>
         <p style="margin:0 0 4px;">発行日: ${fmtDate(new Date())}</p>
       </div>
     </div>
 
     <div style="border:1px solid #1a2238; padding:20px; margin-bottom:24px; background:#f9f8f5;">
-      <p style="font-size:12px; color:#666; margin:0 0 6px;">御見積金額（税込）</p>
+      <p style="font-size:12px; color:#666; margin:0 0 6px;">御見積金額　税込</p>
       <p style="font-size:32px; font-family:'Noto Serif JP', serif; font-weight:600; margin:0; color:#1a2238;">
         ${fmtYen(total)}
       </p>
@@ -54,17 +55,17 @@ function buildQuoteHTML(c: Case): string {
       <tbody>
         <tr>
           <td style="padding:10px; border:1px solid #ddd;">工事種別</td>
-          <td style="padding:10px; border:1px solid #ddd;">${c.categoryLarge ?? "—"} / ${c.categoryMedium ?? "—"} / ${c.categorySmall ?? "—"}</td>
+          <td style="padding:10px; border:1px solid #ddd;">${[c.categoryLarge, c.categoryMedium, c.categorySmall].filter(Boolean).map((v) => reportLabel(v as string)).join("　・　") || "—"}</td>
           <td style="padding:10px; border:1px solid #ddd; text-align:right;">—</td>
         </tr>
         <tr>
           <td style="padding:10px; border:1px solid #ddd;">作業区分</td>
-          <td style="padding:10px; border:1px solid #ddd;">${c.workType ?? "—"}</td>
+          <td style="padding:10px; border:1px solid #ddd;">${c.workType ? reportLabel(c.workType) : "—"}</td>
           <td style="padding:10px; border:1px solid #ddd; text-align:right;">—</td>
         </tr>
         <tr>
           <td style="padding:10px; border:1px solid #ddd;">材料費</td>
-          <td style="padding:10px; border:1px solid #ddd;">${c.requestContent ?? "—"}</td>
+          <td style="padding:10px; border:1px solid #ddd;">${c.requestContent ? reportLabel(c.requestContent) : "—"}</td>
           <td style="padding:10px; border:1px solid #ddd; text-align:right;">${fmtYen(c.estimatedMaterialCost)}</td>
         </tr>
         <tr>
@@ -77,7 +78,7 @@ function buildQuoteHTML(c: Case): string {
           <td style="padding:10px; border:1px solid #ddd; text-align:right;">${fmtYen(c.estimatedCost)}</td>
         </tr>
         <tr>
-          <td colspan="2" style="padding:10px; border:1px solid #ddd; text-align:right;">消費税（10%）</td>
+          <td colspan="2" style="padding:10px; border:1px solid #ddd; text-align:right;">消費税　１０％</td>
           <td style="padding:10px; border:1px solid #ddd; text-align:right;">${fmtYen(tax)}</td>
         </tr>
         <tr style="background:#1a2238; color:#fff;">
@@ -89,14 +90,14 @@ function buildQuoteHTML(c: Case): string {
 
     <div style="font-size:11px; color:#555;">
       <p style="margin:0 0 4px;">■ 備考</p>
-      <p style="margin:0 0 4px; white-space:pre-wrap;">${c.notes ?? "—"}</p>
+      <p style="margin:0 0 4px; white-space:pre-wrap;">${c.notes ? reportLabel(c.notes) : "—"}</p>
     </div>
 
     ${c.contractorName ? `
     <div style="margin-top:48px; border-top:1px solid #ddd; padding-top:16px; text-align:right; font-size:12px;">
-      <p style="margin:0 0 4px; font-weight:600;">${c.contractorName}</p>
-      <p style="margin:0 0 4px;">${c.contractorPic ?? ""}</p>
-      <p style="margin:0;">${c.contractorPhone ?? ""}</p>
+      <p style="margin:0 0 4px; font-weight:600;">${reportLabel(c.contractorName)}</p>
+      <p style="margin:0 0 4px;">${c.contractorPic ? reportLabel(c.contractorPic) : ""}</p>
+      <p style="margin:0;">${c.contractorPhone ? toFullWidthDigits(c.contractorPhone) : ""}</p>
     </div>` : ""}
   </div>`;
 }
@@ -111,11 +112,11 @@ function buildCompletionHTML(c: Case): string {
 
     <div style="display:flex; justify-content:space-between; margin-bottom:32px;">
       <div>
-        <p style="font-size:14px; margin:0 0 8px;"><strong>${c.storeName}</strong> 御中</p>
+        <p style="font-size:14px; margin:0 0 8px;"><strong>${reportLabel(c.storeName)}</strong> 御中</p>
         <p style="font-size:12px; color:#555; margin:0;">下記のとおり工事完了をご報告いたします。</p>
       </div>
       <div style="font-size:11px; text-align:right;">
-        <p style="margin:0 0 4px;">案件番号: ${c.requestNumber}</p>
+        <p style="margin:0 0 4px;">案件番号: ${toFullWidthDigits(c.requestNumber)}</p>
         <p style="margin:0 0 4px;">報告日: ${fmtDate(new Date())}</p>
       </div>
     </div>
@@ -123,19 +124,19 @@ function buildCompletionHTML(c: Case): string {
     <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:24px;">
       <tr>
         <th style="padding:10px; border:1px solid #ddd; background:#f9f8f5; text-align:left; width:160px;">店舗名</th>
-        <td style="padding:10px; border:1px solid #ddd;">${c.storeName}</td>
+        <td style="padding:10px; border:1px solid #ddd;">${reportLabel(c.storeName)}</td>
       </tr>
       <tr>
         <th style="padding:10px; border:1px solid #ddd; background:#f9f8f5; text-align:left;">住所</th>
-        <td style="padding:10px; border:1px solid #ddd;">${c.address ?? "—"}</td>
+        <td style="padding:10px; border:1px solid #ddd;">${c.address ? toFullWidthDigits(c.address) : "—"}</td>
       </tr>
       <tr>
         <th style="padding:10px; border:1px solid #ddd; background:#f9f8f5; text-align:left;">工事種別</th>
-        <td style="padding:10px; border:1px solid #ddd;">${c.categoryLarge ?? "—"} / ${c.categoryMedium ?? "—"} / ${c.categorySmall ?? "—"}</td>
+        <td style="padding:10px; border:1px solid #ddd;">${[c.categoryLarge, c.categoryMedium, c.categorySmall].filter(Boolean).map((v) => reportLabel(v as string)).join("　・　") || "—"}</td>
       </tr>
       <tr>
         <th style="padding:10px; border:1px solid #ddd; background:#f9f8f5; text-align:left;">作業区分</th>
-        <td style="padding:10px; border:1px solid #ddd;">${c.workType ?? "—"}</td>
+        <td style="padding:10px; border:1px solid #ddd;">${c.workType ? reportLabel(c.workType) : "—"}</td>
       </tr>
       <tr>
         <th style="padding:10px; border:1px solid #ddd; background:#f9f8f5; text-align:left;">現調日</th>
@@ -153,7 +154,7 @@ function buildCompletionHTML(c: Case): string {
 
     <div style="margin-bottom:24px;">
       <p style="font-size:13px; font-weight:600; border-left:3px solid #1a2238; padding-left:10px; margin:0 0 10px;">作業内容</p>
-      <p style="font-size:12px; white-space:pre-wrap; line-height:1.8; margin:0 0 0 13px;">${c.requestContent ?? "—"}</p>
+      <p style="font-size:12px; white-space:pre-wrap; line-height:1.8; margin:0 0 0 13px;">${c.requestContent ? reportLabel(c.requestContent) : "—"}</p>
     </div>
 
     <div style="margin-bottom:24px;">
@@ -172,14 +173,14 @@ function buildCompletionHTML(c: Case): string {
 
     <div style="margin-bottom:24px;">
       <p style="font-size:13px; font-weight:600; border-left:3px solid #1a2238; padding-left:10px; margin:0 0 10px;">備考</p>
-      <p style="font-size:12px; white-space:pre-wrap; margin:0 0 0 13px;">${c.notes ?? "—"}</p>
+      <p style="font-size:12px; white-space:pre-wrap; margin:0 0 0 13px;">${c.notes ? reportLabel(c.notes) : "—"}</p>
     </div>
 
     ${c.contractorName ? `
     <div style="margin-top:48px; border-top:1px solid #ddd; padding-top:16px; text-align:right; font-size:12px;">
-      <p style="margin:0 0 4px; font-weight:600;">${c.contractorName}</p>
-      <p style="margin:0 0 4px;">担当：${c.contractorPic ?? ""}</p>
-      <p style="margin:0;">${c.contractorPhone ?? ""}</p>
+      <p style="margin:0 0 4px; font-weight:600;">${reportLabel(c.contractorName)}</p>
+      <p style="margin:0 0 4px;">担当：${c.contractorPic ? reportLabel(c.contractorPic) : ""}</p>
+      <p style="margin:0;">${c.contractorPhone ? toFullWidthDigits(c.contractorPhone) : ""}</p>
     </div>` : ""}
   </div>`;
 }
@@ -222,7 +223,7 @@ async function htmlToPDF(html: string, fileName: string) {
 }
 
 function safeName(c: Case): string {
-  return `${c.requestNumber}_${c.storeName}`.replace(/[\\/:*?"<>|]/g, "_");
+  return `${toFullWidthDigits(c.requestNumber)}_${c.storeName}`.replace(/[\\/:*?"<>|]/g, "_");
 }
 
 export async function generateQuotePDF(c: Case) {

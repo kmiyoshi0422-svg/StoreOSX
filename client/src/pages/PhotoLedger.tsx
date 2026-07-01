@@ -6,7 +6,7 @@ import { ArrowLeft, Download, Loader2 } from "lucide-react";
 import html2canvas from "html2canvas-pro";
 import jsPDF from "jspdf";
 import { toast } from "sonner";
-
+import { toFullWidthDigits, reportLabel } from "../../../shared/reportText";
 // 取得失敗画像用の軽量プレースホルダ（淡いグレー）
 const PLACEHOLDER_DATA_URL =
   "data:image/svg+xml;base64," +
@@ -93,7 +93,7 @@ export default function PhotoLedger({ id }: { id: number }) {
         pdf.addImage(imgData, "JPEG", x, y, finalWidth, finalHeight);
       }
 
-      const safeName = `${caseData.requestNumber}_${caseData.storeName}`.replace(
+      const safeName = `${toFullWidthDigits(caseData.requestNumber)}_${caseData.storeName}`.replace(
         /[\\/:*?"<>|]/g,
         "_"
       );
@@ -193,23 +193,25 @@ export default function PhotoLedger({ id }: { id: number }) {
           </div>
 
           <div className="space-y-3 max-w-md mx-auto mt-12">
-            <LedgerRow label="案件番号" value={caseData.requestNumber} />
-            <LedgerRow label="ブランド" value={caseData.brand} />
-            <LedgerRow label="店舗名" value={caseData.storeName} />
-            <LedgerRow label="店舗住所" value={caseData.address || "—"} />
+            <LedgerRow label="案件番号" value={toFullWidthDigits(caseData.requestNumber)} />
+            <LedgerRow label="ブランド" value={reportLabel(caseData.brand)} />
+            <LedgerRow label="店舗名" value={reportLabel(caseData.storeName)} />
+            <LedgerRow label="店舗住所" value={caseData.address ? toFullWidthDigits(caseData.address) : "—"} />
             <LedgerRow
               label="工事種別"
-              value={`${caseData.categoryLarge || "—"} / ${caseData.categoryMedium || "—"}`}
+              value={[caseData.categoryLarge, caseData.categoryMedium].filter(Boolean).map((v) => reportLabel(v as string)).join("　・　") || "—"}
             />
-            <LedgerRow label="作業区分" value={caseData.workType || "—"} />
-            <LedgerRow label="協力会社" value={caseData.contractorName || "—"} />
+            <LedgerRow label="作業区分" value={caseData.workType ? reportLabel(caseData.workType) : "—"} />
+            <LedgerRow label="協力会社" value={caseData.contractorName ? reportLabel(caseData.contractorName) : "—"} />
             <LedgerRow
               label="作成日"
-              value={new Date().toLocaleDateString("ja-JP", {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })}
+              value={toFullWidthDigits(
+                new Date().toLocaleDateString("ja-JP", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })
+              )}
             />
           </div>
 
@@ -219,7 +221,7 @@ export default function PhotoLedger({ id }: { id: number }) {
                 Request
               </p>
               <p className="text-sm whitespace-pre-wrap leading-relaxed">
-                {caseData.requestContent}
+                {reportLabel(caseData.requestContent)}
               </p>
             </div>
           )}
@@ -239,14 +241,14 @@ export default function PhotoLedger({ id }: { id: number }) {
               <div className="flex items-center justify-between mb-6 pb-3 border-b border-border/60">
                 <div>
                   <p className="text-[10px] tracking-widest text-muted-foreground uppercase">
-                    {caseData.requestNumber}
+                    {toFullWidthDigits(caseData.requestNumber)}
                   </p>
                   <h2 className="font-serif-jp text-base font-semibold">
-                    {caseData.storeName}
+                    {reportLabel(caseData.storeName)}
                   </h2>
                 </div>
                 <span className="text-xs text-muted-foreground">
-                  Page {pi + 1} / {pages.length}
+                  ページ {toFullWidthDigits(pi + 1)} / {toFullWidthDigits(pages.length)}
                 </span>
               </div>
 
@@ -272,26 +274,26 @@ export default function PhotoLedger({ id }: { id: number }) {
                           <p className="text-[9px] tracking-widest text-muted-foreground uppercase">
                             Type
                           </p>
-                          <p className="font-semibold font-serif-jp">{photo.photoType}</p>
+                          <p className="font-semibold font-serif-jp">{reportLabel(photo.photoType)}</p>
                         </div>
                         <div>
                           <p className="text-[9px] tracking-widest text-muted-foreground uppercase">
                             工事項目
                           </p>
-                          <p>{photo.workCategory || "—"}</p>
+                          <p>{photo.workCategory ? reportLabel(photo.workCategory) : "—"}</p>
                         </div>
                         <div>
                           <p className="text-[9px] tracking-widest text-muted-foreground uppercase">
                             作業内容
                           </p>
-                          <p className="leading-snug">{photo.workItem || "—"}</p>
+                          <p className="leading-snug">{photo.workItem ? reportLabel(photo.workItem) : "—"}</p>
                         </div>
                         {photo.memo && (
                           <div className="pt-2 border-t border-border/40">
                             <p className="text-[9px] tracking-widest text-muted-foreground uppercase">
                               Memo
                             </p>
-                            <p className="leading-snug whitespace-pre-wrap">{photo.memo}</p>
+                            <p className="leading-snug whitespace-pre-wrap">{reportLabel(photo.memo)}</p>
                           </div>
                         )}
                       </div>
