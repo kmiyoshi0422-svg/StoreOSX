@@ -839,10 +839,10 @@ export default function CaseReport({
         <section className="report-page bg-white border border-border/60 shadow-sm mb-6 flex flex-col">
           <div className="flex-1 min-h-0 overflow-hidden">
           <div className="text-center pb-3 mb-6">
-            <h1 className="font-serif-jp text-[26px] font-bold tracking-[0.18em] text-primary">
+            <h1 className="font-serif-jp text-[28px] font-bold tracking-[0.18em] text-primary">
               {config.title}
             </h1>
-            <p className="text-[10px] tracking-[0.3em] text-muted-foreground uppercase mt-1">
+            <p className="text-[10.5px] tracking-[0.3em] text-muted-foreground uppercase mt-1">
               {config.eyebrow}
             </p>
             <div className="mt-3 h-[3px] bg-primary rounded-full" />
@@ -850,19 +850,19 @@ export default function CaseReport({
 
           <div className="flex items-end justify-between mb-5">
             <div>
-              <p className="text-[15px] mb-1">
+              <p className="text-[15.5px] mb-1">
                 <strong className="font-serif-jp">{caseData.storeName}</strong>　御中
               </p>
-              <p className="text-[11px] text-muted-foreground">{config.leadText}</p>
+              <p className="text-[11.5px] text-muted-foreground">{config.leadText}</p>
             </div>
-            <div className="text-[11px] text-muted-foreground text-right space-y-0.5 tabular-nums">
+            <div className="text-[11.5px] text-muted-foreground text-right space-y-0.5 tabular-nums">
               <p>案件番号：{toFullWidthDigits(caseData.requestNumber)}</p>
               <p>報告日：{fmtDate(new Date())}</p>
             </div>
           </div>
 
           <SectionBand>物件情報</SectionBand>
-          <table className="w-full border-collapse text-[12px] mb-7 table-fixed">
+          <table className="w-full border-collapse text-[12.5px] mb-7 table-fixed">
             <colgroup>
               <col className="w-[26%]" />
               <col className="w-[24%]" />
@@ -911,14 +911,14 @@ export default function CaseReport({
           </table>
 
           <SectionBand>{reportType === "survey" ? "調査内容・依頼内容" : "作業内容"}</SectionBand>
-          <p className="text-[12px] whitespace-pre-wrap leading-relaxed mb-7 px-0.5">
+          <p className="text-[12.5px] whitespace-pre-wrap leading-[1.7] mb-7 px-0.5">
             {caseData.requestContent ? reportLabel(caseData.requestContent) : "—"}
           </p>
 
           {caseData.notes && (
             <>
               <SectionBand>備考</SectionBand>
-              <p className="text-[12px] whitespace-pre-wrap leading-relaxed mb-7 px-0.5">
+              <p className="text-[12.5px] whitespace-pre-wrap leading-[1.7] mb-7 px-0.5">
                 {reportLabel(caseData.notes)}
               </p>
             </>
@@ -984,7 +984,7 @@ export default function CaseReport({
                         }}
                       />
                     </div>
-                    <div className="text-[11px] px-2 py-1.5 space-y-0.5 border-t border-border/60 shrink-0">
+                    <div className="text-[11.5px] px-2 py-1.5 space-y-0.5 border-t border-border/60 shrink-0">
                       <p className="font-semibold font-serif-jp text-primary">▲ {photo.photoType}</p>
                       {photo.workItem && (
                         <p className="text-muted-foreground truncate">{reportLabel(photo.workItem)}</p>
@@ -1043,7 +1043,7 @@ export default function CaseReport({
 
 function SectionBand({ children }: { children: ReactNode }) {
   return (
-    <div className="bg-primary text-primary-foreground font-serif-jp text-[13px] font-semibold px-3 py-1.5 mb-3 rounded-sm">
+    <div className="bg-primary text-primary-foreground font-serif-jp text-[14px] font-semibold px-3 py-1.5 mb-3 rounded-sm">
       {children}
     </div>
   );
@@ -1053,7 +1053,7 @@ function ReportTh({ children, colSpan }: { children: ReactNode; colSpan?: number
   return (
     <th
       colSpan={colSpan}
-      className="py-1.5 px-2.5 border border-border/70 bg-muted/50 text-left font-semibold align-middle whitespace-nowrap"
+      className="py-2 px-2.5 border border-border/70 bg-muted/50 text-left font-semibold align-middle whitespace-nowrap"
     >
       {children}
     </th>
@@ -1070,7 +1070,7 @@ function ReportTd({
   className?: string;
 }) {
   return (
-    <td colSpan={colSpan} className={`py-1.5 px-2.5 border border-border/70 align-middle ${className}`}>
+    <td colSpan={colSpan} className={`py-2 px-2.5 border border-border/70 align-middle ${className}`}>
       {children}
     </td>
   );

@@ -530,7 +530,7 @@ function SectionBar({ no, children }: { no?: string; children: ReactNode }) {
             {toFullWidthDigits(no)}
           </span>
         )}
-        <span className="text-[13px] font-bold tracking-wide text-[#1f2937]">{children}</span>
+        <span className="text-[14px] font-bold tracking-wide text-[#1f2937]">{children}</span>
       </div>
     </div>
   );
@@ -541,7 +541,7 @@ function SubHead({ children }: { children: ReactNode }) {
   return (
     <div className="flex items-center gap-2 mb-1.5 mt-3">
       <div className="w-1 h-4 bg-[#c0392b]" />
-      <span className="text-[12px] font-bold text-[#1f2937]">{children}</span>
+      <span className="text-[12.5px] font-bold text-[#1f2937]">{children}</span>
     </div>
   );
 }
@@ -549,7 +549,7 @@ function SubHead({ children }: { children: ReactNode }) {
 // PDF: 本文ブロック。空なら非表示。数字は全角化して表示する。
 function Body({ text }: { text: string }) {
   if (!text?.trim()) return null;
-  return <p className="text-[11px] leading-relaxed text-[#222] whitespace-pre-wrap mb-1">{toFullWidthDigits(text)}</p>;
+  return <p className="text-[11.5px] leading-[1.7] text-[#222] whitespace-pre-wrap mb-1">{toFullWidthDigits(text)}</p>;
 }
 
 // ============================================================
@@ -1017,11 +1017,11 @@ function PageFrame({
   return (
     <div className="report-page font-sans flex flex-col">
       <div className="flex items-center justify-center border-b border-[#999] pb-1 mb-3">
-        <span className="text-[9px] text-[#555] tracking-wide">{headerLine}</span>
+        <span className="text-[9.5px] text-[#555] tracking-wide">{headerLine}</span>
       </div>
       <div className="flex-1 min-h-0">{children}</div>
       <div className="flex items-center justify-center border-t border-[#999] pt-1 mt-3">
-        <span className="text-[8px] text-[#666]">
+        <span className="text-[8.5px] text-[#666]">
           {footerLine} ｜ ページ {toFullWidthDigits(pageNo)} / {toFullWidthDigits(totalPages)}
         </span>
       </div>
@@ -1035,8 +1035,8 @@ function InfoRow({ label, value, highlight }: { label: string; value: ReactNode;
   const display = typeof value === "string" || typeof value === "number" ? toFullWidthDigits(value) : value;
   return (
     <tr>
-      <td className="bg-[#374151] text-white text-[10px] font-medium px-2 py-1 w-[28%] align-top border border-[#cbd5e1]">{label}</td>
-      <td className={`text-[10px] px-2 py-1 align-top border border-[#cbd5e1] ${highlight ? "bg-[#fff7e6] font-semibold" : "bg-[#fbfcfd]"}`}>{display || "—"}</td>
+      <td className="bg-[#374151] text-white text-[11px] font-medium px-2 py-1.5 w-[28%] align-top border border-[#cbd5e1]">{label}</td>
+      <td className={`text-[11px] px-2 py-1.5 align-top border border-[#cbd5e1] ${highlight ? "bg-[#fff7e6] font-semibold" : "bg-[#fbfcfd]"}`}>{display || "—"}</td>
     </tr>
   );
 }
@@ -1055,11 +1055,11 @@ function PhotoBlock({ photo, caption }: { photo: Photo; caption?: string }) {
           crossOrigin="anonymous"
         />
       </div>
-      <div className={`${meta.band} text-white text-[9px] font-bold px-2 py-0.5 flex items-center justify-between`}>
+      <div className={`${meta.band} text-white text-[9.5px] font-bold px-2 py-0.5 flex items-center justify-between`}>
         <span>{meta.sub}</span>
         {photo.workItem && <span className="font-normal opacity-90">{reportLabel(photo.workItem)}</span>}
       </div>
-      <div className="px-2 py-1 text-[9px] leading-snug text-[#333] min-h-[10mm]">
+      <div className="px-2 py-1 text-[9.5px] leading-[1.5] text-[#333] min-h-[10mm]">
         {caption?.trim() ? reportLabel(caption) : photo.memo?.trim() ? reportLabel(photo.memo) : `${meta.sub === "BEFORE" ? "施工前" : meta.sub === "AFTER" ? "施工後" : "施工中"}の状態`}
       </div>
     </div>
@@ -1133,11 +1133,11 @@ function CompletionReportPages({
             報告書番号：{toFullWidthDigits(caseData.requestNumber)}
           </div>
           <div className="w-full border-t-2 border-b-2 border-[#1f2937] py-5 mb-2">
-            <h1 className="text-[30px] font-bold tracking-[0.3em] text-[#1f2937]">工事完了報告書</h1>
+            <h1 className="text-[32px] font-bold tracking-[0.3em] text-[#1f2937]">工事完了報告書</h1>
           </div>
           <p className="text-[11px] tracking-[0.25em] text-[#888] mb-12">Construction Completion Report</p>
           <p className="text-[15px] font-bold text-[#c0392b] mb-2">{caseData.brand}</p>
-          <p className="text-[24px] font-bold text-[#1f2937] mb-3">{caseData.storeName}</p>
+          <p className="text-[26px] font-bold text-[#1f2937] mb-3">{caseData.storeName}</p>
           <p className="text-[12px] text-[#444] mb-10">{reportLabel(workName)}</p>
           <div className="inline-flex items-center gap-1.5 bg-[#1e8449] text-white text-[12px] font-bold rounded-full px-5 py-2 mb-12">
             <span>✓</span>

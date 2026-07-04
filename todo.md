@@ -505,3 +505,10 @@
 - [x] documentPdf（見積書・完了報告書HTML→PDF）: padding 48px→24px
 - [x] PhotoLedger / PhotoLedgerBatch: 印刷時padding 20mm 18mm→08mm 10mm、画面表示p-12/p-10→p-6
 - [x] 型チェック・全276テストPASS確認
+
+## PDF内フォントサイズ・行間・パディング最適化（ユーザー指示）
+- [x] documentPdf: body 13px→14px, th/td py-1→2, 見出し 16px→18px, 行間 leading-[1.7]
+- [x] CompletionReport: SectionBar 13→14px, Body 11→11.5px, InfoRow 10→11px, ヘッダー 9→10px, フッター 8→9px, タイトル 30→32px
+- [x] CaseReport: SectionBand 13→14px, テーブル 12→12.5px, th/td py-1.5→2, 本文 leading-[1.7], タイトル 26→28px, 写真キャプション 11→11.5px
+- [x] PhotoLedger/Batch: 写真情報 text-xs→13px, ラベル 9→9.5px, LedgerRow dt 10→10.5px / dd sm→14px, タイトル 3xl→32px
+- [x] 型チェック・全276テストPASS確認

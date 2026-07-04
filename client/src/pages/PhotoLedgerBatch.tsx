@@ -354,7 +354,7 @@ export default function PhotoLedgerBatch() {
                   <p className="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-3">
                     Photo Ledger
                   </p>
-                  <h1 className="font-serif-jp text-3xl font-bold tracking-tight">写真台帳</h1>
+                  <h1 className="font-serif-jp text-[32px] font-bold tracking-tight">写真台帳</h1>
                   <div className="w-16 h-px bg-foreground/30 mx-auto mt-6" />
                 </div>
                 <div className="space-y-3 max-w-md mx-auto mt-12">
@@ -413,28 +413,28 @@ export default function PhotoLedgerBatch() {
                               }}
                             />
                           </div>
-                          <div className="space-y-2 text-xs">
+                          <div className="space-y-2 text-[13px]">
                             <div className="pb-2 border-b border-border/40">
-                              <p className="text-[9px] tracking-widest text-muted-foreground uppercase">
+                              <p className="text-[9.5px] tracking-widest text-muted-foreground uppercase">
                                 Type
                               </p>
                               <p className="font-semibold font-serif-jp">{reportLabel(photo.photoType)}</p>
                             </div>
                             <div>
-                              <p className="text-[9px] tracking-widest text-muted-foreground uppercase">
+                              <p className="text-[9.5px] tracking-widest text-muted-foreground uppercase">
                                 工事項目
                               </p>
                               <p>{photo.workCategory ? reportLabel(photo.workCategory) : "—"}</p>
                             </div>
                             <div>
-                              <p className="text-[9px] tracking-widest text-muted-foreground uppercase">
+                              <p className="text-[9.5px] tracking-widest text-muted-foreground uppercase">
                                 作業内容
                               </p>
                               <p className="leading-snug">{photo.workItem ? reportLabel(photo.workItem) : "—"}</p>
                             </div>
                             {photo.memo && (
                               <div className="pt-2 border-t border-border/40">
-                                <p className="text-[9px] tracking-widest text-muted-foreground uppercase">
+                                <p className="text-[9.5px] tracking-widest text-muted-foreground uppercase">
                                   Memo
                                 </p>
                                 <p className="leading-snug whitespace-pre-wrap">{reportLabel(photo.memo)}</p>
@@ -458,10 +458,10 @@ export default function PhotoLedgerBatch() {
 function LedgerRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline gap-6 border-b border-border/30 pb-2">
-      <dt className="text-[10px] tracking-widest text-muted-foreground uppercase w-24 shrink-0">
+      <dt className="text-[10.5px] tracking-widest text-muted-foreground uppercase w-24 shrink-0">
         {label}
       </dt>
-      <dd className="text-sm flex-1 font-serif-jp">{value}</dd>
+      <dd className="text-[14px] flex-1 font-serif-jp">{value}</dd>
     </div>
   );
 }

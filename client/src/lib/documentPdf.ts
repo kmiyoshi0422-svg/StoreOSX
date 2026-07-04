@@ -36,83 +36,83 @@ function buildQuoteHTML(c: Case): string {
   const tax = c.estimatedCost ? Math.floor(c.estimatedCost * 0.1) : 0;
   const total = (c.estimatedCost ?? 0) + tax;
   return `
-  <div style="width:794px; padding:24px; font-family: 'Noto Serif JP', serif; color:#1a2238; background:#fff; box-sizing:border-box;">
-    <div style="text-align:center; border-bottom:2px solid #1a2238; padding-bottom:16px; margin-bottom:32px;">
-      <p style="letter-spacing:0.3em; font-size:11px; color:#666; margin:0;">QUOTATION</p>
-      <h1 style="font-size:32px; margin:8px 0 0; font-weight:600;">御 見 積 書</h1>
+  <div style="width:794px; padding:24px; font-family: 'Noto Serif JP', serif; color:#1a2238; background:#fff; box-sizing:border-box; line-height:1.6;">
+    <div style="text-align:center; border-bottom:2px solid #1a2238; padding-bottom:12px; margin-bottom:20px;">
+      <p style="letter-spacing:0.3em; font-size:10px; color:#666; margin:0;">QUOTATION</p>
+      <h1 style="font-size:28px; margin:6px 0 0; font-weight:600;">御 見 積 書</h1>
     </div>
 
-    <div style="display:flex; justify-content:space-between; margin-bottom:32px;">
+    <div style="display:flex; justify-content:space-between; margin-bottom:20px;">
       <div>
-        <p style="font-size:14px; margin:0 0 8px;"><strong>${reportLabel(c.storeName)}</strong> 御中</p>
-        <p style="font-size:12px; color:#555; margin:0;">下記のとおりお見積り申し上げます。</p>
+        <p style="font-size:13px; margin:0 0 6px;"><strong>${reportLabel(c.storeName)}</strong> 御中</p>
+        <p style="font-size:11px; color:#555; margin:0;">下記のとおりお見積り申し上げます。</p>
       </div>
-      <div style="font-size:11px; text-align:right;">
-        <p style="margin:0 0 4px;">見積番号: ${toFullWidthDigits(c.requestNumber)}</p>
-        <p style="margin:0 0 4px;">発行日: ${fmtDate(new Date())}</p>
+      <div style="font-size:10px; text-align:right;">
+        <p style="margin:0 0 3px;">見積番号: ${toFullWidthDigits(c.requestNumber)}</p>
+        <p style="margin:0 0 3px;">発行日: ${fmtDate(new Date())}</p>
       </div>
     </div>
 
-    <div style="border:1px solid #1a2238; padding:20px; margin-bottom:24px; background:#f9f8f5;">
-      <p style="font-size:12px; color:#666; margin:0 0 6px;">御見積金額　税込</p>
-      <p style="font-size:32px; font-family:'Noto Serif JP', serif; font-weight:600; margin:0; color:#1a2238;">
+    <div style="border:1px solid #1a2238; padding:14px 16px; margin-bottom:18px; background:#f9f8f5;">
+      <p style="font-size:10px; color:#666; margin:0 0 4px;">御見積金額　税込</p>
+      <p style="font-size:28px; font-family:'Noto Serif JP', serif; font-weight:600; margin:0; color:#1a2238;">
         ${fmtYen(total)}
       </p>
     </div>
 
-    <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:24px;">
+    <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:18px;">
       <thead>
         <tr style="background:#1a2238; color:#fff;">
-          <th style="padding:10px; text-align:left; border:1px solid #1a2238;">項目</th>
-          <th style="padding:10px; text-align:left; border:1px solid #1a2238;">内容</th>
-          <th style="padding:10px; text-align:right; border:1px solid #1a2238; width:140px;">金額</th>
+          <th style="padding:7px 8px; text-align:left; border:1px solid #1a2238;">項目</th>
+          <th style="padding:7px 8px; text-align:left; border:1px solid #1a2238;">内容</th>
+          <th style="padding:7px 8px; text-align:right; border:1px solid #1a2238; width:130px;">金額</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td style="padding:10px; border:1px solid #ddd;">工事種別</td>
-          <td style="padding:10px; border:1px solid #ddd;">${[c.categoryLarge, c.categoryMedium, c.categorySmall].filter(Boolean).map((v) => reportLabel(v as string)).join("　・　") || "—"}</td>
-          <td style="padding:10px; border:1px solid #ddd; text-align:right;">—</td>
+          <td style="padding:7px 8px; border:1px solid #ddd;">工事種別</td>
+          <td style="padding:7px 8px; border:1px solid #ddd;">${[c.categoryLarge, c.categoryMedium, c.categorySmall].filter(Boolean).map((v) => reportLabel(v as string)).join("　・　") || "—"}</td>
+          <td style="padding:7px 8px; border:1px solid #ddd; text-align:right;">—</td>
         </tr>
         <tr>
-          <td style="padding:10px; border:1px solid #ddd;">作業区分</td>
-          <td style="padding:10px; border:1px solid #ddd;">${c.workType ? reportLabel(c.workType) : "—"}</td>
-          <td style="padding:10px; border:1px solid #ddd; text-align:right;">—</td>
+          <td style="padding:7px 8px; border:1px solid #ddd;">作業区分</td>
+          <td style="padding:7px 8px; border:1px solid #ddd;">${c.workType ? reportLabel(c.workType) : "—"}</td>
+          <td style="padding:7px 8px; border:1px solid #ddd; text-align:right;">—</td>
         </tr>
         <tr>
-          <td style="padding:10px; border:1px solid #ddd;">材料費</td>
-          <td style="padding:10px; border:1px solid #ddd;">${c.requestContent ? reportLabel(c.requestContent) : "—"}</td>
-          <td style="padding:10px; border:1px solid #ddd; text-align:right;">${fmtYen(c.estimatedMaterialCost)}</td>
+          <td style="padding:7px 8px; border:1px solid #ddd;">材料費</td>
+          <td style="padding:7px 8px; border:1px solid #ddd;">${c.requestContent ? reportLabel(c.requestContent) : "—"}</td>
+          <td style="padding:7px 8px; border:1px solid #ddd; text-align:right;">${fmtYen(c.estimatedMaterialCost)}</td>
         </tr>
         <tr>
-          <td style="padding:10px; border:1px solid #ddd;">作業費</td>
-          <td style="padding:10px; border:1px solid #ddd;">技術者作業費</td>
-          <td style="padding:10px; border:1px solid #ddd; text-align:right;">${fmtYen(c.estimatedLaborCost)}</td>
+          <td style="padding:7px 8px; border:1px solid #ddd;">作業費</td>
+          <td style="padding:7px 8px; border:1px solid #ddd;">技術者作業費</td>
+          <td style="padding:7px 8px; border:1px solid #ddd; text-align:right;">${fmtYen(c.estimatedLaborCost)}</td>
         </tr>
         <tr style="background:#f9f8f5;">
-          <td colspan="2" style="padding:10px; border:1px solid #ddd; text-align:right;">小計</td>
-          <td style="padding:10px; border:1px solid #ddd; text-align:right;">${fmtYen(c.estimatedCost)}</td>
+          <td colspan="2" style="padding:7px 8px; border:1px solid #ddd; text-align:right;">小計</td>
+          <td style="padding:7px 8px; border:1px solid #ddd; text-align:right;">${fmtYen(c.estimatedCost)}</td>
         </tr>
         <tr>
-          <td colspan="2" style="padding:10px; border:1px solid #ddd; text-align:right;">消費税　１０％</td>
-          <td style="padding:10px; border:1px solid #ddd; text-align:right;">${fmtYen(tax)}</td>
+          <td colspan="2" style="padding:7px 8px; border:1px solid #ddd; text-align:right;">消費税　１０％</td>
+          <td style="padding:7px 8px; border:1px solid #ddd; text-align:right;">${fmtYen(tax)}</td>
         </tr>
         <tr style="background:#1a2238; color:#fff;">
-          <td colspan="2" style="padding:12px; border:1px solid #1a2238; text-align:right; font-weight:600;">合計</td>
-          <td style="padding:12px; border:1px solid #1a2238; text-align:right; font-weight:600;">${fmtYen(total)}</td>
+          <td colspan="2" style="padding:8px; border:1px solid #1a2238; text-align:right; font-weight:600;">合計</td>
+          <td style="padding:8px; border:1px solid #1a2238; text-align:right; font-weight:600;">${fmtYen(total)}</td>
         </tr>
       </tbody>
     </table>
 
-    <div style="font-size:11px; color:#555;">
-      <p style="margin:0 0 4px;">■ 備考</p>
-      <p style="margin:0 0 4px; white-space:pre-wrap;">${c.notes ? reportLabel(c.notes) : "—"}</p>
+    <div style="font-size:10px; color:#555; line-height:1.7;">
+      <p style="margin:0 0 3px;">■ 備考</p>
+      <p style="margin:0 0 3px; white-space:pre-wrap;">${c.notes ? reportLabel(c.notes) : "—"}</p>
     </div>
 
     ${c.contractorName ? `
-    <div style="margin-top:48px; border-top:1px solid #ddd; padding-top:16px; text-align:right; font-size:12px;">
-      <p style="margin:0 0 4px; font-weight:600;">${reportLabel(c.contractorName)}</p>
-      <p style="margin:0 0 4px;">${c.contractorPic ? reportLabel(c.contractorPic) : ""}</p>
+    <div style="margin-top:32px; border-top:1px solid #ddd; padding-top:12px; text-align:right; font-size:11px;">
+      <p style="margin:0 0 3px; font-weight:600;">${reportLabel(c.contractorName)}</p>
+      <p style="margin:0 0 3px;">${c.contractorPic ? reportLabel(c.contractorPic) : ""}</p>
       <p style="margin:0;">${c.contractorPhone ? toFullWidthDigits(c.contractorPhone) : ""}</p>
     </div>` : ""}
   </div>`;
@@ -120,82 +120,82 @@ function buildQuoteHTML(c: Case): string {
 
 function buildCompletionHTML(c: Case): string {
   return `
-  <div style="width:794px; padding:24px; font-family: 'Noto Serif JP', serif; color:#1a2238; background:#fff; box-sizing:border-box;">
-    <div style="text-align:center; border-bottom:2px solid #1a2238; padding-bottom:16px; margin-bottom:32px;">
-      <p style="letter-spacing:0.3em; font-size:11px; color:#666; margin:0;">COMPLETION REPORT</p>
-      <h1 style="font-size:32px; margin:8px 0 0; font-weight:600;">完 了 報 告 書</h1>
+  <div style="width:794px; padding:24px; font-family: 'Noto Serif JP', serif; color:#1a2238; background:#fff; box-sizing:border-box; line-height:1.6;">
+    <div style="text-align:center; border-bottom:2px solid #1a2238; padding-bottom:12px; margin-bottom:20px;">
+      <p style="letter-spacing:0.3em; font-size:10px; color:#666; margin:0;">COMPLETION REPORT</p>
+      <h1 style="font-size:28px; margin:6px 0 0; font-weight:600;">完 了 報 告 書</h1>
     </div>
 
-    <div style="display:flex; justify-content:space-between; margin-bottom:32px;">
+    <div style="display:flex; justify-content:space-between; margin-bottom:20px;">
       <div>
-        <p style="font-size:14px; margin:0 0 8px;"><strong>${reportLabel(c.storeName)}</strong> 御中</p>
-        <p style="font-size:12px; color:#555; margin:0;">下記のとおり工事完了をご報告いたします。</p>
+        <p style="font-size:13px; margin:0 0 6px;"><strong>${reportLabel(c.storeName)}</strong> 御中</p>
+        <p style="font-size:11px; color:#555; margin:0;">下記のとおり工事完了をご報告いたします。</p>
       </div>
-      <div style="font-size:11px; text-align:right;">
-        <p style="margin:0 0 4px;">案件番号: ${toFullWidthDigits(c.requestNumber)}</p>
-        <p style="margin:0 0 4px;">報告日: ${fmtDate(new Date())}</p>
+      <div style="font-size:10px; text-align:right;">
+        <p style="margin:0 0 3px;">案件番号: ${toFullWidthDigits(c.requestNumber)}</p>
+        <p style="margin:0 0 3px;">報告日: ${fmtDate(new Date())}</p>
       </div>
     </div>
 
-    <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:24px;">
+    <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:18px;">
       <tr>
-        <th style="padding:10px; border:1px solid #ddd; background:#f9f8f5; text-align:left; width:160px;">店舗名</th>
-        <td style="padding:10px; border:1px solid #ddd;">${reportLabel(c.storeName)}</td>
+        <th style="padding:7px 8px; border:1px solid #ddd; background:#f9f8f5; text-align:left; width:140px;">店舗名</th>
+        <td style="padding:7px 8px; border:1px solid #ddd;">${reportLabel(c.storeName)}</td>
       </tr>
       <tr>
-        <th style="padding:10px; border:1px solid #ddd; background:#f9f8f5; text-align:left;">住所</th>
-        <td style="padding:10px; border:1px solid #ddd;">${c.address ? toFullWidthDigits(c.address) : "—"}</td>
+        <th style="padding:7px 8px; border:1px solid #ddd; background:#f9f8f5; text-align:left;">住所</th>
+        <td style="padding:7px 8px; border:1px solid #ddd;">${c.address ? toFullWidthDigits(c.address) : "—"}</td>
       </tr>
       <tr>
-        <th style="padding:10px; border:1px solid #ddd; background:#f9f8f5; text-align:left;">工事種別</th>
-        <td style="padding:10px; border:1px solid #ddd;">${[c.categoryLarge, c.categoryMedium, c.categorySmall].filter(Boolean).map((v) => reportLabel(v as string)).join("　・　") || "—"}</td>
+        <th style="padding:7px 8px; border:1px solid #ddd; background:#f9f8f5; text-align:left;">工事種別</th>
+        <td style="padding:7px 8px; border:1px solid #ddd;">${[c.categoryLarge, c.categoryMedium, c.categorySmall].filter(Boolean).map((v) => reportLabel(v as string)).join("　・　") || "—"}</td>
       </tr>
       <tr>
-        <th style="padding:10px; border:1px solid #ddd; background:#f9f8f5; text-align:left;">作業区分</th>
-        <td style="padding:10px; border:1px solid #ddd;">${c.workType ? reportLabel(c.workType) : "—"}</td>
+        <th style="padding:7px 8px; border:1px solid #ddd; background:#f9f8f5; text-align:left;">作業区分</th>
+        <td style="padding:7px 8px; border:1px solid #ddd;">${c.workType ? reportLabel(c.workType) : "—"}</td>
       </tr>
       <tr>
-        <th style="padding:10px; border:1px solid #ddd; background:#f9f8f5; text-align:left;">現調日</th>
-        <td style="padding:10px; border:1px solid #ddd;">${fmtDate(c.surveyDate)}</td>
+        <th style="padding:7px 8px; border:1px solid #ddd; background:#f9f8f5; text-align:left;">現調日</th>
+        <td style="padding:7px 8px; border:1px solid #ddd;">${fmtDate(c.surveyDate)}</td>
       </tr>
       <tr>
-        <th style="padding:10px; border:1px solid #ddd; background:#f9f8f5; text-align:left;">施工日</th>
-        <td style="padding:10px; border:1px solid #ddd;">${fmtDate(c.constructionDate)}</td>
+        <th style="padding:7px 8px; border:1px solid #ddd; background:#f9f8f5; text-align:left;">施工日</th>
+        <td style="padding:7px 8px; border:1px solid #ddd;">${fmtDate(c.constructionDate)}</td>
       </tr>
       <tr>
-        <th style="padding:10px; border:1px solid #ddd; background:#f9f8f5; text-align:left;">完了日</th>
-        <td style="padding:10px; border:1px solid #ddd;">${fmtDate(c.completedAt ?? c.updatedAt)}</td>
+        <th style="padding:7px 8px; border:1px solid #ddd; background:#f9f8f5; text-align:left;">完了日</th>
+        <td style="padding:7px 8px; border:1px solid #ddd;">${fmtDate(c.completedAt ?? c.updatedAt)}</td>
       </tr>
     </table>
 
-    <div style="margin-bottom:24px;">
-      <p style="font-size:13px; font-weight:600; border-left:3px solid #1a2238; padding-left:10px; margin:0 0 10px;">作業内容</p>
-      <p style="font-size:12px; white-space:pre-wrap; line-height:1.8; margin:0 0 0 13px;">${c.requestContent ? reportLabel(c.requestContent) : "—"}</p>
+    <div style="margin-bottom:18px;">
+      <p style="font-size:12px; font-weight:600; border-left:3px solid #1a2238; padding-left:8px; margin:0 0 8px;">作業内容</p>
+      <p style="font-size:11px; white-space:pre-wrap; line-height:1.7; margin:0 0 0 11px;">${c.requestContent ? reportLabel(c.requestContent) : "—"}</p>
     </div>
 
-    <div style="margin-bottom:24px;">
-      <p style="font-size:13px; font-weight:600; border-left:3px solid #1a2238; padding-left:10px; margin:0 0 10px;">作業金額</p>
-      <table style="width:100%; border-collapse:collapse; font-size:12px;">
+    <div style="margin-bottom:18px;">
+      <p style="font-size:12px; font-weight:600; border-left:3px solid #1a2238; padding-left:8px; margin:0 0 8px;">作業金額</p>
+      <table style="width:100%; border-collapse:collapse; font-size:11px;">
         <tr>
-          <th style="padding:8px; border:1px solid #ddd; background:#f9f8f5; text-align:left; width:160px;">見積金額</th>
-          <td style="padding:8px; border:1px solid #ddd; text-align:right;">${fmtYen(c.estimatedCost)}</td>
+          <th style="padding:6px 8px; border:1px solid #ddd; background:#f9f8f5; text-align:left; width:140px;">見積金額</th>
+          <td style="padding:6px 8px; border:1px solid #ddd; text-align:right;">${fmtYen(c.estimatedCost)}</td>
         </tr>
         <tr>
-          <th style="padding:8px; border:1px solid #ddd; background:#f9f8f5; text-align:left;">実績金額</th>
-          <td style="padding:8px; border:1px solid #ddd; text-align:right;">${fmtYen(c.actualCost)}</td>
+          <th style="padding:6px 8px; border:1px solid #ddd; background:#f9f8f5; text-align:left;">実績金額</th>
+          <td style="padding:6px 8px; border:1px solid #ddd; text-align:right;">${fmtYen(c.actualCost)}</td>
         </tr>
       </table>
     </div>
 
-    <div style="margin-bottom:24px;">
-      <p style="font-size:13px; font-weight:600; border-left:3px solid #1a2238; padding-left:10px; margin:0 0 10px;">備考</p>
-      <p style="font-size:12px; white-space:pre-wrap; margin:0 0 0 13px;">${c.notes ? reportLabel(c.notes) : "—"}</p>
+    <div style="margin-bottom:18px;">
+      <p style="font-size:12px; font-weight:600; border-left:3px solid #1a2238; padding-left:8px; margin:0 0 8px;">備考</p>
+      <p style="font-size:11px; white-space:pre-wrap; line-height:1.7; margin:0 0 0 11px;">${c.notes ? reportLabel(c.notes) : "—"}</p>
     </div>
 
     ${c.contractorName ? `
-    <div style="margin-top:48px; border-top:1px solid #ddd; padding-top:16px; text-align:right; font-size:12px;">
-      <p style="margin:0 0 4px; font-weight:600;">${reportLabel(c.contractorName)}</p>
-      <p style="margin:0 0 4px;">担当：${c.contractorPic ? reportLabel(c.contractorPic) : ""}</p>
+    <div style="margin-top:32px; border-top:1px solid #ddd; padding-top:12px; text-align:right; font-size:11px;">
+      <p style="margin:0 0 3px; font-weight:600;">${reportLabel(c.contractorName)}</p>
+      <p style="margin:0 0 3px;">担当：${c.contractorPic ? reportLabel(c.contractorPic) : ""}</p>
       <p style="margin:0;">${c.contractorPhone ? toFullWidthDigits(c.contractorPhone) : ""}</p>
     </div>` : ""}
   </div>`;
