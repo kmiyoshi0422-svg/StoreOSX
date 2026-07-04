@@ -1111,10 +1111,198 @@ function CompletionReportPages({
   const hasInspect = content.inspections.length > 0;
   const hasRisk = content.risks.length > 0;
 
-  // 総ページ数を概算（表紙1 + 提出者1 + 物件情報1 + 範囲/総評/評価1 + 写真n + 後半1）
+  // --- 後半セクションのページビン詰め ---
+  // A4有効高さ ≈ 297mm - 8mm*2(padding) - 12mm(header+footer) = 269mm → px換算(96dpi): ~1017px
+  // 簡易的にmm単位で見積もる（SectionBar≈8mm, SubHead≈6mm, テーブル行≈6mm, Body≈8mm/段落, 署名≈35mm）
+  const PAGE_CONTENT_HEIGHT_MM = 260; // 安全マージン込み
+  type TailSection = { key: string; heightMm: number; render: () => ReactNode };
+  const tailSections: TailSection[] = [];
+
+  if (hasMeasure) {
+    tailSections.push({
+      key: "measure",
+      heightMm: 8 + content.measurements.length * 6 + 4,
+      render: () => (
+        <>
+          <SectionBar no="5">採寸データ　実測値</SectionBar>
+          <table className="w-full border-collapse mb-3">
+            <tbody>
+              {content.measurements.map((m, i) => (
+                <tr key={i}>
+                  <td className="bg-[#374151] text-white text-[10px] px-2 py-1 w-[40%] border border-[#cbd5e1]">{reportLabel(m.name)}</td>
+                  <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{m.value ? reportLabel(m.value) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ),
+    });
+  }
+
+  if (hasMaterial) {
+    tailSections.push({
+      key: "material",
+      heightMm: 8 + 6 + 6 + content.materials.length * 6 + 4,
+      render: () => (
+        <>
+          {!tailSections.some(s => s.key === "measure") && <SectionBar no="6">使用材料・実施工法詳細</SectionBar>}
+          {tailSections.some(s => s.key === "measure") && <SectionBar no="6">使用材料・実施工法詳細</SectionBar>}
+          <SubHead>６－１．使用材料</SubHead>
+          <table className="w-full border-collapse mb-3">
+            <thead>
+              <tr>
+                {["材料・部材名", "規格・仕様", "数量"].map((h) => (
+                  <th key={h} className="bg-[#374151] text-white text-[10px] font-medium px-2 py-1 border border-[#cbd5e1]">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {content.materials.map((m, i) => (
+                <tr key={i}>
+                  <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(m.name)}</td>
+                  <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{m.spec ? reportLabel(m.spec) : "—"}</td>
+                  <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd] text-center">{m.qty ? reportLabel(m.qty) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ),
+    });
+  }
+
+  if (hasProc) {
+    tailSections.push({
+      key: "proc",
+      heightMm: 6 + content.procedures.length * 6 + 4,
+      render: () => (
+        <>
+          <SubHead>６－２．実施工法・施工手順</SubHead>
+          <table className="w-full border-collapse mb-3">
+            <tbody>
+              {content.procedures.map((p, i) => (
+                <tr key={i}>
+                  <td className="bg-[#374151] text-white text-[10px] px-2 py-1 w-[12%] text-center border border-[#cbd5e1]">{toFullWidthDigits(p.step || i + 1)}</td>
+                  <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(p.detail)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ),
+    });
+  }
+
+  if (content.conclusion?.trim()) {
+    tailSections.push({
+      key: "conclusion",
+      heightMm: 8 + 10 + 4,
+      render: () => (
+        <>
+          <SectionBar no="7">工事完了結論および次のアクション</SectionBar>
+          <Body text={content.conclusion} />
+        </>
+      ),
+    });
+  }
+
+  if (hasInspect) {
+    tailSections.push({
+      key: "inspect",
+      heightMm: 8 + 6 + content.inspections.length * 6 + 4,
+      render: () => (
+        <>
+          <SectionBar no="8">次回点検・予防保全プラン</SectionBar>
+          <table className="w-full border-collapse mb-3">
+            <thead>
+              <tr>
+                {["推奨時期", "点検対象", "観点・内容"].map((h) => (
+                  <th key={h} className="bg-[#374151] text-white text-[10px] font-medium px-2 py-1 border border-[#cbd5e1]">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {content.inspections.map((r, i) => (
+                <tr key={i}>
+                  <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(r.timing)}</td>
+                  <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(r.target)}</td>
+                  <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(r.note)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ),
+    });
+  }
+
+  if (hasRisk) {
+    tailSections.push({
+      key: "risk",
+      heightMm: 8 + 6 + content.risks.length * 6 + 4,
+      render: () => (
+        <>
+          <SectionBar no="9">周辺部位の連鎖リスク評価</SectionBar>
+          <table className="w-full border-collapse mb-3">
+            <thead>
+              <tr>
+                {["周辺部位", "想定される連鎖リスク", "注意度"].map((h) => (
+                  <th key={h} className="bg-[#374151] text-white text-[10px] font-medium px-2 py-1 border border-[#cbd5e1]">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {content.risks.map((r, i) => (
+                <tr key={i}>
+                  <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(r.part)}</td>
+                  <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(r.risk)}</td>
+                  <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd] text-center">{r.level ? reportLabel(r.level) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ),
+    });
+  }
+
+  // 署名は常に最後
+  tailSections.push({
+    key: "signature",
+    heightMm: 35,
+    render: () => (
+      <div className="mt-6 flex justify-end">
+        <div className="text-center">
+          <p className="text-[9px] text-[#888] mb-1">確認サイン</p>
+          <div className="border border-[#cbd5e1] rounded w-[50mm] h-[24mm] flex items-center justify-center bg-white">
+            {signature ? (
+              <img src={signature.fileUrl} alt="サイン" className="max-h-[22mm] max-w-[48mm] object-contain" crossOrigin="anonymous" />
+            ) : (
+              <span className="text-[9px] text-[#bbb]">　</span>
+            )}
+          </div>
+          {signature?.signerName && <p className="text-[9px] text-[#555] mt-1">{signature.signerName}</p>}
+        </div>
+      </div>
+    ),
+  });
+
+  // ビン詰め: セクションをページに分割
+  const tailPages: ReactNode[][] = [[]];
+  let currentHeight = 0;
+  for (const sec of tailSections) {
+    if (currentHeight + sec.heightMm > PAGE_CONTENT_HEIGHT_MM && tailPages[tailPages.length - 1].length > 0) {
+      tailPages.push([]);
+      currentHeight = 0;
+    }
+    tailPages[tailPages.length - 1].push(sec.render());
+    currentHeight += sec.heightMm;
+  }
+
+  // 総ページ数を計算（表紙1 + 提出者1 + 物件情報1 + 範囲/総評/評価1 + 写真n + 後半ページ数）
   const basePages = 4;
-  const tailPages = 1;
-  const totalPages = basePages + photoPagesData.length + tailPages;
+  const totalPages = basePages + photoPagesData.length + tailPages.length;
   let pageNo = 0;
   const next = () => ++pageNo;
 
@@ -1260,136 +1448,16 @@ function CompletionReportPages({
         );
       })}
 
-      {/* ===== 後半：採寸・材料・手順・結論・点検・リスク・署名 ===== */}
-      {frame(
-        <div className="h-full">
-          {hasMeasure && (
-            <>
-              <SectionBar no="5">採寸データ　実測値</SectionBar>
-              <table className="w-full border-collapse mb-3">
-                <tbody>
-                  {content.measurements.map((m, i) => (
-                    <tr key={i}>
-                      <td className="bg-[#374151] text-white text-[10px] px-2 py-1 w-[40%] border border-[#cbd5e1]">{reportLabel(m.name)}</td>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{m.value ? reportLabel(m.value) : "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-
-          {(hasMaterial || hasProc) && <SectionBar no="6">使用材料・実施工法詳細</SectionBar>}
-          {hasMaterial && (
-            <>
-              <SubHead>６－１．使用材料</SubHead>
-              <table className="w-full border-collapse mb-3">
-                <thead>
-                  <tr>
-                    {["材料・部材名", "規格・仕様", "数量"].map((h) => (
-                      <th key={h} className="bg-[#374151] text-white text-[10px] font-medium px-2 py-1 border border-[#cbd5e1]">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {content.materials.map((m, i) => (
-                    <tr key={i}>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(m.name)}</td>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{m.spec ? reportLabel(m.spec) : "—"}</td>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd] text-center">{m.qty ? reportLabel(m.qty) : "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-          {hasProc && (
-            <>
-              <SubHead>６－２．実施工法・施工手順</SubHead>
-              <table className="w-full border-collapse mb-3">
-                <tbody>
-                  {content.procedures.map((p, i) => (
-                    <tr key={i}>
-                      <td className="bg-[#374151] text-white text-[10px] px-2 py-1 w-[12%] text-center border border-[#cbd5e1]">{toFullWidthDigits(p.step || i + 1)}</td>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(p.detail)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-
-          {content.conclusion?.trim() && (
-            <>
-              <SectionBar no="7">工事完了結論および次のアクション</SectionBar>
-              <Body text={content.conclusion} />
-            </>
-          )}
-
-          {hasInspect && (
-            <>
-              <SectionBar no="8">次回点検・予防保全プラン</SectionBar>
-              <table className="w-full border-collapse mb-3">
-                <thead>
-                  <tr>
-                    {["推奨時期", "点検対象", "観点・内容"].map((h) => (
-                      <th key={h} className="bg-[#374151] text-white text-[10px] font-medium px-2 py-1 border border-[#cbd5e1]">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {content.inspections.map((r, i) => (
-                    <tr key={i}>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(r.timing)}</td>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(r.target)}</td>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(r.note)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-
-          {hasRisk && (
-            <>
-              <SectionBar no="9">周辺部位の連鎖リスク評価</SectionBar>
-              <table className="w-full border-collapse mb-3">
-                <thead>
-                  <tr>
-                    {["周辺部位", "想定される連鎖リスク", "注意度"].map((h) => (
-                      <th key={h} className="bg-[#374151] text-white text-[10px] font-medium px-2 py-1 border border-[#cbd5e1]">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {content.risks.map((r, i) => (
-                    <tr key={i}>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(r.part)}</td>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd]">{reportLabel(r.risk)}</td>
-                      <td className="text-[10px] px-2 py-1 border border-[#cbd5e1] bg-[#fbfcfd] text-center">{r.level ? reportLabel(r.level) : "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-
-          {/* 署名 */}
-          <div className="mt-6 flex justify-end">
-            <div className="text-center">
-              <p className="text-[9px] text-[#888] mb-1">確認サイン</p>
-              <div className="border border-[#cbd5e1] rounded w-[50mm] h-[24mm] flex items-center justify-center bg-white">
-                {signature ? (
-                  <img src={signature.fileUrl} alt="サイン" className="max-h-[22mm] max-w-[48mm] object-contain" crossOrigin="anonymous" />
-                ) : (
-                  <span className="text-[9px] text-[#bbb]">　</span>
-                )}
-              </div>
-              {signature?.signerName && <p className="text-[9px] text-[#555] mt-1">{signature.signerName}</p>}
+      {/* ===== 後半：動的ページ分割 ===== */}
+      {tailPages.map((sections, tpIdx) => (
+        <div key={`tail-${tpIdx}`}>
+          {frame(
+            <div className="h-full">
+              {sections.map((node, si) => <div key={si}>{node}</div>)}
             </div>
-          </div>
+          )}
         </div>
-      )}
+      ))}
     </>
   );
 }

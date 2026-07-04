@@ -836,100 +836,147 @@ export default function CaseReport({
       {/* 報告書本体（PDFソース） */}
       <div ref={containerRef} className="report-container mx-auto">
         {/* 1ページ目：基本情報 */}
-        <section className="report-page bg-white border border-border/60 shadow-sm mb-6 flex flex-col">
-          <div className="flex-1 min-h-0 overflow-hidden">
-          <div className="text-center pb-3 mb-6">
-            <h1 className="font-serif-jp text-[28px] font-bold tracking-[0.18em] text-primary">
-              {config.title}
-            </h1>
-            <p className="text-[10.5px] tracking-[0.3em] text-muted-foreground uppercase mt-1">
-              {config.eyebrow}
-            </p>
-            <div className="mt-3 h-[3px] bg-primary rounded-full" />
-          </div>
+        {(() => {
+          // 本文の行数でページ分割を判定（約800文字以上または15行以上で分割）
+          const bodyText = caseData.requestContent || "";
+          const notesText = caseData.notes || "";
+          const bodyLines = bodyText.split("\n").length;
+          const notesLines = notesText.split("\n").length;
+          const totalTextLines = bodyLines + (notesText ? notesLines + 2 : 0);
+          const needsSplit = totalTextLines > 15 || (bodyText.length + notesText.length) > 800;
 
-          <div className="flex items-end justify-between mb-5">
-            <div>
-              <p className="text-[15.5px] mb-1">
-                <strong className="font-serif-jp">{caseData.storeName}</strong>　御中
-              </p>
-              <p className="text-[11.5px] text-muted-foreground">{config.leadText}</p>
-            </div>
-            <div className="text-[11.5px] text-muted-foreground text-right space-y-0.5 tabular-nums">
-              <p>案件番号：{toFullWidthDigits(caseData.requestNumber)}</p>
-              <p>報告日：{fmtDate(new Date())}</p>
-            </div>
-          </div>
-
-          <SectionBand>物件情報</SectionBand>
-          <table className="w-full border-collapse text-[12.5px] mb-7 table-fixed">
-            <colgroup>
-              <col className="w-[26%]" />
-              <col className="w-[24%]" />
-              <col className="w-[26%]" />
-              <col className="w-[24%]" />
-            </colgroup>
-            <tbody>
-              <tr>
-                <ReportTh>ブランド</ReportTh>
-                <ReportTd>{reportLabel(caseData.brand)}</ReportTd>
-                <ReportTh>店舗名</ReportTh>
-                <ReportTd>{reportLabel(caseData.storeName)}</ReportTd>
-              </tr>
-              <tr>
-                <ReportTh>店舗住所</ReportTh>
-                <ReportTd colSpan={3}>{caseData.address ? toFullWidthDigits(caseData.address) : "—"}</ReportTd>
-              </tr>
-              <tr>
-                <ReportTh>店舗電話</ReportTh>
-                <ReportTd>{caseData.storePhone ? toFullWidthDigits(caseData.storePhone) : "—"}</ReportTd>
-                <ReportTh>作業区分</ReportTh>
-                <ReportTd>{caseData.workType ? reportLabel(caseData.workType) : "—"}</ReportTd>
-              </tr>
-              <tr>
-                <ReportTh>工事種別</ReportTh>
-                <ReportTd colSpan={3}>
-                  {[caseData.categoryLarge, caseData.categoryMedium, caseData.categorySmall]
-                    .filter(Boolean)
-                    .map((v) => reportLabel(v as string))
-                    .join("　・　") || "—"}
-                </ReportTd>
-              </tr>
-              <tr>
-                <ReportTh>{config.dateLabel}</ReportTh>
-                <ReportTd>{fmtDate(config.dateField(caseData))}</ReportTd>
-                <ReportTh>協力会社</ReportTh>
-                <ReportTd>{caseData.contractorName ? reportLabel(caseData.contractorName) : "—"}</ReportTd>
-              </tr>
-              {reportType === "completion" && (
-                <tr>
-                  <ReportTh>完了日</ReportTh>
-                  <ReportTd colSpan={3}>{fmtDate(caseData.completedAt ?? caseData.updatedAt)}</ReportTd>
-                </tr>
-              )}
-            </tbody>
-          </table>
-
-          <SectionBand>{reportType === "survey" ? "調査内容・依頼内容" : "作業内容"}</SectionBand>
-          <p className="text-[12.5px] whitespace-pre-wrap leading-[1.7] mb-7 px-0.5">
-            {caseData.requestContent ? reportLabel(caseData.requestContent) : "—"}
-          </p>
-
-          {caseData.notes && (
+          const headerBlock = (
             <>
-              <SectionBand>備考</SectionBand>
-              <p className="text-[12.5px] whitespace-pre-wrap leading-[1.7] mb-7 px-0.5">
-                {reportLabel(caseData.notes)}
-              </p>
+              <div className="text-center pb-3 mb-6">
+                <h1 className="font-serif-jp text-[28px] font-bold tracking-[0.18em] text-primary">
+                  {config.title}
+                </h1>
+                <p className="text-[10.5px] tracking-[0.3em] text-muted-foreground uppercase mt-1">
+                  {config.eyebrow}
+                </p>
+                <div className="mt-3 h-[3px] bg-primary rounded-full" />
+              </div>
+              <div className="flex items-end justify-between mb-5">
+                <div>
+                  <p className="text-[15.5px] mb-1">
+                    <strong className="font-serif-jp">{caseData.storeName}</strong>　御中
+                  </p>
+                  <p className="text-[11.5px] text-muted-foreground">{config.leadText}</p>
+                </div>
+                <div className="text-[11.5px] text-muted-foreground text-right space-y-0.5 tabular-nums">
+                  <p>案件番号：{toFullWidthDigits(caseData.requestNumber)}</p>
+                  <p>報告日：{fmtDate(new Date())}</p>
+                </div>
+              </div>
             </>
-          )}
+          );
 
-          </div>
-          {/* 確認欄はページ下部に固定配置 */}
-          <div className="shrink-0 pt-4">
-            <SignatureBlock signature={signature} />
-          </div>
-        </section>
+          const tableBlock = (
+            <>
+              <SectionBand>物件情報</SectionBand>
+              <table className="w-full border-collapse text-[12.5px] mb-7 table-fixed">
+                <colgroup>
+                  <col className="w-[26%]" />
+                  <col className="w-[24%]" />
+                  <col className="w-[26%]" />
+                  <col className="w-[24%]" />
+                </colgroup>
+                <tbody>
+                  <tr>
+                    <ReportTh>ブランド</ReportTh>
+                    <ReportTd>{reportLabel(caseData.brand)}</ReportTd>
+                    <ReportTh>店舗名</ReportTh>
+                    <ReportTd>{reportLabel(caseData.storeName)}</ReportTd>
+                  </tr>
+                  <tr>
+                    <ReportTh>店舗住所</ReportTh>
+                    <ReportTd colSpan={3}>{caseData.address ? toFullWidthDigits(caseData.address) : "—"}</ReportTd>
+                  </tr>
+                  <tr>
+                    <ReportTh>店舗電話</ReportTh>
+                    <ReportTd>{caseData.storePhone ? toFullWidthDigits(caseData.storePhone) : "—"}</ReportTd>
+                    <ReportTh>作業区分</ReportTh>
+                    <ReportTd>{caseData.workType ? reportLabel(caseData.workType) : "—"}</ReportTd>
+                  </tr>
+                  <tr>
+                    <ReportTh>工事種別</ReportTh>
+                    <ReportTd colSpan={3}>
+                      {[caseData.categoryLarge, caseData.categoryMedium, caseData.categorySmall]
+                        .filter(Boolean)
+                        .map((v) => reportLabel(v as string))
+                        .join("　・　") || "—"}
+                    </ReportTd>
+                  </tr>
+                  <tr>
+                    <ReportTh>{config.dateLabel}</ReportTh>
+                    <ReportTd>{fmtDate(config.dateField(caseData))}</ReportTd>
+                    <ReportTh>協力会社</ReportTh>
+                    <ReportTd>{caseData.contractorName ? reportLabel(caseData.contractorName) : "—"}</ReportTd>
+                  </tr>
+                  {reportType === "completion" && (
+                    <tr>
+                      <ReportTh>完了日</ReportTh>
+                      <ReportTd colSpan={3}>{fmtDate(caseData.completedAt ?? caseData.updatedAt)}</ReportTd>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </>
+          );
+
+          const bodyBlock = (
+            <>
+              <SectionBand>{reportType === "survey" ? "調査内容・依頼内容" : "作業内容"}</SectionBand>
+              <p className="text-[12.5px] whitespace-pre-wrap leading-[1.7] mb-7 px-0.5">
+                {caseData.requestContent ? reportLabel(caseData.requestContent) : "—"}
+              </p>
+              {caseData.notes && (
+                <>
+                  <SectionBand>備考</SectionBand>
+                  <p className="text-[12.5px] whitespace-pre-wrap leading-[1.7] mb-7 px-0.5">
+                    {reportLabel(caseData.notes)}
+                  </p>
+                </>
+              )}
+            </>
+          );
+
+          if (!needsSplit) {
+            // 1ページに収まる場合
+            return (
+              <section className="report-page bg-white border border-border/60 shadow-sm mb-6 flex flex-col">
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  {headerBlock}
+                  {tableBlock}
+                  {bodyBlock}
+                </div>
+                <div className="shrink-0 pt-4">
+                  <SignatureBlock signature={signature} />
+                </div>
+              </section>
+            );
+          } else {
+            // 2ページに分割：1ページ目=ヘッダー+テーブル、2ページ目=本文+確認欄
+            return (
+              <>
+                <section className="report-page bg-white border border-border/60 shadow-sm mb-6 flex flex-col">
+                  <div className="flex-1 min-h-0">
+                    {headerBlock}
+                    {tableBlock}
+                  </div>
+                </section>
+                <section className="report-page bg-white border border-border/60 shadow-sm mb-6 flex flex-col">
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    {bodyBlock}
+                  </div>
+                  <div className="shrink-0 pt-4">
+                    <SignatureBlock signature={signature} />
+                  </div>
+                </section>
+              </>
+            );
+          }
+        })()}
 
         {/* 写真ページ：両報告書とも羅列レイアウト（A4縦固定） */}
         {photoPages.length === 0 ? (

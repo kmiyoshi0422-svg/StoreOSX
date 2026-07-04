@@ -512,3 +512,10 @@
 - [x] CaseReport: SectionBand 13→14px, テーブル 12→12.5px, th/td py-1.5→2, 本文 leading-[1.7], タイトル 26→28px, 写真キャプション 11→11.5px
 - [x] PhotoLedger/Batch: 写真情報 text-xs→13px, ラベル 9→9.5px, LedgerRow dt 10→10.5px / dd sm→14px, タイトル 3xl→32px
 - [x] 型チェック・全276テストPASS確認
+
+## PDF改ページ位置の最適化（ユーザー指示）
+- [x] CompletionReport: 後半セクション（採寸〜署名）を動的ページビン詰め分割（tailSections配列＋PAGE_CONTENT_HEIGHT_MM=260mmで分割）
+- [x] CaseReport: 1ページ目を本文長さで動的2ページ分割（800文字超または15行超で分割）
+- [x] documentPdf（見積書・完了報告書HTML→PDF）: htmlToPDF関数を複数ページ分割対応に改修（キャンバス高さがA4超の場合に自動分割）
+- [x] PhotoLedger/Batch: 固定高グリッド＋perPage連動で既にページ境界での切れなし（対応済み）
+- [x] 型チェック・全276テストPASS確認

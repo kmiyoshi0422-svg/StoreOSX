@@ -217,18 +217,50 @@ async function htmlToPDF(html: string, fileName: string) {
       logging: false,
     });
     const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = pdf.internal.pageSize.getHeight();
-    const ratio = canvas.height / canvas.width;
-    let imgWidth = pdfWidth;
-    let imgHeight = pdfWidth * ratio;
-    if (imgHeight > pdfHeight) {
-      imgHeight = pdfHeight;
-      imgWidth = pdfHeight / ratio;
+    const pdfWidth = pdf.internal.pageSize.getWidth(); // 210mm
+    const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm
+
+    // キャンバスをPDF幅に合わせた場合の画像高さを計算
+    const imgWidth = pdfWidth;
+    const imgHeight = (canvas.height / canvas.width) * pdfWidth;
+
+    if (imgHeight <= pdfHeight) {
+      // 1ページに収まる場合
+      const x = (pdfWidth - imgWidth) / 2;
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", x, 0, imgWidth, imgHeight);
+    } else {
+      // 複数ページに分割
+      // 1ページあたりのキャンバスピクセル高さを計算
+      const pageCanvasHeight = Math.floor((pdfHeight / imgHeight) * canvas.height);
+      const totalPages = Math.ceil(canvas.height / pageCanvasHeight);
+
+      for (let page = 0; page < totalPages; page++) {
+        if (page > 0) pdf.addPage();
+
+        const srcY = page * pageCanvasHeight;
+        const srcH = Math.min(pageCanvasHeight, canvas.height - srcY);
+
+        // このページ分のキャンバスを切り出し
+        const pageCanvas = document.createElement("canvas");
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = srcH;
+        const ctx = pageCanvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
+        }
+
+        const pageImgHeight = (srcH / canvas.width) * pdfWidth;
+        pdf.addImage(
+          pageCanvas.toDataURL("image/jpeg", 0.92),
+          "JPEG",
+          0,
+          0,
+          imgWidth,
+          pageImgHeight,
+        );
+      }
     }
-    const x = (pdfWidth - imgWidth) / 2;
-    const y = 0;
-    pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", x, y, imgWidth, imgHeight);
+
     pdf.save(fileName);
     toast.success("PDFをダウンロードしました");
   } catch (e) {
