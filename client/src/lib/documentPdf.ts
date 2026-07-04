@@ -36,7 +36,7 @@ function buildQuoteHTML(c: Case): string {
   const tax = c.estimatedCost ? Math.floor(c.estimatedCost * 0.1) : 0;
   const total = (c.estimatedCost ?? 0) + tax;
   return `
-  <div style="width:794px; padding:48px; font-family: 'Noto Serif JP', serif; color:#1a2238; background:#fff; box-sizing:border-box;">
+  <div style="width:794px; padding:24px; font-family: 'Noto Serif JP', serif; color:#1a2238; background:#fff; box-sizing:border-box;">
     <div style="text-align:center; border-bottom:2px solid #1a2238; padding-bottom:16px; margin-bottom:32px;">
       <p style="letter-spacing:0.3em; font-size:11px; color:#666; margin:0;">QUOTATION</p>
       <h1 style="font-size:32px; margin:8px 0 0; font-weight:600;">御 見 積 書</h1>
@@ -120,7 +120,7 @@ function buildQuoteHTML(c: Case): string {
 
 function buildCompletionHTML(c: Case): string {
   return `
-  <div style="width:794px; padding:48px; font-family: 'Noto Serif JP', serif; color:#1a2238; background:#fff; box-sizing:border-box;">
+  <div style="width:794px; padding:24px; font-family: 'Noto Serif JP', serif; color:#1a2238; background:#fff; box-sizing:border-box;">
     <div style="text-align:center; border-bottom:2px solid #1a2238; padding-bottom:16px; margin-bottom:32px;">
       <p style="letter-spacing:0.3em; font-size:11px; color:#666; margin:0;">COMPLETION REPORT</p>
       <h1 style="font-size:32px; margin:8px 0 0; font-weight:600;">完 了 報 告 書</h1>

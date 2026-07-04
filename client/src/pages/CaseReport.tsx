@@ -960,7 +960,7 @@ export default function CaseReport({
 
               <div
                 className={`grid grid-cols-2 ${perPage === 6 ? "gap-x-4 gap-y-3" : "gap-x-5 gap-y-4"}`}
-                style={{ gridTemplateRows: `repeat(${perPage / 2}, 1fr)`, height: "248mm" }}
+                style={{ gridTemplateRows: `repeat(${perPage / 2}, 1fr)`, height: "265mm" }}
               >
                 {pagePhotos.map((photo) => (
                   <div
@@ -1015,7 +1015,7 @@ export default function CaseReport({
         .report-page {
           width: 210mm;
           height: 297mm;
-          padding: 14mm 12mm;
+          padding: 8mm 10mm;
           box-sizing: border-box;
           overflow: hidden;
         }
@@ -1031,7 +1031,7 @@ export default function CaseReport({
             margin: 0 !important;
             width: 210mm !important;
             height: 297mm !important;
-            padding: 14mm 12mm !important;
+            padding: 8mm 10mm !important;
             overflow: hidden;
           }
           .report-page:last-child { page-break-after: auto; }

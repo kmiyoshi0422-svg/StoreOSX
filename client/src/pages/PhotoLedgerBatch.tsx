@@ -349,7 +349,7 @@ export default function PhotoLedgerBatch() {
           {ledgerData.map(({ caseInfo, pages }) => (
             <div key={caseInfo.id}>
               {/* 案件表紙 */}
-              <section className="ledger-page bg-white p-12" style={{ width: 800 }}>
+              <section className="ledger-page bg-white p-6" style={{ width: 800 }}>
                 <div className="text-center mb-12">
                   <p className="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-3">
                     Photo Ledger
@@ -380,7 +380,7 @@ export default function PhotoLedgerBatch() {
               {pages.map((pagePhotos, pi) => (
                 <section
                   key={pi}
-                  className="ledger-page bg-white p-10"
+                  className="ledger-page bg-white p-6"
                   style={{ width: 800 }}
                 >
                   <div className="flex items-center justify-between mb-6 pb-3 border-b border-border/60">

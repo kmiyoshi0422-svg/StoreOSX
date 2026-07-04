@@ -980,7 +980,7 @@ function CompletionReportView(props: ViewProps) {
           width: 210mm;
           min-height: 297mm;
           max-height: 297mm;
-          padding: 14mm 14mm;
+          padding: 8mm 10mm;
           box-sizing: border-box;
           overflow: hidden;
           position: relative;

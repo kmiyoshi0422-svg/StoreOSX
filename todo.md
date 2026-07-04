@@ -498,3 +498,10 @@
 - [x] 各一覧・取込画面（CasesList/CaseDetail/CsvImport/Partners/CasePdfImport/PartnerImport/PartnerView/StoresList/Workload/EstimateImport/ExpenseImport/CasesMap/ExpenseByUser/ScheduleBoard等）の表示テキストの括弧除去
 - [x] 型チェック・全テスト276件PASS確認
 - [x] ナビゲーション・サイドバー表示を確認
+
+## 全PDF出力をA4縦・余白狭めに統一（ユーザー指示）
+- [x] CompletionReport: padding 14mm→08mm 10mm
+- [x] CaseReport: padding 14mm 12mm→08mm 10mm、写真グリッド高さ248mm→265mm
+- [x] documentPdf（見積書・完了報告書HTML→PDF）: padding 48px→24px
+- [x] PhotoLedger / PhotoLedgerBatch: 印刷時padding 20mm 18mm→08mm 10mm、画面表示p-12/p-10→p-6
+- [x] 型チェック・全276テストPASS確認

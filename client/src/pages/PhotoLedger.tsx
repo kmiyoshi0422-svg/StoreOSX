@@ -200,7 +200,7 @@ export default function PhotoLedger({ id }: { id: number }) {
       {/* 台帳本体 */}
       <div ref={containerRef} className="ledger-container max-w-[800px] mx-auto">
         {/* 表紙 */}
-        <section className="ledger-page bg-white border border-border/60 shadow-sm p-12 mb-6">
+        <section className="ledger-page bg-white border border-border/60 shadow-sm p-6 mb-6">
           <div className="text-center mb-12">
             <p className="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-3">
               Photo Ledger
@@ -253,7 +253,7 @@ export default function PhotoLedger({ id }: { id: number }) {
           pages.map((pagePhotos, pi) => (
             <section
               key={pi}
-              className="ledger-page bg-white border border-border/60 shadow-sm p-10 mb-6"
+              className="ledger-page bg-white border border-border/60 shadow-sm p-6 mb-6"
             >
               <div className="flex items-center justify-between mb-6 pb-3 border-b border-border/60">
                 <div>
@@ -340,7 +340,7 @@ export default function PhotoLedger({ id }: { id: number }) {
             border: none !important;
             page-break-after: always;
             margin: 0 !important;
-            padding: 20mm 18mm !important;
+            padding: 8mm 10mm !important;
             min-height: 297mm;
           }
           .ledger-page:last-child {
