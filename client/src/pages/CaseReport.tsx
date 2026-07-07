@@ -96,6 +96,7 @@ const ALL_PHOTO_TYPES = [
   "現調",
   "施工前A",
   "施工前B",
+  "施工中",
   "施工後A",
   "施工後B",
   "設置状況",
@@ -110,19 +111,22 @@ const DEFAULT_ADD_TYPE: Record<ReportType, PhotoTypeTag> = {
   completion: "施工後A",
 };
 
-// 完了報告書のグループ定義（施工前 / 施工後）
-type PhotoGroupKey = "before" | "after";
+// 完了報告書のグループ定義（施工前 / 施工中 / 施工後）
+type PhotoGroupKey = "before" | "process" | "after";
 const BEFORE_TYPES: PhotoTypeTag[] = ["現調", "施工前A", "施工前B"];
+const PROCESS_TYPES: PhotoTypeTag[] = ["施工中"];
 const AFTER_TYPES: PhotoTypeTag[] = ["施工後A", "施工後B", "設置状況"];
 const groupOfType = (t: PhotoTypeTag): PhotoGroupKey =>
-  AFTER_TYPES.includes(t) ? "after" : "before";
+  AFTER_TYPES.includes(t) ? "after" : PROCESS_TYPES.includes(t) ? "process" : "before";
 // グループをまたいで移動した際に割り当てる代表区分
 const DEFAULT_TYPE_OF_GROUP: Record<PhotoGroupKey, PhotoTypeTag> = {
   before: "現調",
+  process: "施工中",
   after: "施工後A",
 };
 const GROUP_LABEL: Record<PhotoGroupKey, string> = {
   before: "施工前（現調）",
+  process: "施工中",
   after: "施工後",
 };
 
@@ -181,6 +185,64 @@ export default function CaseReport({
     },
     onError: (e) => toast.error(e.message || "サインの削除に失敗しました"),
   });
+
+  // 所感管理
+  const [impressionText, setImpressionText] = useState(caseData?.surveyImpression ?? "");
+  const [impressionAuthor, setImpressionAuthor] = useState(caseData?.surveyImpressionAuthor ?? "");
+  const [generatingImpression, setGeneratingImpression] = useState(false);
+  const [savingImpression, setSavingImpression] = useState(false);
+  const generateImpressionMut = trpc.cases.generateImpression.useMutation();
+  const updateCaseMut = trpc.cases.update.useMutation();
+
+  const handleGenerateImpression = async () => {
+    setGeneratingImpression(true);
+    try {
+      const result = await generateImpressionMut.mutateAsync({ caseId: id });
+      setImpressionText(result.impression);
+      toast.success("AIが所感を生成しました。内容を確認・編集して保存してください。");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "AI生成に失敗しました");
+    } finally {
+      setGeneratingImpression(false);
+    }
+  };
+
+  const handleSaveImpression = async () => {
+    setSavingImpression(true);
+    try {
+      await updateCaseMut.mutateAsync({
+        id,
+        data: {
+          surveyImpression: impressionText.trim() || null,
+          surveyImpressionAuthor: impressionAuthor.trim() || null,
+        },
+      });
+      utils.cases.get.invalidate({ id });
+      toast.success("所感を保存しました");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存に失敗しました");
+    } finally {
+      setSavingImpression(false);
+    }
+  };
+
+  const handleClearImpression = async () => {
+    setSavingImpression(true);
+    try {
+      await updateCaseMut.mutateAsync({
+        id,
+        data: { surveyImpression: null, surveyImpressionAuthor: null },
+      });
+      setImpressionText("");
+      setImpressionAuthor("");
+      utils.cases.get.invalidate({ id });
+      toast.success("所感を削除しました");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "削除に失敗しました");
+    } finally {
+      setSavingImpression(false);
+    }
+  };
 
   // 写真管理
   const fileRef = useRef<HTMLInputElement>(null);
@@ -241,7 +303,7 @@ export default function CaseReport({
     const order = config.photoTypes;
     const filtered = [...photos].filter((p) => order.includes(p.photoType));
     if (isCompletion) {
-      const groupRank = (t: PhotoTypeTag) => (groupOfType(t) === "before" ? 0 : 1);
+      const groupRank = (t: PhotoTypeTag) => groupOfType(t) === "before" ? 0 : groupOfType(t) === "process" ? 1 : 2;
       return filtered.sort((a, b) => {
         const ga = groupRank(a.photoType);
         const gb = groupRank(b.photoType);
@@ -586,6 +648,73 @@ export default function CaseReport({
         </div>
       </div>
 
+      {/* 所感入力セクション（現調報告書のみ） */}
+      {reportType === "survey" && (
+        <div className="no-print max-w-[800px] mx-auto mb-6">
+          <Card>
+            <CardContent className="pt-6 space-y-4">
+              <div className="flex items-center gap-2">
+                <PenLine className="h-4 w-4 text-muted-foreground" />
+                <h3 className="font-serif-jp text-base font-semibold">所感</h3>
+              </div>
+              <p className="text-xs text-muted-foreground -mt-2">
+                現場調査後の所感を自由に記入できます。AIによる文章生成も利用可能です。
+              </p>
+              <div className="grid gap-1.5 max-w-xs">
+                <Label className="text-xs">記入者</Label>
+                <Input
+                  value={impressionAuthor}
+                  onChange={(e) => setImpressionAuthor(e.target.value)}
+                  placeholder="例）山田 太郎"
+                  className="h-9"
+                />
+              </div>
+              <Textarea
+                value={impressionText}
+                onChange={(e) => setImpressionText(e.target.value)}
+                placeholder="現場の状況、推定原因、推奨対応策などを記入..."
+                rows={5}
+                className="text-sm"
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGenerateImpression}
+                  disabled={generatingImpression}
+                >
+                  {generatingImpression ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                  ) : (
+                    <span className="mr-1">✨</span>
+                  )}
+                  AIで所感を生成
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleSaveImpression}
+                  disabled={savingImpression}
+                >
+                  {savingImpression ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                  保存
+                </Button>
+                {caseData?.surveyImpression && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive"
+                    onClick={handleClearImpression}
+                    disabled={savingImpression}
+                  >
+                    削除
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* 署名コントロール（PDFには含めない） */}
       <div className="no-print max-w-[800px] mx-auto mb-6">
         <Card>
@@ -702,7 +831,7 @@ export default function CaseReport({
             <p className="text-[11px] text-muted-foreground -mt-1">
               {reportType === "survey"
                 ? "現調・施工前の写真が載ります。ドラッグで並び替え、各写真のコメントも編集できます。"
-                : "「施工前（現調）」「施工後」に振り分けて写真を取り込めます。各グループ内はドラッグで並び替えでき、報告書には施工前→施工後の順で上から羅列されます。区分を変更するとグループも移動します。"}
+                : "「施工前（現調）」「施工中」「施工後」に振り分けて写真を取り込めます。各グループ内はドラッグで並び替えでき、報告書には施工前→施工中→施工後の順で上から羅列されます。区分を変更するとグループも移動します。"}
             </p>
 
             {/* 追加コントロール */}
@@ -774,7 +903,7 @@ export default function CaseReport({
               </p>
             ) : isCompletion ? (
               <div className="space-y-4">
-                {(["before", "after"] as PhotoGroupKey[]).map((gkey) => {
+                {(["before", "process", "after"] as PhotoGroupKey[]).map((gkey) => {
                   const items = reportPhotos
                     .map((photo, index) => ({ photo, index }))
                     .filter(({ photo }) => groupOfType(photo.photoType) === gkey);
@@ -800,10 +929,12 @@ export default function CaseReport({
                           className={`inline-flex h-5 items-center rounded-full px-2 text-[11px] font-bold ${
                             gkey === "before"
                               ? "bg-muted text-foreground"
-                              : "bg-primary text-primary-foreground"
+                              : gkey === "process"
+                                ? "bg-blue-600 text-white"
+                                : "bg-primary text-primary-foreground"
                           }`}
                         >
-                          {gkey === "before" ? "BEFORE" : "AFTER"}
+                          {gkey === "before" ? "BEFORE" : gkey === "process" ? "PROCESS" : "AFTER"}
                         </span>
                         <h3 className="text-sm font-semibold font-serif-jp">
                           {GROUP_LABEL[gkey]}
@@ -840,10 +971,13 @@ export default function CaseReport({
           // 本文の行数でページ分割を判定（約800文字以上または15行以上で分割）
           const bodyText = caseData.requestContent || "";
           const notesText = caseData.notes || "";
+          const impText = (reportType === "survey" ? caseData.surveyImpression : null) || "";
           const bodyLines = bodyText.split("\n").length;
           const notesLines = notesText.split("\n").length;
-          const totalTextLines = bodyLines + (notesText ? notesLines + 2 : 0);
-          const needsSplit = totalTextLines > 15 || (bodyText.length + notesText.length) > 800;
+          const impLines = impText ? impText.split("\n").length + 2 : 0;
+          const totalTextLines = bodyLines + (notesText ? notesLines + 2 : 0) + impLines;
+          const totalChars = bodyText.length + notesText.length + impText.length;
+          const needsSplit = totalTextLines > 15 || totalChars > 800;
 
           const headerBlock = (
             <>
@@ -936,6 +1070,19 @@ export default function CaseReport({
                   <p className="text-[12.5px] whitespace-pre-wrap leading-[1.7] mb-7 px-0.5">
                     {reportLabel(caseData.notes)}
                   </p>
+                </>
+              )}
+              {reportType === "survey" && caseData.surveyImpression && (
+                <>
+                  <SectionBand>所感</SectionBand>
+                  <p className="text-[12.5px] whitespace-pre-wrap leading-[1.7] mb-4 px-0.5">
+                    {reportLabel(caseData.surveyImpression)}
+                  </p>
+                  {caseData.surveyImpressionAuthor && (
+                    <p className="text-[11px] text-right text-muted-foreground mb-7 px-0.5">
+                      記入者：{caseData.surveyImpressionAuthor}
+                    </p>
+                  )}
                 </>
               )}
             </>

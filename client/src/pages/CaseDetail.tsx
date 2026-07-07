@@ -81,6 +81,7 @@ const URGENCY_LABEL: Record<string, string> = { S: "緊急", A: "高", B: "中",
 const PHOTO_TYPES = [
   "施工前A",
   "施工前B",
+  "施工中",
   "施工後A",
   "施工後B",
   "設置状況",
@@ -1017,7 +1018,7 @@ function PhotosTab({
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  type CamTag = "現調" | "施工前A" | "施工前B" | "施工後A" | "施工後B" | "設置状況" | "メーカー型番";
+  type CamTag = "現調" | "施工前A" | "施工前B" | "施工中" | "施工後A" | "施工後B" | "設置状況" | "メーカー型番";
   const [cameraPhotoType, setCameraPhotoType] = useState<CamTag>("施工前A");
 
   const uploadMutation = trpc.photos.upload.useMutation();
@@ -1091,7 +1092,7 @@ function PhotosTab({
             </p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {(["現調", "施工前A", "施工前B", "施工後A", "施工後B", "設置状況", "メーカー型番"] as const).map((t) => (
+            {(["現調", "施工前A", "施工前B", "施工中", "施工後A", "施工後B", "設置状況", "メーカー型番"] as const).map((t) => (
               <Button
                 key={t}
                 variant={cameraPhotoType === t ? "default" : "outline"}

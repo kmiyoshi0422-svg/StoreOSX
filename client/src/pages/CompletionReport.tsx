@@ -72,6 +72,7 @@ const ALL_PHOTO_TYPES = [
   "現調",
   "施工前A",
   "施工前B",
+  "施工中",
   "施工後A",
   "施工後B",
   "設置状況",
@@ -84,7 +85,7 @@ type PhotoTypeTag = (typeof ALL_PHOTO_TYPES)[number];
 type PhotoPhase = "before" | "process" | "after";
 const phaseOfType = (t: string): PhotoPhase => {
   if (["施工後A", "施工後B", "設置状況"].includes(t)) return "after";
-  if (["施工中"].includes(t)) return "process"; // enumには無いが将来用
+  if (["施工中"].includes(t)) return "process";
   return "before";
 };
 const PHASE_META: Record<
@@ -113,7 +114,7 @@ const PHASE_META: Record<
 
 const DEFAULT_TYPE_OF_PHASE: Record<PhotoPhase, PhotoTypeTag> = {
   before: "現調",
-  process: "その他",
+  process: "施工中",
   after: "施工後A",
 };
 
@@ -261,7 +262,7 @@ export default function CompletionReport({ id }: { id: number }) {
       phaseOfType(t) === "before" ? 0 : phaseOfType(t) === "process" ? 1 : 2;
     return [...photos]
       .filter((p) =>
-        ["現調", "施工前A", "施工前B", "施工後A", "施工後B", "設置状況"].includes(p.photoType)
+        ["現調", "施工前A", "施工前B", "施工中", "施工後A", "施工後B", "設置状況"].includes(p.photoType)
       )
       .sort((a, b) => {
         const r = phaseRank(a.photoType) - phaseRank(b.photoType);

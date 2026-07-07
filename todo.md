@@ -519,3 +519,16 @@
 - [x] documentPdf（見積書・完了報告書HTML→PDF）: htmlToPDF関数を複数ページ分割対応に改修（キャンバス高さがA4超の場合に自動分割）
 - [x] PhotoLedger/Batch: 固定高グリッド＋perPage連動で既にページ境界での切れなし（対応済み）
 - [x] 型チェック・全276テストPASS確認
+
+## 写真区分に「施工中」追加（ユーザー指示）
+- [x] 写真のphase enum に「process」を追加（DB schema）
+- [x] 写真区分セレクトボックスに「施工中」選択肢を追加（フロントエンド）
+- [x] CompletionReport/PhotoLedgerで「施工中」写真を正しく表示
+- [x] CaseReport写真区分でも「施工中」を選択可能に
+
+## 現調報告書に「所感」欄追加（ユーザー指示）
+- [x] cases テーブルに surveyImpression（所感テキスト）と surveyImpressionAuthor（記入者）カラム追加
+- [x] 現調報告書（CaseReport）UIに所感の自由記入テキストエリア追加
+- [x] 所感欄にAI文章生成ボタンを追加
+- [x] 記入者を自由入力できるテキストフィールドを追加
+- [x] 所感をPDF出力に反映（「所感」セクションバンド＋本文＋記入者名表示）

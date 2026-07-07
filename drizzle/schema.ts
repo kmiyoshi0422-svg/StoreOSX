@@ -91,12 +91,14 @@ export const cases = mysqlTable("cases", {
   constructionDate: timestamp("constructionDate"), // 施工日
   completedAt: timestamp("completedAt"), // 完了日
   // メタ
-  notes: text("notes"),
+    notes: text("notes"),
+  // 現調報告書 所感
+  surveyImpression: text("surveyImpression"), // 所感テキスト
+  surveyImpressionAuthor: varchar("surveyImpressionAuthor", { length: 128 }), // 記入者名
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
-
 export type Case = typeof cases.$inferSelect;
 export type InsertCase = typeof cases.$inferInsert;
 
@@ -134,6 +136,7 @@ export const photos = mysqlTable("photos", {
   photoType: mysqlEnum("photoType", [
     "施工前A",    // 全景
     "施工前B",    // 近景
+    "施工中",     // 施工中の状況
     "施工後A",    // 全景
     "施工後B",    // 近景
     "設置状況",

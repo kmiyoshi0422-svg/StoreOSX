@@ -147,6 +147,8 @@ const caseInputSchema = z.object({
   constructionDate: z.date().nullish(),
   completedAt: z.date().nullish(),
   notes: z.string().nullish(),
+  surveyImpression: z.string().nullish(),
+  surveyImpressionAuthor: z.string().nullish(),
 });
 
 // ============================================================
@@ -798,10 +800,37 @@ export const appRouter = router({
       const storeArr = Object.values(byStore)
         .map((s) => ({ ...s, budget: calcBudget(s.estimated), diff: s.actual - calcBudget(s.estimated) }))
         .sort((a, b) => b.actual - a.actual);
-      return { monthly: monthlyArr, byStore: storeArr, budgetRatio: BUDGET_RATIO };
+            return { monthly: monthlyArr, byStore: storeArr, budgetRatio: BUDGET_RATIO };
     }),
+    // 現調報告書の所感をAIで生成
+    generateImpression: protectedProcedure
+      .input(z.object({ caseId: z.number() }))
+      .mutation(async ({ input }) => {
+        const c = await getCaseById(input.caseId);
+        if (!c) throw new Error("案件が見つかりません");
+        const prompt = [
+          "あなたは建物・設備の現場調査担当者です。以下の案件情報をもとに、現場調査後の所感を簡潔に書いてください。",
+          "所感は3〜5文程度で、現場の状況、推定される原因、推奨する対応策を含めてください。",
+          "専門用語を適度に使い、実務的なトーンで書いてください。",
+          "",
+          `店舗名: ${c.storeName}`,
+          `依頼内容: ${c.requestContent || "なし"}`,
+          `工事区分(大): ${c.categoryLarge || "なし"}`,
+          `工事区分(中): ${c.categoryMedium || "なし"}`,
+          `工事区分(小): ${c.categorySmall || "なし"}`,
+          `備考: ${c.notes || "なし"}`,
+        ].join("\n");
+        const response = await invokeLLM({
+          messages: [
+            { role: "system", content: "現場調査の所感を日本語で書くアシスタントです。平易で実務的な文章を心がけてください。" },
+            { role: "user", content: prompt },
+          ],
+        });
+        const raw = response.choices?.[0]?.message?.content ?? "";
+        const text = typeof raw === "string" ? raw : "";
+        return { impression: text.trim() };
+      }),
   }),
-
   checklist: router({
     listByCase: protectedProcedure
       .input(z.object({ caseId: z.number() }))
@@ -892,6 +921,7 @@ export const appRouter = router({
             .enum([
               "施工前A",
               "施工前B",
+              "施工中",
               "施工後A",
               "施工後B",
               "設置状況",
@@ -937,6 +967,7 @@ export const appRouter = router({
             .enum([
               "施工前A",
               "施工前B",
+              "施工中",
               "施工後A",
               "施工後B",
               "設置状況",

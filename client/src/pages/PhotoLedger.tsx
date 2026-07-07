@@ -133,6 +133,7 @@ export default function PhotoLedger({ id }: { id: number }) {
     "現調",
     "施工前A",
     "施工前B",
+    "施工中",
     "施工後A",
     "施工後B",
     "メーカー型番",
