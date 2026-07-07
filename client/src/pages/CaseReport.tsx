@@ -400,33 +400,42 @@ export default function CaseReport({
     const d = draftOf(photo);
     const dirty =
       d.workItem !== (photo.workItem ?? "") || d.memo !== (photo.memo ?? "");
+    const isDropTarget = overIndex === index && dragIndex !== null && dragIndex !== index;
+    const isDragging = dragIndex === index;
     return (
-      <div
-        key={photo.id}
-        draggable
-        onDragStart={() => setDragIndex(index)}
-        onDragEnter={() => setOverIndex(index)}
-        onDragOver={(e) => e.preventDefault()}
-        onDragEnd={() => {
-          if (dragIndex !== null && overIndex !== null) {
-            reorderPhotos(dragIndex, overIndex);
-          }
-          setDragIndex(null);
-          setOverIndex(null);
-        }}
-        onDrop={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (dragIndex !== null) reorderPhotos(dragIndex, index);
-          setDragIndex(null);
-          setOverIndex(null);
-        }}
-        className={`rounded-lg border overflow-hidden bg-card transition-all ${
-          overIndex === index && dragIndex !== null && dragIndex !== index
-            ? "border-primary ring-2 ring-primary/40"
-            : "border-border/60"
-        } ${dragIndex === index ? "opacity-50" : ""}`}
-      >
+      <div key={photo.id} className="relative">
+        {/* 挿入位置インジケーター（上側） */}
+        {isDropTarget && dragIndex !== null && dragIndex > index && (
+          <div className="absolute -top-1.5 left-2 right-2 h-0.5 bg-primary rounded-full z-10 shadow-[0_0_4px_rgba(59,130,246,0.5)]" />
+        )}
+        <div
+          draggable
+          onDragStart={(e) => {
+            setDragIndex(index);
+            e.dataTransfer.effectAllowed = "move";
+          }}
+          onDragEnter={() => setOverIndex(index)}
+          onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+          onDragEnd={() => {
+            if (dragIndex !== null && overIndex !== null) {
+              reorderPhotos(dragIndex, overIndex);
+            }
+            setDragIndex(null);
+            setOverIndex(null);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (dragIndex !== null) reorderPhotos(dragIndex, index);
+            setDragIndex(null);
+            setOverIndex(null);
+          }}
+          className={`rounded-lg border overflow-hidden bg-card transition-all duration-150 ${
+            isDropTarget
+              ? "border-primary ring-2 ring-primary/40 scale-[1.02]"
+              : "border-border/60"
+          } ${isDragging ? "opacity-40 scale-95" : ""}`}
+        >
         <div className="flex">
           <div
             className="flex items-center justify-center px-1 bg-muted/60 cursor-grab active:cursor-grabbing touch-none"
@@ -566,6 +575,11 @@ export default function CaseReport({
             )}
           </div>
         </div>
+        </div>
+        {/* 挿入位置インジケーター（下側） */}
+        {isDropTarget && dragIndex !== null && dragIndex < index && (
+          <div className="absolute -bottom-1.5 left-2 right-2 h-0.5 bg-primary rounded-full z-10 shadow-[0_0_4px_rgba(59,130,246,0.5)]" />
+        )}
       </div>
     );
   };
