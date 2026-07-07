@@ -30,6 +30,7 @@ import PartnerView from "./pages/PartnerView";
 import StoresList from "./pages/StoresList";
 import Workload from "./pages/Workload";
 import FullwidthExclusions from "./pages/FullwidthExclusions";
+import ImpressionSettings from "./pages/ImpressionSettings";
 
 function Router() {
   return (
@@ -69,6 +70,7 @@ function Router() {
         <Route path={"/stores"} component={StoresList} />
         <Route path={"/workload"} component={Workload} />
         <Route path={"/settings/exclusions"} component={FullwidthExclusions} />
+        <Route path={"/settings/impression"} component={ImpressionSettings} />
         <Route path={"/partners"} component={Partners} />
         <Route path={"/partners/:id"}>
           {(params) => <PartnerDetail id={Number(params.id)} />}

@@ -194,10 +194,20 @@ export default function CaseReport({
   const generateImpressionMut = trpc.cases.generateImpression.useMutation();
   const updateCaseMut = trpc.cases.update.useMutation();
 
+  // 設定からAI生成トーン・文章量を取得
+  const { data: impressionConfigData } = trpc.appSettings.get.useQuery({ key: "impression_config" });
+  const { data: impressionAuthorsData } = trpc.appSettings.get.useQuery({ key: "impression_authors" });
+  const presetAuthors: string[] = (impressionAuthorsData?.value as string[] | null) ?? [];
+
   const handleGenerateImpression = async () => {
     setGeneratingImpression(true);
     try {
-      const result = await generateImpressionMut.mutateAsync({ caseId: id });
+      const cfg = impressionConfigData?.value as { tone?: string; length?: string } | null;
+      const result = await generateImpressionMut.mutateAsync({
+        caseId: id,
+        tone: (cfg?.tone as "polite" | "standard" | "concise") || "standard",
+        length: (cfg?.length as "short" | "standard" | "long") || "standard",
+      });
       setImpressionText(result.impression);
       toast.success("AIが所感を生成しました。内容を確認・編集して保存してください。");
     } catch (e) {
@@ -252,6 +262,16 @@ export default function CaseReport({
   const [perPage, setPerPage] = useState<4 | 6>(4);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
+  // タッチDnD用state
+  const touchState = useRef<{
+    active: boolean;
+    startIndex: number | null;
+    timer: ReturnType<typeof setTimeout> | null;
+    startX: number;
+    startY: number;
+    ghost: HTMLElement | null;
+  }>({ active: false, startIndex: null, timer: null, startX: 0, startY: 0, ghost: null });
+  const itemRefs = useRef<Map<number, HTMLElement>>(new Map());
   // コメント編集のローカル下書き（photoId -> { workItem, memo }）
   const [drafts, setDrafts] = useState<Record<number, { workItem: string; memo: string }>>({});
   const refetchPhotos = () => utils.photos.listByCase.invalidate({ caseId: id });
@@ -357,6 +377,89 @@ export default function CaseReport({
     reorderPhotos(index, index + dir);
   };
 
+  // --- タッチDnDハンドラ ---
+  const touchCleanup = () => {
+    const ts = touchState.current;
+    if (ts.timer) { clearTimeout(ts.timer); ts.timer = null; }
+    if (ts.ghost) { ts.ghost.remove(); ts.ghost = null; }
+    ts.active = false;
+    ts.startIndex = null;
+  };
+
+  const findItemAtPoint = (x: number, y: number): number | null => {
+    let found: number | null = null;
+    itemRefs.current.forEach((el, idx) => {
+      if (found !== null) return;
+      const r = el.getBoundingClientRect();
+      if (y >= r.top && y <= r.bottom && x >= r.left && x <= r.right) found = idx;
+    });
+    return found;
+  };
+
+  const onTouchStart = (index: number, e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    const ts = touchState.current;
+    ts.startX = touch.clientX;
+    ts.startY = touch.clientY;
+    ts.startIndex = index;
+    ts.timer = setTimeout(() => {
+      // ロングプレス成功
+      if (navigator.vibrate) navigator.vibrate(30);
+      ts.active = true;
+      setDragIndex(index);
+      setOverIndex(index);
+      // ゴースト作成
+      const el = itemRefs.current.get(index);
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const ghost = el.cloneNode(true) as HTMLElement;
+        ghost.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;opacity:0.85;transform:scale(1.03);z-index:9999;pointer-events:none;box-shadow:0 8px 32px rgba(0,0,0,0.18);border-radius:8px;`;
+        document.body.appendChild(ghost);
+        ts.ghost = ghost;
+      }
+    }, 300);
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    const ts = touchState.current;
+    const touch = e.touches[0];
+    const dx = touch.clientX - ts.startX;
+    const dy = touch.clientY - ts.startY;
+    if (!ts.active) {
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+        if (ts.timer) { clearTimeout(ts.timer); ts.timer = null; }
+      }
+      return;
+    }
+    e.preventDefault();
+    // ゴースト移動
+    if (ts.ghost) {
+      const curTop = parseFloat(ts.ghost.style.top);
+      const curLeft = parseFloat(ts.ghost.style.left);
+      ts.ghost.style.top = `${curTop + (touch.clientY - ts.startY)}px`;
+      ts.ghost.style.left = `${curLeft + (touch.clientX - ts.startX)}px`;
+    }
+    ts.startX = touch.clientX;
+    ts.startY = touch.clientY;
+    // ドロップ先検出
+    const overIdx = findItemAtPoint(touch.clientX, touch.clientY);
+    if (overIdx !== null) setOverIndex(overIdx);
+    // 自動スクロール
+    const threshold = 60;
+    if (touch.clientY < threshold) window.scrollBy(0, -6);
+    else if (touch.clientY > window.innerHeight - threshold) window.scrollBy(0, 6);
+  };
+
+  const onTouchEnd = () => {
+    const ts = touchState.current;
+    if (ts.active && ts.startIndex !== null && overIndex !== null && ts.startIndex !== overIndex) {
+      reorderPhotos(ts.startIndex, overIndex);
+    }
+    touchCleanup();
+    setDragIndex(null);
+    setOverIndex(null);
+  };
+
   // コメント（工事項目/メモ）の保存
   const saveComment = (photo: Photo) => {
     const d = drafts[photo.id];
@@ -403,7 +506,11 @@ export default function CaseReport({
     const isDropTarget = overIndex === index && dragIndex !== null && dragIndex !== index;
     const isDragging = dragIndex === index;
     return (
-      <div key={photo.id} className="relative">
+      <div
+        key={photo.id}
+        className="relative"
+        ref={(el) => { if (el) itemRefs.current.set(index, el); else itemRefs.current.delete(index); }}
+      >
         {/* 挿入位置インジケーター（上側） */}
         {isDropTarget && dragIndex !== null && dragIndex > index && (
           <div className="absolute -top-1.5 left-2 right-2 h-0.5 bg-primary rounded-full z-10 shadow-[0_0_4px_rgba(59,130,246,0.5)]" />
@@ -438,10 +545,13 @@ export default function CaseReport({
         >
         <div className="flex">
           <div
-            className="flex items-center justify-center px-1 bg-muted/60 cursor-grab active:cursor-grabbing touch-none"
+            className="flex items-center justify-center px-2 bg-muted/60 cursor-grab active:cursor-grabbing"
             title="ドラッグして並び替え"
+            onTouchStart={(e) => onTouchStart(index, e)}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
           >
-            <GripVertical className="h-4 w-4 text-muted-foreground" />
+            <GripVertical className="h-5 w-5 text-muted-foreground" />
           </div>
           <div className="relative w-28 shrink-0 aspect-[4/3] bg-muted overflow-hidden">
             <span className="absolute top-1 left-1 z-10 text-[10px] font-bold bg-foreground/80 text-background rounded px-1.5 py-0.5">
@@ -676,12 +786,29 @@ export default function CaseReport({
               </p>
               <div className="grid gap-1.5 max-w-xs">
                 <Label className="text-xs">記入者</Label>
-                <Input
-                  value={impressionAuthor}
-                  onChange={(e) => setImpressionAuthor(e.target.value)}
-                  placeholder="例）山田 太郎"
-                  className="h-9"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    value={impressionAuthor}
+                    onChange={(e) => setImpressionAuthor(e.target.value)}
+                    placeholder="例）山田 太郎"
+                    className="h-9 flex-1"
+                  />
+                  {presetAuthors.length > 0 && (
+                    <Select
+                      value=""
+                      onValueChange={(v) => setImpressionAuthor(v)}
+                    >
+                      <SelectTrigger className="h-9 w-[120px]">
+                        <SelectValue placeholder="選択" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {presetAuthors.map((name) => (
+                          <SelectItem key={name} value={name}>{name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
               </div>
               <Textarea
                 value={impressionText}

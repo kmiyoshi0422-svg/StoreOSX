@@ -59,6 +59,9 @@ import {
   updateChecklistItem,
   updatePartner,
   updatePhoto,
+  getAppSetting,
+  setAppSetting,
+  getAllAppSettings,
 } from "./db";
 import { makeRequest } from "./_core/map";
 import {
@@ -804,14 +807,31 @@ export const appRouter = router({
     }),
     // 現調報告書の所感をAIで生成
     generateImpression: protectedProcedure
-      .input(z.object({ caseId: z.number() }))
+      .input(z.object({
+        caseId: z.number(),
+        tone: z.enum(["polite", "standard", "concise"]).optional().default("standard"),
+        length: z.enum(["short", "standard", "long"]).optional().default("standard"),
+      }))
       .mutation(async ({ input }) => {
         const c = await getCaseById(input.caseId);
         if (!c) throw new Error("案件が見つかりません");
+
+        // トーン設定
+        const toneMap = {
+          polite: "丁寧で礼儀正しいトーンで、「です・ます」調で書いてください。",
+          standard: "専門用語を適度に使い、実務的なトーンで書いてください。",
+          concise: "簡潔で要点のみを絞った簡素なトーンで書いてください。無駄な修飾語を避けてください。",
+        };
+        const lengthMap = {
+          short: "所感は2〜3文程度で簡潔にまとめてください。",
+          standard: "所感は3〜5文程度で、現場の状況、推定される原因、推奨する対応策を含めてください。",
+          long: "所感は5〜8文程度で、現場の状況、推定される原因、推奨する対応策、今後の注意点を詳細に含めてください。",
+        };
+
         const prompt = [
-          "あなたは建物・設備の現場調査担当者です。以下の案件情報をもとに、現場調査後の所感を簡潔に書いてください。",
-          "所感は3〜5文程度で、現場の状況、推定される原因、推奨する対応策を含めてください。",
-          "専門用語を適度に使い、実務的なトーンで書いてください。",
+          "あなたは建物・設備の現場調査担当者です。以下の案件情報をもとに、現場調査後の所感を書いてください。",
+          lengthMap[input.length],
+          toneMap[input.tone],
           "",
           `店舗名: ${c.storeName}`,
           `依頼内容: ${c.requestContent || "なし"}`,
@@ -822,7 +842,7 @@ export const appRouter = router({
         ].join("\n");
         const response = await invokeLLM({
           messages: [
-            { role: "system", content: "現場調査の所感を日本語で書くアシスタントです。平易で実務的な文章を心がけてください。" },
+            { role: "system", content: "現場調査の所感を日本語で書くアシスタントです。" },
             { role: "user", content: prompt },
           ],
         });
@@ -933,6 +953,7 @@ export const appRouter = router({
           workCategory: z.string().nullish(),
           workItem: z.string().nullish(),
           memo: z.string().nullish(),
+          takenAt: z.number().nullish(), // 撮影日時（Unix ms）
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -946,6 +967,10 @@ export const appRouter = router({
           : "jpg";
         const key = `case-${input.caseId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
         const { url, key: fileKey } = await storagePut(key, buffer, input.mimeType);
+        // 施工中写真の場合、撮影日時を自動記録
+        const takenAt = input.takenAt
+          ? new Date(input.takenAt)
+          : input.photoType === "施工中" ? new Date() : null;
         const id = await createPhoto({
           caseId: input.caseId,
           fileKey,
@@ -955,6 +980,7 @@ export const appRouter = router({
           workItem: input.workItem ?? null,
           memo: input.memo ?? null,
           uploadedBy: ctx.user.id,
+          takenAt,
         });
         return { id, url };
       }),
@@ -986,15 +1012,19 @@ export const appRouter = router({
               message: "rotationは 0/90/180/270 のいずれかである必要があります",
             })
             .optional(),
-          orderNo: z.number().int().optional(),
+                    orderNo: z.number().int().optional(),
+          takenAt: z.number().nullish(), // 撮影日時（Unix ms）
         })
       )
       .mutation(async ({ input }) => {
-        const { id, ...data } = input;
-        await updatePhoto(id, data);
+        const { id, takenAt: takenAtMs, ...data } = input;
+        const updateData: Record<string, unknown> = { ...data };
+        if (takenAtMs !== undefined) {
+          updateData.takenAt = takenAtMs ? new Date(takenAtMs) : null;
+        }
+        await updatePhoto(id, updateData);
         return { success: true };
       }),
-
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
@@ -2581,6 +2611,24 @@ export const appRouter = router({
     }),
   }),
 
+  // アプリ設定（AI生成トーン・記入者プリセット等）
+  appSettings: router({
+    get: protectedProcedure
+      .input(z.object({ key: z.string() }))
+      .query(async ({ input }) => {
+        const val = await getAppSetting(input.key);
+        return { key: input.key, value: val };
+      }),
+    getAll: protectedProcedure.query(async () => {
+      return getAllAppSettings();
+    }),
+    set: protectedProcedure
+      .input(z.object({ key: z.string(), value: z.unknown() }))
+      .mutation(async ({ input }) => {
+        await setAppSetting(input.key, input.value);
+        return { success: true };
+      }),
+  }),
   // 全角化の除外辞書（型番・メール・固有名詞などをPDFで半角のまま残す）
   fullwidthExclusions: router({
     list: protectedProcedure.query(() => listFullwidthExclusions()),

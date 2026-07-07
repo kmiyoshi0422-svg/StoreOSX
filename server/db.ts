@@ -10,6 +10,7 @@ import {
   checklistItems,
   estimates,
   expenses,
+  appSettings,
   InsertCase,
   InsertCaseSignature,
   InsertChecklistItem,
@@ -235,7 +236,7 @@ export async function createPhoto(data: InsertPhoto) {
 
 export async function updatePhoto(
   id: number,
-  data: Partial<Pick<InsertPhoto, "photoType" | "workCategory" | "workItem" | "memo" | "rotation" | "orderNo">>
+  data: Partial<Pick<InsertPhoto, "photoType" | "workCategory" | "workItem" | "memo" | "rotation" | "orderNo" | "takenAt">>
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -701,4 +702,40 @@ export async function deleteFullwidthExclusion(id: number) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.delete(fullwidthExclusions).where(eq(fullwidthExclusions.id, id));
+}
+
+
+// ===== アプリ設定（キーバリューストア） =====
+/** 設定値を取得（JSONパース済み） */
+export async function getAppSetting<T = unknown>(key: string): Promise<T | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(appSettings).where(eq(appSettings.settingKey, key)).limit(1);
+  if (rows.length === 0) return null;
+  try { return JSON.parse(rows[0].settingValue) as T; } catch { return null; }
+}
+
+/** 設定値を保存（JSON文字列化して保存） */
+export async function setAppSetting(key: string, value: unknown): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const json = JSON.stringify(value);
+  const existing = await db.select().from(appSettings).where(eq(appSettings.settingKey, key)).limit(1);
+  if (existing.length > 0) {
+    await db.update(appSettings).set({ settingValue: json }).where(eq(appSettings.settingKey, key));
+  } else {
+    await db.insert(appSettings).values({ settingKey: key, settingValue: json });
+  }
+}
+
+/** 全設定を取得 */
+export async function getAllAppSettings(): Promise<Record<string, unknown>> {
+  const db = await getDb();
+  if (!db) return {};
+  const rows = await db.select().from(appSettings);
+  const result: Record<string, unknown> = {};
+  for (const row of rows) {
+    try { result[row.settingKey] = JSON.parse(row.settingValue); } catch { result[row.settingKey] = row.settingValue; }
+  }
+  return result;
 }

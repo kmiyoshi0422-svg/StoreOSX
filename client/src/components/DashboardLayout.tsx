@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, FilePlus, ClipboardList, Upload, Wallet, BarChart3, Briefcase, FileSearch, FileText, Users, Building2, Gauge, Receipt, TrendingUp, MapPinned, Images, BookMarked } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, FilePlus, ClipboardList, Upload, Wallet, BarChart3, Briefcase, FileSearch, FileText, Users, Building2, Gauge, Receipt, TrendingUp, MapPinned, Images, BookMarked, Sparkles } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -47,6 +47,7 @@ const menuItems: MenuItem[] = [
   { icon: BarChart3, label: "月次レポート", path: "/reports/monthly", adminOnly: true },
   { icon: TrendingUp, label: "実績レポート", path: "/reports", adminOnly: true },
   { icon: BookMarked, label: "全角化除外辞書", path: "/settings/exclusions" },
+  { icon: Sparkles, label: "所感AI設定", path: "/settings/impression" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";

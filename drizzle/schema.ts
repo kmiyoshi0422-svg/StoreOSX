@@ -152,6 +152,8 @@ export const photos = mysqlTable("photos", {
   rotation: int("rotation").default(0).notNull(),
   // 順序
   orderNo: int("orderNo").default(0).notNull(),
+  // 撮影日時（EXIFまたはアップロード時刻）
+  takenAt: timestamp("takenAt"),
   // メタ
   uploadedBy: int("uploadedBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -160,6 +162,20 @@ export const photos = mysqlTable("photos", {
 
 export type Photo = typeof photos.$inferSelect;
 export type InsertPhoto = typeof photos.$inferInsert;
+
+/**
+ * アプリ設定（キーバリューストア）
+ */
+export const appSettings = mysqlTable("app_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  settingKey: varchar("settingKey", { length: 128 }).notNull().unique(),
+  settingValue: text("settingValue").notNull(), // JSON形式で保存
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type AppSetting = typeof appSettings.$inferSelect;
+export type InsertAppSetting = typeof appSettings.$inferInsert;
 
 /**
  * 協力会社マスタ

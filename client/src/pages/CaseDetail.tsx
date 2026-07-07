@@ -1182,6 +1182,7 @@ function PhotoCard({
     workItem: string | null;
     memo: string | null;
     rotation?: number;
+    takenAt?: Date | string | null;
   };
   onUpdate: (data: {
     photoType?: typeof PHOTO_TYPES[number];
@@ -1189,6 +1190,7 @@ function PhotoCard({
     workItem?: string | null;
     memo?: string | null;
     rotation?: number;
+    takenAt?: number | null;
   }) => void;
   onDelete: () => void;
   onOpen?: () => void;
@@ -1315,6 +1317,14 @@ function PhotoCard({
             placeholder="現場メモ"
           />
         </div>
+        {photo.takenAt && (
+          <div className="pt-1 border-t">
+            <Label className="text-[10px] text-muted-foreground">撮影日時</Label>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {new Date(photo.takenAt).toLocaleString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
