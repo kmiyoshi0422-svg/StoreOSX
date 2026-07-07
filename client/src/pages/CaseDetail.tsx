@@ -51,6 +51,8 @@ import {
   Wand2,
   RotateCw,
   RotateCcw,
+  Clock,
+  CheckSquare,
 } from "lucide-react";
 import { generateQuotePDF, generateCompletionReportPDF } from "@/lib/documentPdf";
 import {
@@ -1020,6 +1022,12 @@ function PhotosTab({
   const [uploading, setUploading] = useState(false);
   type CamTag = "現調" | "施工前A" | "施工前B" | "施工中" | "施工後A" | "施工後B" | "設置状況" | "メーカー型番";
   const [cameraPhotoType, setCameraPhotoType] = useState<CamTag>("施工前A");
+  // ビュー切替: grid | timeline
+  const [viewMode, setViewMode] = useState<"grid" | "timeline">("grid");
+  // 一括選択
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
+  const bulkUpdateMutation = trpc.photos.bulkUpdateType.useMutation({ onSuccess: () => { onUpdated(); setSelectedIds(new Set()); setSelectionMode(false); toast.success("区分を一括変更しました"); } });
 
   const uploadMutation = trpc.photos.upload.useMutation();
   const updateMutation = trpc.photos.update.useMutation({ onSuccess: onUpdated });
@@ -1132,6 +1140,71 @@ function PhotosTab({
         </CardContent>
       </Card>
 
+      {/* View Controls */}
+      {photos.length > 0 && (
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Button
+              variant={viewMode === "grid" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setViewMode("grid")}
+              className={viewMode === "grid" ? "" : "bg-background"}
+            >
+              <ImageIcon className="h-3.5 w-3.5 mr-1" />
+              グリッド
+            </Button>
+            <Button
+              variant={viewMode === "timeline" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setViewMode("timeline")}
+              className={viewMode === "timeline" ? "" : "bg-background"}
+            >
+              <Clock className="h-3.5 w-3.5 mr-1" />
+              タイムライン
+            </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={selectionMode ? "default" : "outline"}
+              size="sm"
+              onClick={() => { setSelectionMode(!selectionMode); setSelectedIds(new Set()); }}
+              className={selectionMode ? "" : "bg-background"}
+            >
+              <CheckSquare className="h-3.5 w-3.5 mr-1" />
+              {selectionMode ? "選択中" : "一括選択"}
+            </Button>
+            {selectionMode && (
+              <>
+                <Button variant="outline" size="sm" className="bg-background" onClick={() => setSelectedIds(new Set(photos.map(p => p.id)))}>全選択</Button>
+                <Button variant="outline" size="sm" className="bg-background" onClick={() => setSelectedIds(new Set())}>解除</Button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Action Bar */}
+      {selectionMode && selectedIds.size > 0 && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="p-3 flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-medium">{selectedIds.size}枚選択中</span>
+            <span className="text-xs text-muted-foreground">→ 区分を変更:</span>
+            {PHOTO_TYPES.map((t) => (
+              <Button
+                key={t}
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs bg-background"
+                disabled={bulkUpdateMutation.isPending}
+                onClick={() => bulkUpdateMutation.mutate({ ids: Array.from(selectedIds), photoType: t })}
+              >
+                {t}
+              </Button>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Photos */}
       {photos.length === 0 ? (
         <Card className="border-dashed">
@@ -1141,20 +1214,101 @@ function PhotosTab({
             <p className="text-sm text-muted-foreground max-w-sm">現地写真をアップロードすると、現調・施工写真として台帳に反映されます。</p>
           </CardContent>
         </Card>
+      ) : viewMode === "timeline" ? (
+        /* Timeline View */
+        <div className="relative pl-8">
+          {/* Vertical line */}
+          <div className="absolute left-3 top-0 bottom-0 w-0.5 bg-border" />
+          {(() => {
+            const processPhotos = photos
+              .filter(p => p.photoType === "施工中" && p.takenAt)
+              .sort((a, b) => new Date(a.takenAt!).getTime() - new Date(b.takenAt!).getTime());
+            if (processPhotos.length === 0) {
+              return (
+                <div className="py-8 text-center text-muted-foreground text-sm">
+                  施工中写真（撮影日時付き）がありません。<br />
+                  施工中写真をアップロードすると、時系列で工程を確認できます。
+                </div>
+              );
+            }
+            return processPhotos.map((p, i) => (
+              <div key={p.id} className="relative mb-6 last:mb-0">
+                {/* Node */}
+                <div className="absolute -left-5 top-3 w-3 h-3 rounded-full bg-primary border-2 border-background shadow-sm" />
+                <Card className={`overflow-hidden transition-all ${selectionMode && selectedIds.has(p.id) ? "ring-2 ring-primary" : ""}`}>
+                  <div className="flex gap-3 p-3">
+                    {selectionMode && (
+                      <div className="flex items-start pt-1">
+                        <Checkbox
+                          checked={selectedIds.has(p.id)}
+                          onCheckedChange={(checked) => {
+                            const next = new Set(selectedIds);
+                            checked ? next.add(p.id) : next.delete(p.id);
+                            setSelectedIds(next);
+                          }}
+                        />
+                      </div>
+                    )}
+                    <div className="w-20 h-20 flex-shrink-0 rounded overflow-hidden bg-muted">
+                      <img
+                        src={p.fileUrl}
+                        alt=""
+                        className="w-full h-full object-cover cursor-zoom-in"
+                        style={{ transform: p.rotation ? `rotate(${p.rotation}deg)` : undefined }}
+                        onClick={() => lightbox.open(photos.indexOf(p))}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="text-[10px]">施工中</Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(p.takenAt!).toLocaleString("ja-JP", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                      {p.workItem && <p className="text-sm mt-1 truncate">{p.workItem}</p>}
+                      {p.memo && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{p.memo}</p>}
+                      {i > 0 && processPhotos[i-1].takenAt && (
+                        <p className="text-[10px] text-muted-foreground/60 mt-1">
+                          ↑ {Math.round((new Date(p.takenAt!).getTime() - new Date(processPhotos[i-1].takenAt!).getTime()) / 60000)}分後
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              </div>
+            ));
+          })()}
+        </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {photos.map((p, i) => (
-            <PhotoCard
-              key={p.id}
-              photo={p}
-              onOpen={() => lightbox.open(i)}
-              onUpdate={(data) => updateMutation.mutate({ id: p.id, ...data })}
-              onDelete={() => {
-                if (confirm("この写真を削除します。よろしいですか？")) {
-                  deleteMutation.mutate({ id: p.id });
-                }
-              }}
-            />
+            <div key={p.id} className="relative">
+              {selectionMode && (
+                <div className="absolute top-2 left-2 z-10">
+                  <Checkbox
+                    checked={selectedIds.has(p.id)}
+                    onCheckedChange={(checked) => {
+                      const next = new Set(selectedIds);
+                      checked ? next.add(p.id) : next.delete(p.id);
+                      setSelectedIds(next);
+                    }}
+                    className="bg-white/90 border-white shadow"
+                  />
+                </div>
+              )}
+              <div className={selectionMode && selectedIds.has(p.id) ? "ring-2 ring-primary rounded-lg" : ""}>
+                <PhotoCard
+                  photo={p}
+                  onOpen={() => lightbox.open(i)}
+                  onUpdate={(data) => updateMutation.mutate({ id: p.id, ...data })}
+                  onDelete={() => {
+                    if (confirm("この写真を削除します。よろしいですか？")) {
+                      deleteMutation.mutate({ id: p.id });
+                    }
+                  }}
+                />
+              </div>
+            </div>
           ))}
         </div>
       )}

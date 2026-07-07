@@ -1035,6 +1035,29 @@ export const appRouter = router({
     get: protectedProcedure
       .input(z.object({ id: z.number() }))
       .query(({ input }) => getPhotoById(input.id)),
+    bulkUpdateType: protectedProcedure
+      .input(
+        z.object({
+          ids: z.array(z.number()).min(1).max(200),
+          photoType: z.enum([
+            "施工前A",
+            "施工前B",
+            "施工中",
+            "施工後A",
+            "施工後B",
+            "設置状況",
+            "メーカー型番",
+            "現調",
+            "その他",
+          ]),
+        })
+      )
+      .mutation(async ({ input }) => {
+        for (const id of input.ids) {
+          await updatePhoto(id, { photoType: input.photoType });
+        }
+        return { success: true, count: input.ids.length };
+      }),
   }),
 
   // ==========================================================

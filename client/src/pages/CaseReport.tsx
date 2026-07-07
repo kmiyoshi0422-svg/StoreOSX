@@ -198,6 +198,8 @@ export default function CaseReport({
   const { data: impressionConfigData } = trpc.appSettings.get.useQuery({ key: "impression_config" });
   const { data: impressionAuthorsData } = trpc.appSettings.get.useQuery({ key: "impression_authors" });
   const presetAuthors: string[] = (impressionAuthorsData?.value as string[] | null) ?? [];
+  const { data: impressionTemplatesData } = trpc.appSettings.get.useQuery({ key: "impression_templates" });
+  const presetTemplates: string[] = (impressionTemplatesData?.value as string[] | null) ?? [];
 
   const handleGenerateImpression = async () => {
     setGeneratingImpression(true);
@@ -817,6 +819,28 @@ export default function CaseReport({
                 rows={5}
                 className="text-sm"
               />
+              {/* テンプレート挿入 */}
+              {presetTemplates.length > 0 && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">テンプレートから挿入</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {presetTemplates.map((tpl, idx) => (
+                      <Button
+                        key={idx}
+                        variant="outline"
+                        size="sm"
+                        className="h-auto py-1 px-2 text-xs text-left whitespace-normal max-w-[280px] bg-background"
+                        onClick={() => {
+                          setImpressionText((prev) => prev ? prev + "\n" + tpl : tpl);
+                          toast.success("テンプレートを挿入しました");
+                        }}
+                      >
+                        {tpl.length > 40 ? tpl.slice(0, 40) + "…" : tpl}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="flex flex-wrap gap-2">
                 <Button
                   variant="outline"

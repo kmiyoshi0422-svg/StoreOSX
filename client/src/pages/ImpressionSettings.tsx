@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Trash2, Save, Sparkles, Users } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Save, Sparkles, Users, FileText } from "lucide-react";
 import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 
@@ -48,6 +48,11 @@ export default function ImpressionSettings() {
   const [authors, setAuthors] = useState<string[]>([]);
   const [newAuthor, setNewAuthor] = useState("");
 
+  // 所感テンプレート
+  const { data: templatesData } = trpc.appSettings.get.useQuery({ key: "impression_templates" });
+  const [templates, setTemplates] = useState<string[]>([]);
+  const [newTemplate, setNewTemplate] = useState("");
+
   const saveSetting = trpc.appSettings.set.useMutation({
     onSuccess: () => {
       utils.appSettings.get.invalidate();
@@ -68,6 +73,12 @@ export default function ImpressionSettings() {
       setAuthors(authorsData.value as string[]);
     }
   }, [authorsData]);
+
+  useEffect(() => {
+    if (templatesData?.value) {
+      setTemplates(templatesData.value as string[]);
+    }
+  }, [templatesData]);
 
   const handleSaveConfig = () => {
     saveSetting.mutate({ key: "impression_config", value: config });
@@ -90,6 +101,25 @@ export default function ImpressionSettings() {
     const updated = authors.filter((a) => a !== name);
     setAuthors(updated);
     saveSetting.mutate({ key: "impression_authors", value: updated });
+  };
+
+  const handleAddTemplate = () => {
+    const text = newTemplate.trim();
+    if (!text) return;
+    if (templates.includes(text)) {
+      toast.error("既に登録されています");
+      return;
+    }
+    const updated = [...templates, text];
+    setTemplates(updated);
+    setNewTemplate("");
+    saveSetting.mutate({ key: "impression_templates", value: updated });
+  };
+
+  const handleRemoveTemplate = (text: string) => {
+    const updated = templates.filter((t) => t !== text);
+    setTemplates(updated);
+    saveSetting.mutate({ key: "impression_templates", value: updated });
   };
 
   return (
@@ -210,6 +240,57 @@ export default function ImpressionSettings() {
           ) : (
             <p className="text-sm text-muted-foreground italic">
               まだ記入者が登録されていません。
+            </p>
+          )}
+        </CardContent>
+      </Card>
+      {/* 所感テンプレート */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <FileText className="h-4 w-4 text-primary" />
+            所感テンプレート
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            よく使う所感パターンを登録しておくと、所感入力時にワンクリックで挿入できます。
+          </p>
+
+          {/* 追加フォーム */}
+          <div className="flex gap-2">
+            <Input
+              value={newTemplate}
+              onChange={(e) => setNewTemplate(e.target.value)}
+              placeholder="例: 経年劣化による損傷が見られ、早急な対応が必要と判断します。"
+              onKeyDown={(e) => { if (e.key === "Enter") handleAddTemplate(); }}
+              className="flex-1"
+            />
+            <Button onClick={handleAddTemplate} disabled={!newTemplate.trim() || saveSetting.isPending}>
+              <Plus className="h-4 w-4 mr-1" />
+              追加
+            </Button>
+          </div>
+
+          {/* 登録済みリスト */}
+          {templates.length > 0 ? (
+            <div className="space-y-2">
+              {templates.map((text, idx) => (
+                <div key={idx} className="flex items-start gap-2 p-2 rounded-md bg-muted/50 border">
+                  <p className="flex-1 text-sm leading-relaxed">{text}</p>
+                  <button
+                    onClick={() => handleRemoveTemplate(text)}
+                    className="mt-0.5 hover:bg-destructive/20 rounded p-1 transition-colors flex-shrink-0"
+                    title="削除"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground italic">
+              まだテンプレートが登録されていません。
             </p>
           )}
         </CardContent>
