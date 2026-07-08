@@ -1215,66 +1215,111 @@ function PhotosTab({
           </CardContent>
         </Card>
       ) : viewMode === "timeline" ? (
-        /* Timeline View */
+        /* Timeline View - grouped by date */
         <div className="relative pl-8">
           {/* Vertical line */}
           <div className="absolute left-3 top-0 bottom-0 w-0.5 bg-border" />
           {(() => {
             const processPhotos = photos
-              .filter(p => p.photoType === "施工中" && p.takenAt)
-              .sort((a, b) => new Date(a.takenAt!).getTime() - new Date(b.takenAt!).getTime());
+              .filter(p => p.photoType === "施工中")
+              .sort((a, b) => {
+                if (!a.takenAt && !b.takenAt) return 0;
+                if (!a.takenAt) return 1;
+                if (!b.takenAt) return -1;
+                return new Date(a.takenAt).getTime() - new Date(b.takenAt).getTime();
+              });
             if (processPhotos.length === 0) {
               return (
                 <div className="py-8 text-center text-muted-foreground text-sm">
-                  施工中写真（撮影日時付き）がありません。<br />
+                  施工中写真がありません。<br />
                   施工中写真をアップロードすると、時系列で工程を確認できます。
                 </div>
               );
             }
-            return processPhotos.map((p, i) => (
-              <div key={p.id} className="relative mb-6 last:mb-0">
-                {/* Node */}
-                <div className="absolute -left-5 top-3 w-3 h-3 rounded-full bg-primary border-2 border-background shadow-sm" />
-                <Card className={`overflow-hidden transition-all ${selectionMode && selectedIds.has(p.id) ? "ring-2 ring-primary" : ""}`}>
-                  <div className="flex gap-3 p-3">
-                    {selectionMode && (
-                      <div className="flex items-start pt-1">
-                        <Checkbox
-                          checked={selectedIds.has(p.id)}
-                          onCheckedChange={(checked) => {
-                            const next = new Set(selectedIds);
-                            checked ? next.add(p.id) : next.delete(p.id);
-                            setSelectedIds(next);
-                          }}
-                        />
+            // Group by date
+            const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+            const grouped: { dateKey: string; dateLabel: string; photos: typeof processPhotos }[] = [];
+            const groupMap = new Map<string, typeof processPhotos>();
+            for (const p of processPhotos) {
+              let dateKey: string;
+              if (p.takenAt) {
+                const d = new Date(p.takenAt);
+                dateKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+              } else {
+                dateKey = "unknown";
+              }
+              if (!groupMap.has(dateKey)) groupMap.set(dateKey, []);
+              groupMap.get(dateKey)!.push(p);
+            }
+            groupMap.forEach((gPhotos, dateKey) => {
+              let dateLabel: string;
+              if (dateKey === "unknown") {
+                dateLabel = "日時不明";
+              } else {
+                const d = new Date(gPhotos[0].takenAt!);
+                dateLabel = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${weekdays[d.getDay()]}）`;
+              }
+              grouped.push({ dateKey, dateLabel, photos: gPhotos });
+            });
+            return grouped.map((group, gi) => (
+              <div key={group.dateKey} className={`relative ${gi < grouped.length - 1 ? "mb-8" : ""}`}>
+                {/* Date node */}
+                <div className="absolute -left-[26px] top-0 w-5 h-5 rounded-full bg-primary border-2 border-background shadow flex items-center justify-center">
+                  <span className="text-[8px] text-primary-foreground font-bold">
+                    {group.dateKey === "unknown" ? "?" : new Date(group.photos[0].takenAt!).getDate()}
+                  </span>
+                </div>
+                {/* Date header */}
+                <div className="flex items-center gap-2 mb-3">
+                  <h4 className="text-sm font-semibold text-foreground">{group.dateLabel}</h4>
+                  <Badge variant="outline" className="text-[10px]">{group.photos.length}枚</Badge>
+                  {gi > 0 && grouped[gi-1].dateKey !== "unknown" && group.dateKey !== "unknown" && (() => {
+                    const prevDate = new Date(grouped[gi-1].photos[0].takenAt!);
+                    const currDate = new Date(group.photos[0].takenAt!);
+                    const diffDays = Math.round((currDate.getTime() - prevDate.getTime()) / 86400000);
+                    return diffDays > 0 ? (
+                      <span className="text-[10px] text-muted-foreground">← {diffDays}日後</span>
+                    ) : null;
+                  })()}
+                </div>
+                {/* Photos grid within the date group */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {group.photos.map((p) => (
+                    <Card key={p.id} className={`overflow-hidden transition-all ${selectionMode && selectedIds.has(p.id) ? "ring-2 ring-primary" : ""}`}>
+                      <div className="relative">
+                        {selectionMode && (
+                          <div className="absolute top-1 left-1 z-10">
+                            <Checkbox
+                              checked={selectedIds.has(p.id)}
+                              onCheckedChange={(checked) => {
+                                const next = new Set(selectedIds);
+                                checked ? next.add(p.id) : next.delete(p.id);
+                                setSelectedIds(next);
+                              }}
+                              className="bg-white/90 border-white shadow"
+                            />
+                          </div>
+                        )}
+                        <div className="aspect-square bg-muted">
+                          <img
+                            src={p.fileUrl}
+                            alt=""
+                            className="w-full h-full object-cover cursor-zoom-in"
+                            style={{ transform: p.rotation ? `rotate(${p.rotation}deg)` : undefined }}
+                            onClick={() => lightbox.open(photos.indexOf(p))}
+                          />
+                        </div>
                       </div>
-                    )}
-                    <div className="w-20 h-20 flex-shrink-0 rounded overflow-hidden bg-muted">
-                      <img
-                        src={p.fileUrl}
-                        alt=""
-                        className="w-full h-full object-cover cursor-zoom-in"
-                        style={{ transform: p.rotation ? `rotate(${p.rotation}deg)` : undefined }}
-                        onClick={() => lightbox.open(photos.indexOf(p))}
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="text-[10px]">施工中</Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(p.takenAt!).toLocaleString("ja-JP", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                      <div className="p-2">
+                        <span className="text-[10px] text-muted-foreground">
+                          {p.takenAt ? new Date(p.takenAt).toLocaleString("ja-JP", { hour: "2-digit", minute: "2-digit" }) : "—"}
                         </span>
+                        {p.workItem && <p className="text-xs mt-0.5 truncate font-medium">{p.workItem}</p>}
+                        {p.memo && <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{p.memo}</p>}
                       </div>
-                      {p.workItem && <p className="text-sm mt-1 truncate">{p.workItem}</p>}
-                      {p.memo && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{p.memo}</p>}
-                      {i > 0 && processPhotos[i-1].takenAt && (
-                        <p className="text-[10px] text-muted-foreground/60 mt-1">
-                          ↑ {Math.round((new Date(p.takenAt!).getTime() - new Date(processPhotos[i-1].takenAt!).getTime()) / 60000)}分後
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </Card>
+                    </Card>
+                  ))}
+                </div>
               </div>
             ));
           })()}
