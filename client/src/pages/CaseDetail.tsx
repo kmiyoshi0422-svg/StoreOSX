@@ -23,7 +23,7 @@ import {
   type CaseStatus,
 } from "@shared/stageStatus";
 import { useLocation } from "wouter";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -2240,6 +2240,76 @@ function ScheduleTab({ caseId }: { caseId: number }) {
     return { start, end, totalDays };
   }, [schedules]);
 
+  // Drag state for gantt bars
+  const [drag, setDrag] = useState<{
+    id: number;
+    mode: "move" | "resize-start" | "resize-end";
+    startX: number;
+    origStartDate: string;
+    origEndDate: string;
+    containerWidth: number;
+  } | null>(null);
+  const [dragPreview, setDragPreview] = useState<{ startDate: string; endDate: string } | null>(null);
+  const ganttContainerRef = useRef<HTMLDivElement>(null);
+
+  function dateToDayOffset(dateStr: string, ganttStart: Date) {
+    return Math.round((new Date(dateStr).getTime() - ganttStart.getTime()) / 86400000);
+  }
+  function dayOffsetToDate(offset: number, ganttStart: Date) {
+    const d = new Date(ganttStart);
+    d.setDate(d.getDate() + offset);
+    return d.toISOString().slice(0, 10);
+  }
+
+  const handleDragStart = useCallback((e: React.MouseEvent, id: number, mode: "move" | "resize-start" | "resize-end", startDate: string, endDate: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const container = ganttContainerRef.current;
+    if (!container) return;
+    const ganttArea = container.querySelector('[data-gantt-area]') as HTMLElement;
+    if (!ganttArea) return;
+    const containerWidth = ganttArea.getBoundingClientRect().width;
+    setDrag({ id, mode, startX: e.clientX, origStartDate: startDate, origEndDate: endDate, containerWidth });
+    setDragPreview({ startDate, endDate });
+  }, []);
+
+  const handleDragMove = useCallback((e: React.MouseEvent) => {
+    if (!drag || !ganttData) return;
+    const deltaX = e.clientX - drag.startX;
+    const deltaDays = Math.round((deltaX / drag.containerWidth) * ganttData.totalDays);
+    if (deltaDays === 0 && dragPreview?.startDate === drag.origStartDate) return;
+
+    let newStart = drag.origStartDate;
+    let newEnd = drag.origEndDate;
+
+    if (drag.mode === "move") {
+      const origStartOffset = dateToDayOffset(drag.origStartDate, ganttData.start);
+      const origEndOffset = dateToDayOffset(drag.origEndDate, ganttData.start);
+      newStart = dayOffsetToDate(origStartOffset + deltaDays, ganttData.start);
+      newEnd = dayOffsetToDate(origEndOffset + deltaDays, ganttData.start);
+    } else if (drag.mode === "resize-start") {
+      const origStartOffset = dateToDayOffset(drag.origStartDate, ganttData.start);
+      const newOffset = Math.min(origStartOffset + deltaDays, dateToDayOffset(drag.origEndDate, ganttData.start));
+      newStart = dayOffsetToDate(newOffset, ganttData.start);
+      newEnd = drag.origEndDate;
+    } else if (drag.mode === "resize-end") {
+      const origEndOffset = dateToDayOffset(drag.origEndDate, ganttData.start);
+      const newOffset = Math.max(origEndOffset + deltaDays, dateToDayOffset(drag.origStartDate, ganttData.start));
+      newStart = drag.origStartDate;
+      newEnd = dayOffsetToDate(newOffset, ganttData.start);
+    }
+    setDragPreview({ startDate: newStart, endDate: newEnd });
+  }, [drag, ganttData, dragPreview]);
+
+  const handleDragEnd = useCallback(() => {
+    if (!drag || !dragPreview) { setDrag(null); setDragPreview(null); return; }
+    if (dragPreview.startDate !== drag.origStartDate || dragPreview.endDate !== drag.origEndDate) {
+      updateMut.mutate({ id: drag.id, startDate: dragPreview.startDate, endDate: dragPreview.endDate });
+    }
+    setDrag(null);
+    setDragPreview(null);
+  }, [drag, dragPreview, updateMut]);
+
   function handleSubmit() {
     if (!form.title || !form.startDate || !form.endDate) {
       toast.error("工程名・開始日・終了日は必須です");
@@ -2390,14 +2460,20 @@ function ScheduleTab({ caseId }: { caseId: number }) {
       {/* Gantt Chart */}
       {schedules.length > 0 && ganttData && (
         <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <div className="min-w-[600px]">
+          <div
+            className="overflow-x-auto"
+            ref={ganttContainerRef}
+            onMouseMove={drag ? handleDragMove : undefined}
+            onMouseUp={drag ? handleDragEnd : undefined}
+            onMouseLeave={drag ? handleDragEnd : undefined}
+          >
+            <div className={`min-w-[600px] ${drag ? "select-none" : ""}`}>
               {/* Date header */}
               <div className="flex border-b bg-muted/30">
                 <div className="w-[200px] flex-shrink-0 px-3 py-2 text-[10px] font-medium text-muted-foreground border-r">
                   工程名
                 </div>
-                <div className="flex-1 relative">
+                <div className="flex-1 relative" data-gantt-area>
                   <div className="flex">
                     {Array.from({ length: Math.min(ganttData.totalDays, 60) }, (_, i) => {
                       const d = new Date(ganttData.start);
@@ -2418,8 +2494,12 @@ function ScheduleTab({ caseId }: { caseId: number }) {
               </div>
               {/* Rows */}
               {schedules.map((s) => {
-                const sStart = new Date(s.startDate);
-                const sEnd = new Date(s.endDate);
+                // Use drag preview dates if this is the dragged item
+                const isDragging = drag?.id === s.id;
+                const displayStart = isDragging && dragPreview ? dragPreview.startDate : s.startDate;
+                const displayEnd = isDragging && dragPreview ? dragPreview.endDate : s.endDate;
+                const sStart = new Date(displayStart);
+                const sEnd = new Date(displayEnd);
                 const offsetDays = Math.max(0, Math.round((sStart.getTime() - ganttData.start.getTime()) / 86400000));
                 const durationDays = Math.max(1, Math.round((sEnd.getTime() - sStart.getTime()) / 86400000) + 1);
                 const leftPct = (offsetDays / ganttData.totalDays) * 100;
@@ -2434,6 +2514,11 @@ function ScheduleTab({ caseId }: { caseId: number }) {
                           <Badge className={`text-[9px] px-1 py-0 h-4 ${STATUS_COLORS_SCHEDULE[s.status] || ""}`}>
                             {s.status}
                           </Badge>
+                          {isDragging && dragPreview && (
+                            <span className="text-[9px] text-primary font-medium">
+                              {dragPreview.startDate.slice(5)} 〜 {dragPreview.endDate.slice(5)}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity">
@@ -2448,7 +2533,7 @@ function ScheduleTab({ caseId }: { caseId: number }) {
                         </button>
                       </div>
                     </div>
-                    <div className="flex-1 relative py-2">
+                    <div className="flex-1 relative py-2" data-gantt-area>
                       {/* Today line */}
                       {(() => {
                         const todayOffset = Math.round((new Date().getTime() - ganttData.start.getTime()) / 86400000);
@@ -2457,25 +2542,43 @@ function ScheduleTab({ caseId }: { caseId: number }) {
                         }
                         return null;
                       })()}
-                      {/* Bar with progress */}
+                      {/* Bar with progress + drag handles */}
                       <div
-                        className={`absolute top-1/2 -translate-y-1/2 h-5 rounded-full shadow-sm cursor-pointer transition-all hover:h-6 overflow-hidden ${s.status === "完了" ? "opacity-80" : ""}`}
+                        className={`absolute top-1/2 -translate-y-1/2 h-5 rounded-full shadow-sm overflow-hidden ${isDragging ? "h-6 ring-2 ring-primary/40 z-20" : "hover:h-6"} ${s.status === "完了" ? "opacity-80" : ""}`}
                         style={{
                           left: `${leftPct}%`,
                           width: `${Math.max(widthPct, 2)}%`,
                           backgroundColor: `color-mix(in srgb, ${s.color || "#3b82f6"} 30%, transparent)`,
+                          transition: isDragging ? "none" : "all 0.15s ease-out",
                         }}
-                        title={`${s.title}: ${s.startDate} 〒 ${s.endDate} (進捗${s.progress}%)`}
+                        title={`${s.title}: ${displayStart} 〜 ${displayEnd} (進捗${s.progress}%)`}
                       >
                         {/* Progress fill */}
                         <div
-                          className="absolute inset-y-0 left-0 rounded-full transition-all duration-300"
+                          className="absolute inset-y-0 left-0 rounded-full"
                           style={{
                             width: `${s.progress}%`,
                             backgroundColor: s.color || "#3b82f6",
+                            transition: isDragging ? "none" : "all 0.3s",
                           }}
                         />
-                        <span className="absolute inset-0 flex items-center justify-center text-[9px] text-white font-medium truncate px-1 z-10 drop-shadow-sm">
+                        {/* Left resize handle */}
+                        <div
+                          className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize z-20 hover:bg-white/30 rounded-l-full"
+                          onMouseDown={(e) => handleDragStart(e, s.id, "resize-start", s.startDate, s.endDate)}
+                        />
+                        {/* Center move area */}
+                        <div
+                          className="absolute left-2 right-2 top-0 bottom-0 cursor-grab active:cursor-grabbing z-10"
+                          onMouseDown={(e) => handleDragStart(e, s.id, "move", s.startDate, s.endDate)}
+                        />
+                        {/* Right resize handle */}
+                        <div
+                          className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize z-20 hover:bg-white/30 rounded-r-full"
+                          onMouseDown={(e) => handleDragStart(e, s.id, "resize-end", s.startDate, s.endDate)}
+                        />
+                        {/* Label */}
+                        <span className="absolute inset-0 flex items-center justify-center text-[9px] text-white font-medium truncate px-3 z-[5] drop-shadow-sm pointer-events-none">
                           {s.progress > 0 ? `${s.progress}%` : (durationDays > 2 ? `${durationDays}日` : "")}
                         </span>
                       </div>
