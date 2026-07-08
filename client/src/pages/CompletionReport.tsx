@@ -27,10 +27,12 @@ import {
   ArrowDown,
   Camera,
   ImageIcon,
+  Eye,
   GripVertical,
   Sparkles,
   FileText,
 } from "lucide-react";
+import { PdfPreviewModal } from "@/components/PdfPreviewModal";
 import html2canvas from "html2canvas-pro";
 import jsPDF from "jspdf";
 import { toast } from "sonner";
@@ -151,6 +153,7 @@ export default function CompletionReport({ id }: { id: number }) {
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [generating, setGenerating] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [signerName, setSignerName] = useState("");
   const [editingSig, setEditingSig] = useState(false);
 
@@ -452,6 +455,8 @@ export default function CompletionReport({ id }: { id: number }) {
       containerRef={containerRef}
       generating={generating}
       handleDownloadPDF={handleDownloadPDF}
+      previewOpen={previewOpen}
+      setPreviewOpen={setPreviewOpen}
       setLocation={setLocation}
       workName={workName}
       headerLine={headerLine}
@@ -609,6 +614,8 @@ type ViewProps = {
   containerRef: React.RefObject<HTMLDivElement | null>;
   generating: boolean;
   handleDownloadPDF: () => void;
+  previewOpen: boolean;
+  setPreviewOpen: (open: boolean) => void;
   setLocation: (to: string) => void;
   workName: string;
   headerLine: string;
@@ -658,6 +665,8 @@ function CompletionReportView(props: ViewProps) {
     containerRef,
     generating,
     handleDownloadPDF,
+    previewOpen,
+    setPreviewOpen,
     setLocation,
     workName,
     headerLine,
@@ -700,6 +709,10 @@ function CompletionReportView(props: ViewProps) {
             >
               {savingDraft ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FileText className="h-4 w-4 mr-1" />}
               内容を保存
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setPreviewOpen(true)}>
+              <Eye className="h-4 w-4 mr-1" />
+              プレビュー
             </Button>
             <Button size="sm" onClick={handleDownloadPDF} disabled={generating}>
               {generating ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
@@ -1001,6 +1014,15 @@ function CompletionReportView(props: ViewProps) {
           .no-print { display: none !important; }
         }
       `}</style>
+
+      {/* PDFプレビューモーダル */}
+      <PdfPreviewModal
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        containerRef={containerRef}
+        fileName={`完了報告書_${caseData?.requestNumber ?? ""}_${caseData?.storeName ?? ""}`}
+        pageSelector=".report-page"
+      />
     </div>
   );
 }

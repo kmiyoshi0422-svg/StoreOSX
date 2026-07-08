@@ -18,9 +18,11 @@ import {
   ArrowDown,
   Camera,
   ImageIcon,
+  Eye,
   GripVertical,
   LayoutGrid,
 } from "lucide-react";
+import { PdfPreviewModal } from "@/components/PdfPreviewModal";
 import html2canvas from "html2canvas-pro";
 import jsPDF from "jspdf";
 import { toast } from "sonner";
@@ -165,6 +167,7 @@ export default function CaseReport({
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [generating, setGenerating] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [signerName, setSignerName] = useState("");
   const [editingSig, setEditingSig] = useState(false);
 
@@ -775,10 +778,16 @@ export default function CaseReport({
             <ArrowLeft className="h-3.5 w-3.5" />
             案件詳細に戻る
           </Button>
-          <Button onClick={handleDownloadPDF} disabled={generating}>
-            {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            {generating ? "PDF生成中..." : "PDFダウンロード"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setPreviewOpen(true)}>
+              <Eye className="h-4 w-4" />
+              プレビュー
+            </Button>
+            <Button onClick={handleDownloadPDF} disabled={generating}>
+              {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {generating ? "PDF生成中..." : "PDFダウンロード"}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -1404,6 +1413,15 @@ export default function CaseReport({
           .report-page:last-child { page-break-after: auto; }
         }
       `}</style>
+
+      {/* PDFプレビューモーダル */}
+      <PdfPreviewModal
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        containerRef={containerRef}
+        fileName={`${reportType === "survey" ? "現調報告書" : "工事完了報告書"}_${caseData?.requestNumber ?? ""}_${caseData?.storeName ?? ""}`}
+        pageSelector=".report-page"
+      />
     </div>
   );
 }

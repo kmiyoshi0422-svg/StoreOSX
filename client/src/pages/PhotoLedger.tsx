@@ -2,7 +2,8 @@ import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { useMemo, useRef, useState } from "react";
-import { ArrowLeft, Download, Loader2 } from "lucide-react";
+import { ArrowLeft, Download, Eye, Loader2 } from "lucide-react";
+import { PdfPreviewModal } from "@/components/PdfPreviewModal";
 import html2canvas from "html2canvas-pro";
 import jsPDF from "jspdf";
 import { toast } from "sonner";
@@ -34,6 +35,7 @@ export default function PhotoLedger({ id }: { id: number }) {
   setReportExclusions(exclusionRows.map((r) => r.term));
   const containerRef = useRef<HTMLDivElement>(null);
   const [generating, setGenerating] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const handleDownloadPDF = async () => {
     if (!containerRef.current || !caseData) return;
@@ -148,17 +150,27 @@ export default function PhotoLedger({ id }: { id: number }) {
             <ArrowLeft className="h-3.5 w-3.5" />
             案件詳細に戻る
           </Button>
-          <Button
-            onClick={handleDownloadPDF}
-            disabled={photos.length === 0 || generating}
-          >
-            {generating ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4" />
-            )}
-            {generating ? "PDF生成中..." : "PDFダウンロード"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setPreviewOpen(true)}
+              disabled={photos.length === 0}
+            >
+              <Eye className="h-4 w-4" />
+              プレビュー
+            </Button>
+            <Button
+              onClick={handleDownloadPDF}
+              disabled={photos.length === 0 || generating}
+            >
+              {generating ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              {generating ? "PDF生成中..." : "PDFダウンロード"}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -314,6 +326,15 @@ export default function PhotoLedger({ id }: { id: number }) {
           }
         }
       `}</style>
+
+      {/* PDFプレビューモーダル */}
+      <PdfPreviewModal
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        containerRef={containerRef}
+        fileName={`写真台帳_${caseData?.requestNumber ?? ""}_${caseData?.storeName ?? ""}`}
+        pageSelector=".ledger-page"
+      />
     </div>
   );
 }

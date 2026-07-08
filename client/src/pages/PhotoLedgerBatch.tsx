@@ -5,7 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { useMemo, useRef, useState } from "react";
-import { Download, Loader2, Search, Images, CheckSquare, Square } from "lucide-react";
+import { Download, Eye, Loader2, Search, Images, CheckSquare, Square } from "lucide-react";
+import { PdfPreviewModal } from "@/components/PdfPreviewModal";
 import html2canvas from "html2canvas-pro";
 import jsPDF from "jspdf";
 import { toast } from "sonner";
@@ -67,6 +68,7 @@ export default function PhotoLedgerBatch() {
   const [keyword, setKeyword] = useState("");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [generating, setGenerating] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { data: exclusionRows = [] } = trpc.fullwidthExclusions.list.useQuery();
@@ -246,6 +248,14 @@ export default function PhotoLedgerBatch() {
               )}
             </div>
             <Button
+              variant="outline"
+              onClick={() => setPreviewOpen(true)}
+              disabled={selectedIds.length === 0 || ledgerQuery.isLoading || totalPhotos === 0}
+            >
+              <Eye className="h-4 w-4" />
+              プレビュー
+            </Button>
+            <Button
               onClick={handleDownloadPDF}
               disabled={selectedIds.length === 0 || generating || ledgerQuery.isLoading}
             >
@@ -420,6 +430,15 @@ export default function PhotoLedgerBatch() {
           ))}
         </div>
       </div>
+
+      {/* PDFプレビューモーダル */}
+      <PdfPreviewModal
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        containerRef={containerRef}
+        fileName={`写真台帳_一括_${ledgerData.length}件`}
+        pageSelector=".ledger-page"
+      />
     </div>
   );
 }
