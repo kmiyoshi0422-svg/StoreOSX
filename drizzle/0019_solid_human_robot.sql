@@ -1,0 +1,1 @@
+ALTER TABLE `case_schedules` ADD `progress` int DEFAULT 0 NOT NULL;

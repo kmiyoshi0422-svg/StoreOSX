@@ -395,6 +395,7 @@ export const caseSchedules = mysqlTable("case_schedules", {
   status: mysqlEnum("status", ["予定", "進行中", "完了"]).default("予定").notNull(),
   color: varchar("color", { length: 16 }).default("#3b82f6"), // 表示色 hex
   memo: text("memo"),
+  progress: int("progress").default(0).notNull(), // 進捗率 0-100%
   orderNo: int("orderNo").default(0).notNull(), // 表示順
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

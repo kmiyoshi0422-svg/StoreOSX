@@ -2696,6 +2696,7 @@ export const appRouter = router({
         status: z.enum(["予定", "進行中", "完了"]).default("予定"),
         color: z.string().max(16).optional(),
         memo: z.string().max(1000).optional(),
+        progress: z.number().min(0).max(100).optional(),
         orderNo: z.number().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
@@ -2703,6 +2704,7 @@ export const appRouter = router({
           ...input,
           memo: input.memo ?? null,
           color: input.color ?? "#3b82f6",
+          progress: input.progress ?? 0,
           orderNo: input.orderNo ?? 0,
           createdBy: ctx.user.id,
         });
@@ -2717,6 +2719,7 @@ export const appRouter = router({
         status: z.enum(["予定", "進行中", "完了"]).optional(),
         color: z.string().max(16).optional(),
         memo: z.string().max(1000).optional(),
+        progress: z.number().min(0).max(100).optional(),
         orderNo: z.number().optional(),
       }))
       .mutation(async ({ input }) => {

@@ -2215,7 +2215,7 @@ function ScheduleTab({ caseId }: { caseId: number }) {
 
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
-  const [form, setForm] = useState({ title: "", startDate: "", endDate: "", status: "予定" as "予定" | "進行中" | "完了", color: "#3b82f6", memo: "" });
+  const [form, setForm] = useState({ title: "", startDate: "", endDate: "", status: "予定" as "予定" | "進行中" | "完了", color: "#3b82f6", memo: "", progress: 0 });
 
   const STATUS_COLORS_SCHEDULE: Record<string, string> = {
     "予定": "bg-slate-100 text-slate-700",
@@ -2256,12 +2256,12 @@ function ScheduleTab({ caseId }: { caseId: number }) {
       createMut.mutate({ caseId, ...form });
     }
     setShowForm(false);
-    setForm({ title: "", startDate: "", endDate: "", status: "予定", color: "#3b82f6", memo: "" });
+    setForm({ title: "", startDate: "", endDate: "", status: "予定", color: "#3b82f6", memo: "", progress: 0 });
   }
 
   function startEdit(s: typeof schedules[0]) {
     setEditId(s.id);
-    setForm({ title: s.title, startDate: s.startDate, endDate: s.endDate, status: s.status as "予定" | "進行中" | "完了", color: s.color || "#3b82f6", memo: s.memo || "" });
+    setForm({ title: s.title, startDate: s.startDate, endDate: s.endDate, status: s.status as "予定" | "進行中" | "完了", color: s.color || "#3b82f6", memo: s.memo || "", progress: s.progress ?? 0 });
     setShowForm(true);
   }
 
@@ -2275,7 +2275,7 @@ function ScheduleTab({ caseId }: { caseId: number }) {
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-foreground">工程スケジュール</h3>
         <button
-          onClick={() => { setShowForm(!showForm); setEditId(null); setForm({ title: "", startDate: "", endDate: "", status: "予定", color: "#3b82f6", memo: "" }); }}
+          onClick={() => { setShowForm(!showForm); setEditId(null); setForm({ title: "", startDate: "", endDate: "", status: "予定", color: "#3b82f6", memo: "", progress: 0 }); }}
           className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
         >
           {showForm ? "キャンセル" : "+ 工程を追加"}
@@ -2335,6 +2335,21 @@ function ScheduleTab({ caseId }: { caseId: number }) {
                     style={{ backgroundColor: c }}
                   />
                 ))}
+              </div>
+            </div>
+            <div className="sm:col-span-2">
+              <Label className="text-xs">進捗率: {form.progress}%</Label>
+              <div className="flex items-center gap-3 mt-1.5">
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={form.progress}
+                  onChange={(e) => setForm({ ...form, progress: Number(e.target.value) })}
+                  className="flex-1 h-2 bg-muted rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-sm"
+                />
+                <span className="text-xs font-medium w-10 text-right">{form.progress}%</span>
               </div>
             </div>
             <div className="sm:col-span-2">
@@ -2442,18 +2457,26 @@ function ScheduleTab({ caseId }: { caseId: number }) {
                         }
                         return null;
                       })()}
-                      {/* Bar */}
+                      {/* Bar with progress */}
                       <div
-                        className={`absolute top-1/2 -translate-y-1/2 h-5 rounded-full shadow-sm cursor-pointer transition-all hover:h-6 ${s.status === "完了" ? "opacity-70" : ""}`}
+                        className={`absolute top-1/2 -translate-y-1/2 h-5 rounded-full shadow-sm cursor-pointer transition-all hover:h-6 overflow-hidden ${s.status === "完了" ? "opacity-80" : ""}`}
                         style={{
                           left: `${leftPct}%`,
                           width: `${Math.max(widthPct, 2)}%`,
-                          backgroundColor: s.color || "#3b82f6",
+                          backgroundColor: `color-mix(in srgb, ${s.color || "#3b82f6"} 30%, transparent)`,
                         }}
-                        title={`${s.title}: ${s.startDate} 〜 ${s.endDate}`}
+                        title={`${s.title}: ${s.startDate} 〒 ${s.endDate} (進捗${s.progress}%)`}
                       >
-                        <span className="absolute inset-0 flex items-center justify-center text-[9px] text-white font-medium truncate px-1">
-                          {durationDays > 2 ? `${durationDays}日` : ""}
+                        {/* Progress fill */}
+                        <div
+                          className="absolute inset-y-0 left-0 rounded-full transition-all duration-300"
+                          style={{
+                            width: `${s.progress}%`,
+                            backgroundColor: s.color || "#3b82f6",
+                          }}
+                        />
+                        <span className="absolute inset-0 flex items-center justify-center text-[9px] text-white font-medium truncate px-1 z-10 drop-shadow-sm">
+                          {s.progress > 0 ? `${s.progress}%` : (durationDays > 2 ? `${durationDays}日` : "")}
                         </span>
                       </div>
                     </div>
@@ -2477,9 +2500,16 @@ function ScheduleTab({ caseId }: { caseId: number }) {
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">{s.title}</span>
                     <Badge className={`text-[10px] ${STATUS_COLORS_SCHEDULE[s.status] || ""}`}>{s.status}</Badge>
+                    <span className="text-[10px] font-medium text-muted-foreground">{s.progress}%</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-300" style={{ width: `${s.progress}%`, backgroundColor: s.color || "#3b82f6" }} />
+                    </div>
+                    <span className="text-[10px] text-muted-foreground w-8">{s.progress}%</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {s.startDate.replace(/-/g, "/")} 〜 {s.endDate.replace(/-/g, "/")}
+                    {s.startDate.replace(/-/g, "/")} 〒 {s.endDate.replace(/-/g, "/")}
                     <span className="ml-2">
                       ({Math.round((new Date(s.endDate).getTime() - new Date(s.startDate).getTime()) / 86400000) + 1}日間)
                     </span>
