@@ -608,3 +608,11 @@
 - [x] ドラッグ中のビジュアルフィードバック（プレビュー表示）
 - [x] ドロップ時にupdateMutで日付をサーバーに保存
 - [x] 型チェック・テストPASS
+
+## PDF出力バグ修正（ユーザー報告） ✅完了
+- [x] 文字化け修正: document.fonts.ready待ちを全PDF生成箇所に追加
+- [x] 文字切れ修正: sr-onlyコンテナをposition:fixed+opacity:0に変更
+- [x] 写真非表示修正: inlineImages共通ヘルパーに統一（credentials:omit+サーバーフォールバック）
+- [x] html2canvasオプション最適化（windowWidth, allowTaint:false）
+- [x] 写真台帳・現調報告書・完了報告書・工事完了報告書・見積書すべてに適用
+- [x] 型チェック・テストPASS（276件）

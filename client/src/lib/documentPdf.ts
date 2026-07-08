@@ -203,18 +203,31 @@ function buildCompletionHTML(c: Case): string {
 
 async function htmlToPDF(html: string, fileName: string) {
   const container = document.createElement("div");
+  // visibility:hidden + 実際のビューポート内に配置（left:-9999pxだとクリップされる）
   container.style.position = "fixed";
-  container.style.left = "-9999px";
+  container.style.left = "0";
   container.style.top = "0";
+  container.style.zIndex = "-9999";
+  container.style.opacity = "0";
+  container.style.pointerEvents = "none";
+  container.style.width = "794px";
   container.innerHTML = html;
   document.body.appendChild(container);
   try {
+    // フォントの読み込みを待つ（日本語フォントが未ロードだと文字化けする）
+    if (document.fonts && document.fonts.ready) {
+      await document.fonts.ready;
+    }
+    // 追加でフォントが確実に適用されるよう少し待つ
+    await new Promise((r) => setTimeout(r, 100));
     const target = container.firstElementChild as HTMLElement;
     const canvas = await html2canvas(target, {
       scale: 2,
       backgroundColor: "#ffffff",
       useCORS: true,
+      allowTaint: false,
       logging: false,
+      windowWidth: 794,
     });
     const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
     const pdfWidth = pdf.internal.pageSize.getWidth(); // 210mm

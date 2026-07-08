@@ -13,6 +13,7 @@ import {
   toFullWidthDigits as _toFullWidthDigits,
   reportLabel as _reportLabel,
 } from "../../../shared/reportText";
+import { inlineImages } from "@/lib/imageDataUrl";
 
 // PDF/写真台帳の全角化・括弧除去の対象外にする除外辞書（コンポーネントからsetReportExclusionsで注入）。
 let _exclusions: string[] = [];
@@ -26,24 +27,7 @@ function reportLabel(input: string | number | null | undefined): string {
   return _reportLabel(input, _exclusions);
 }
 
-// 取得失敗画像用の軽量プレースホルダ
-const PLACEHOLDER_DATA_URL =
-  "data:image/svg+xml;base64," +
-  btoa(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="100%" height="100%" fill="#e5e7eb"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#9ca3af" font-size="16" font-family="sans-serif">No Image</text></svg>',
-  );
 
-async function toDataUrl(src: string): Promise<string> {
-  const res = await fetch(src, { credentials: "include" });
-  if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
-  const blob = await res.blob();
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
-}
 
 const PHOTO_TYPE_ORDER = [
   "現調",
@@ -157,30 +141,14 @@ export default function PhotoLedgerBatch() {
       return;
     }
     setGenerating(true);
-
-    const imgs = Array.from(
-      containerRef.current.querySelectorAll<HTMLImageElement>("img"),
-    );
-    const originalSrcs = imgs.map((img) => img.getAttribute("src") ?? "");
-
+    const restore = await inlineImages(containerRef.current).catch(() => () => {});
     try {
-      // 画像をdataURL化（canvas汚染防止）
-      await Promise.all(
-        imgs.map(async (img, idx) => {
-          const src = originalSrcs[idx];
-          if (!src || src.startsWith("data:")) return;
-          try {
-            const dataUrl = await toDataUrl(src);
-            img.src = dataUrl;
-            if (typeof img.decode === "function") {
-              await img.decode().catch(() => undefined);
-            }
-          } catch {
-            img.src = PLACEHOLDER_DATA_URL;
-            img.removeAttribute("srcset");
-          }
-        }),
-      );
+
+      // フォントの読み込みを待つ（日本語フォントが未ロードだと文字化けする）
+      if (document.fonts && document.fonts.ready) {
+        await document.fonts.ready;
+      }
+      await new Promise((r) => setTimeout(r, 100));
 
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -193,8 +161,10 @@ export default function PhotoLedgerBatch() {
         const canvas = await html2canvas(pageEls[i], {
           scale: 2,
           useCORS: true,
+          allowTaint: false,
           backgroundColor: "#ffffff",
           logging: false,
+          windowWidth: 800,
         });
         const imgData = canvas.toDataURL("image/jpeg", 0.92);
         const canvasRatio = canvas.height / canvas.width;
@@ -220,9 +190,7 @@ export default function PhotoLedgerBatch() {
       const msg = e instanceof Error ? e.message : "PDF生成に失敗しました";
       toast.error(msg);
     } finally {
-      imgs.forEach((img, idx) => {
-        if (originalSrcs[idx]) img.src = originalSrcs[idx];
-      });
+      restore();
       setGenerating(false);
       setProgress(null);
     }
@@ -344,7 +312,7 @@ export default function PhotoLedgerBatch() {
       )}
 
       {/* 非表示の台帳本体（PDF生成元） */}
-      <div className="sr-only" aria-hidden>
+      <div style={{ position: "fixed", left: 0, top: 0, zIndex: -9999, opacity: 0, pointerEvents: "none" }} aria-hidden>
         <div ref={containerRef} className="ledger-container">
           {ledgerData.map(({ caseInfo, pages }) => (
             <div key={caseInfo.id}>
@@ -404,6 +372,7 @@ export default function PhotoLedgerBatch() {
                             <img
                               src={photo.fileUrl}
                               alt=""
+                              crossOrigin="anonymous"
                               className="w-full h-full object-cover"
                               style={{
                                 imageOrientation: "from-image",

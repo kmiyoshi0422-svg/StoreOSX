@@ -710,6 +710,12 @@ export default function CaseReport({
     setGenerating(true);
     const restore = await inlineImages(containerRef.current).catch(() => () => {});
     try {
+      // フォントの読み込みを待つ（日本語フォントが未ロードだと文字化けする）
+      if (document.fonts && document.fonts.ready) {
+        await document.fonts.ready;
+      }
+      await new Promise((r) => setTimeout(r, 100));
+
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
@@ -718,8 +724,10 @@ export default function CaseReport({
         const canvas = await html2canvas(pages[i], {
           scale: 2,
           useCORS: true,
+          allowTaint: false,
           backgroundColor: "#ffffff",
           logging: false,
+          windowWidth: 800,
         });
         const imgData = canvas.toDataURL("image/jpeg", 0.92);
         if (i > 0) pdf.addPage();

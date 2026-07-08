@@ -10,6 +10,7 @@ import {
   toFullWidthDigits as _toFullWidthDigits,
   reportLabel as _reportLabel,
 } from "../../../shared/reportText";
+import { inlineImages, PLACEHOLDER_DATA_URL } from "@/lib/imageDataUrl";
 
 // PDF/写真台帳の全角化・括弧除去の対象外にする除外辞書（コンポーネントからsetReportExclusionsで注入）。
 let _exclusions: string[] = [];
@@ -21,26 +22,6 @@ function toFullWidthDigits(input: string | number | null | undefined): string {
 }
 function reportLabel(input: string | number | null | undefined): string {
   return _reportLabel(input, _exclusions);
-}
-// 取得失敗画像用の軽量プレースホルダ（淡いグレー）
-const PLACEHOLDER_DATA_URL =
-  "data:image/svg+xml;base64," +
-  btoa(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="100%" height="100%" fill="#e5e7eb"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#9ca3af" font-size="16" font-family="sans-serif">No Image</text></svg>',
-  );
-
-// 同一オリジンの/manus-storage経由で画像をfetchし、dataURLに変換する。
-// これによりhtml2canvasが外部画像でcanvasを汚染させるのを防ぐ。
-async function toDataUrl(src: string): Promise<string> {
-  const res = await fetch(src, { credentials: "include" });
-  if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
-  const blob = await res.blob();
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
 }
 
 export default function PhotoLedger({ id }: { id: number }) {
@@ -58,30 +39,14 @@ export default function PhotoLedger({ id }: { id: number }) {
     if (!containerRef.current || !caseData) return;
     setGenerating(true);
     // PDF生成前に台帳内の画像をdataURL化して、canvas汚染（Tainted canvas）を防ぐ。
-    // 元のsrcを退避し、生成後に必ず復元する。
-    const imgs = Array.from(
-      containerRef.current.querySelectorAll<HTMLImageElement>("img"),
-    );
-    const originalSrcs = imgs.map((img) => img.getAttribute("src") ?? "");
+    const restore = await inlineImages(containerRef.current).catch(() => () => {});
     try {
-      await Promise.all(
-        imgs.map(async (img, idx) => {
-          const src = originalSrcs[idx];
-          if (!src || src.startsWith("data:")) return;
-          try {
-            const dataUrl = await toDataUrl(src);
-            img.src = dataUrl;
-            // 差し替え後の読み込み完了を待つ
-            if (typeof img.decode === "function") {
-              await img.decode().catch(() => undefined);
-            }
-          } catch {
-            // 取得失敗時はプレースホルダにして生成を継続
-            img.src = PLACEHOLDER_DATA_URL;
-            img.removeAttribute("srcset");
-          }
-        }),
-      );
+
+      // フォントの読み込みを待つ（日本語フォントが未ロードだと文字化けする）
+      if (document.fonts && document.fonts.ready) {
+        await document.fonts.ready;
+      }
+      await new Promise((r) => setTimeout(r, 100));
 
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -92,8 +57,10 @@ export default function PhotoLedger({ id }: { id: number }) {
         const canvas = await html2canvas(pages[i], {
           scale: 2,
           useCORS: true,
+          allowTaint: false,
           backgroundColor: "#ffffff",
           logging: false,
+          windowWidth: 800,
         });
         const imgData = canvas.toDataURL("image/jpeg", 0.92);
         // 縦横比を保ちつつA4に収める
@@ -120,10 +87,7 @@ export default function PhotoLedger({ id }: { id: number }) {
       const msg = e instanceof Error ? e.message : "PDF生成に失敗しました";
       toast.error(msg);
     } finally {
-      // 差し替えた画像のsrcを元に戻す（画面表示を復元）
-      imgs.forEach((img, idx) => {
-        if (originalSrcs[idx]) img.src = originalSrcs[idx];
-      });
+      restore();
       setGenerating(false);
     }
   };
@@ -278,6 +242,7 @@ export default function PhotoLedger({ id }: { id: number }) {
                         <img
                           src={photo.fileUrl}
                           alt=""
+                          crossOrigin="anonymous"
                           className="w-full h-full object-cover"
                           style={{
                             imageOrientation: "from-image",
