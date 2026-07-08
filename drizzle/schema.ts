@@ -382,3 +382,23 @@ export const fullwidthExclusions = mysqlTable("fullwidth_exclusions", {
 });
 export type FullwidthExclusion = typeof fullwidthExclusions.$inferSelect;
 export type InsertFullwidthExclusion = typeof fullwidthExclusions.$inferInsert;
+
+/**
+ * 案件工程スケジュール（ガントチャート式工程管理）
+ */
+export const caseSchedules = mysqlTable("case_schedules", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("caseId").notNull(),
+  title: varchar("title", { length: 255 }).notNull(), // 工程名
+  startDate: varchar("startDate", { length: 10 }).notNull(), // YYYY-MM-DD
+  endDate: varchar("endDate", { length: 10 }).notNull(), // YYYY-MM-DD
+  status: mysqlEnum("status", ["予定", "進行中", "完了"]).default("予定").notNull(),
+  color: varchar("color", { length: 16 }).default("#3b82f6"), // 表示色 hex
+  memo: text("memo"),
+  orderNo: int("orderNo").default(0).notNull(), // 表示順
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type CaseSchedule = typeof caseSchedules.$inferSelect;
+export type InsertCaseSchedule = typeof caseSchedules.$inferInsert;

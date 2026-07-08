@@ -582,3 +582,13 @@
 - [x] 日付グループ間に縦線を引き、日付ノード（日付入り円）→写真カード群の構造
 - [x] takenAtがnullの写真は「日時不明」グループとして末尾に表示
 - [x] グループ間の経過日数を表示
+
+## 案件詳細スケジュール（工程管理）タブ追加（ユーザー指示）
+- [x] case_schedulesテーブル追加（caseId, title, startDate, endDate, status, color, memo, orderNo）
+- [x] DBマイグレーション適用
+- [x] tRPCルーター追加（schedules.listByCase / create / update / delete）
+- [x] 案件詳細にスケジュールタブを追加
+- [x] 工程をガントチャート風に横棒で表示（日付軸）
+- [x] 工程の追加・編集・削除UI
+- [x] 工程のステータス管理（予定/進行中/完了）
+- [x] 型チェック・テストPASS

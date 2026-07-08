@@ -53,6 +53,7 @@ import {
   RotateCcw,
   Clock,
   CheckSquare,
+  CalendarDays,
 } from "lucide-react";
 import { generateQuotePDF, generateCompletionReportPDF } from "@/lib/documentPdf";
 import {
@@ -202,7 +203,7 @@ export default function CaseDetail({ id }: { id: number }) {
 
       {/* Tabs */}
       <Tabs defaultValue="info" className="space-y-4">
-        <TabsList className="grid grid-cols-6 w-full md:w-auto md:inline-grid">
+        <TabsList className="grid grid-cols-7 w-full md:w-auto md:inline-grid">
           <TabsTrigger value="info">
             <Info className="h-3.5 w-3.5" />
             基本情報
@@ -232,6 +233,10 @@ export default function CaseDetail({ id }: { id: number }) {
           <TabsTrigger value="expenses">
             <Receipt className="h-3.5 w-3.5" />
             経費
+          </TabsTrigger>
+          <TabsTrigger value="schedule">
+            <CalendarDays className="h-3.5 w-3.5" />
+            工程
           </TabsTrigger>
         </TabsList>
 
@@ -265,6 +270,10 @@ export default function CaseDetail({ id }: { id: number }) {
 
         <TabsContent value="expenses">
           <ExpensesTab caseId={id} />
+        </TabsContent>
+
+        <TabsContent value="schedule">
+          <ScheduleTab caseId={id} />
         </TabsContent>
       </Tabs>
     </div>
@@ -2185,6 +2194,323 @@ function ExpensesTab({ caseId }: { caseId: number }) {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+
+// ─── Schedule Tab (工程管理ガントチャート) ─────────────────────────────────────
+function ScheduleTab({ caseId }: { caseId: number }) {
+  const utils = trpc.useUtils();
+  const { data: schedules = [], isLoading } = trpc.schedules.listByCase.useQuery({ caseId });
+  const createMut = trpc.schedules.create.useMutation({
+    onSuccess: () => { utils.schedules.listByCase.invalidate({ caseId }); toast.success("工程を追加しました"); },
+  });
+  const updateMut = trpc.schedules.update.useMutation({
+    onSuccess: () => { utils.schedules.listByCase.invalidate({ caseId }); },
+  });
+  const deleteMut = trpc.schedules.delete.useMutation({
+    onSuccess: () => { utils.schedules.listByCase.invalidate({ caseId }); toast.success("工程を削除しました"); },
+  });
+
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [form, setForm] = useState({ title: "", startDate: "", endDate: "", status: "予定" as "予定" | "進行中" | "完了", color: "#3b82f6", memo: "" });
+
+  const STATUS_COLORS_SCHEDULE: Record<string, string> = {
+    "予定": "bg-slate-100 text-slate-700",
+    "進行中": "bg-blue-100 text-blue-700",
+    "完了": "bg-emerald-100 text-emerald-700",
+  };
+
+  const PRESET_COLORS = ["#3b82f6", "#ef4444", "#f59e0b", "#10b981", "#8b5cf6", "#ec4899", "#6366f1", "#14b8a6"];
+
+  // Gantt chart date range calculation
+  const ganttData = useMemo(() => {
+    if (schedules.length === 0) return null;
+    const allDates = schedules.flatMap(s => [s.startDate, s.endDate]);
+    const minDate = allDates.reduce((a, b) => a < b ? a : b);
+    const maxDate = allDates.reduce((a, b) => a > b ? a : b);
+    // Extend range by 1 day on each side
+    const start = new Date(minDate);
+    start.setDate(start.getDate() - 1);
+    const end = new Date(maxDate);
+    end.setDate(end.getDate() + 1);
+    const totalDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000));
+    return { start, end, totalDays };
+  }, [schedules]);
+
+  function handleSubmit() {
+    if (!form.title || !form.startDate || !form.endDate) {
+      toast.error("工程名・開始日・終了日は必須です");
+      return;
+    }
+    if (form.startDate > form.endDate) {
+      toast.error("終了日は開始日以降にしてください");
+      return;
+    }
+    if (editId) {
+      updateMut.mutate({ id: editId, ...form });
+      setEditId(null);
+    } else {
+      createMut.mutate({ caseId, ...form });
+    }
+    setShowForm(false);
+    setForm({ title: "", startDate: "", endDate: "", status: "予定", color: "#3b82f6", memo: "" });
+  }
+
+  function startEdit(s: typeof schedules[0]) {
+    setEditId(s.id);
+    setForm({ title: s.title, startDate: s.startDate, endDate: s.endDate, status: s.status as "予定" | "進行中" | "完了", color: s.color || "#3b82f6", memo: s.memo || "" });
+    setShowForm(true);
+  }
+
+  if (isLoading) {
+    return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-foreground">工程スケジュール</h3>
+        <button
+          onClick={() => { setShowForm(!showForm); setEditId(null); setForm({ title: "", startDate: "", endDate: "", status: "予定", color: "#3b82f6", memo: "" }); }}
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+        >
+          {showForm ? "キャンセル" : "+ 工程を追加"}
+        </button>
+      </div>
+
+      {/* Add/Edit Form */}
+      {showForm && (
+        <Card className="p-4 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <Label className="text-xs">工程名</Label>
+              <Input
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                placeholder="例：現場調査、解体工事、仕上げ工事..."
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">開始日</Label>
+              <Input
+                type="date"
+                value={form.startDate}
+                onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">終了日</Label>
+              <Input
+                type="date"
+                value={form.endDate}
+                onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">ステータス</Label>
+              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as typeof form.status })}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="予定">予定</SelectItem>
+                  <SelectItem value="進行中">進行中</SelectItem>
+                  <SelectItem value="完了">完了</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">表示色</Label>
+              <div className="flex gap-1.5 mt-1.5">
+                {PRESET_COLORS.map(c => (
+                  <button
+                    key={c}
+                    onClick={() => setForm({ ...form, color: c })}
+                    className={`w-6 h-6 rounded-full border-2 transition-all ${form.color === c ? "border-foreground scale-110" : "border-transparent"}`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="sm:col-span-2">
+              <Label className="text-xs">メモ</Label>
+              <Textarea
+                value={form.memo}
+                onChange={(e) => setForm({ ...form, memo: e.target.value })}
+                placeholder="備考..."
+                rows={2}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <button
+              onClick={handleSubmit}
+              disabled={createMut.isPending || updateMut.isPending}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground text-xs font-medium rounded-md hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              <Save className="h-3.5 w-3.5" />
+              {editId ? "更新" : "追加"}
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {/* Empty state */}
+      {schedules.length === 0 && !showForm && (
+        <Card className="py-12">
+          <CardContent className="flex flex-col items-center text-center">
+            <CalendarDays className="h-10 w-10 text-muted-foreground/40 mb-3" />
+            <p className="font-medium">工程が登録されていません</p>
+            <p className="text-sm text-muted-foreground mt-1">「+ 工程を追加」から工程を登録すると、ガントチャートで進捗を確認できます。</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Gantt Chart */}
+      {schedules.length > 0 && ganttData && (
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <div className="min-w-[600px]">
+              {/* Date header */}
+              <div className="flex border-b bg-muted/30">
+                <div className="w-[200px] flex-shrink-0 px-3 py-2 text-[10px] font-medium text-muted-foreground border-r">
+                  工程名
+                </div>
+                <div className="flex-1 relative">
+                  <div className="flex">
+                    {Array.from({ length: Math.min(ganttData.totalDays, 60) }, (_, i) => {
+                      const d = new Date(ganttData.start);
+                      d.setDate(d.getDate() + i);
+                      const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+                      const isToday = d.toISOString().slice(0, 10) === new Date().toISOString().slice(0, 10);
+                      return (
+                        <div
+                          key={i}
+                          className={`flex-1 min-w-[24px] text-center py-1 text-[9px] border-r border-border/50 ${isWeekend ? "bg-muted/50" : ""} ${isToday ? "bg-primary/10 font-bold" : ""}`}
+                        >
+                          <div className="text-muted-foreground">{d.getMonth() + 1}/{d.getDate()}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+              {/* Rows */}
+              {schedules.map((s) => {
+                const sStart = new Date(s.startDate);
+                const sEnd = new Date(s.endDate);
+                const offsetDays = Math.max(0, Math.round((sStart.getTime() - ganttData.start.getTime()) / 86400000));
+                const durationDays = Math.max(1, Math.round((sEnd.getTime() - sStart.getTime()) / 86400000) + 1);
+                const leftPct = (offsetDays / ganttData.totalDays) * 100;
+                const widthPct = (durationDays / ganttData.totalDays) * 100;
+                return (
+                  <div key={s.id} className="flex border-b last:border-b-0 hover:bg-muted/20 transition-colors group">
+                    <div className="w-[200px] flex-shrink-0 px-3 py-2.5 border-r flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color || "#3b82f6" }} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium truncate">{s.title}</p>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <Badge className={`text-[9px] px-1 py-0 h-4 ${STATUS_COLORS_SCHEDULE[s.status] || ""}`}>
+                            {s.status}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity">
+                        <button onClick={() => startEdit(s)} className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground">
+                          <PenLine className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={() => { if (confirm("この工程を削除しますか？")) deleteMut.mutate({ id: s.id }); }}
+                          className="p-1 hover:bg-destructive/10 rounded text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex-1 relative py-2">
+                      {/* Today line */}
+                      {(() => {
+                        const todayOffset = Math.round((new Date().getTime() - ganttData.start.getTime()) / 86400000);
+                        if (todayOffset >= 0 && todayOffset <= ganttData.totalDays) {
+                          return <div className="absolute top-0 bottom-0 w-px bg-red-400/60 z-10" style={{ left: `${(todayOffset / ganttData.totalDays) * 100}%` }} />;
+                        }
+                        return null;
+                      })()}
+                      {/* Bar */}
+                      <div
+                        className={`absolute top-1/2 -translate-y-1/2 h-5 rounded-full shadow-sm cursor-pointer transition-all hover:h-6 ${s.status === "完了" ? "opacity-70" : ""}`}
+                        style={{
+                          left: `${leftPct}%`,
+                          width: `${Math.max(widthPct, 2)}%`,
+                          backgroundColor: s.color || "#3b82f6",
+                        }}
+                        title={`${s.title}: ${s.startDate} 〜 ${s.endDate}`}
+                      >
+                        <span className="absolute inset-0 flex items-center justify-center text-[9px] text-white font-medium truncate px-1">
+                          {durationDays > 2 ? `${durationDays}日` : ""}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* List view (details) */}
+      {schedules.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-xs font-medium text-muted-foreground">工程一覧</h4>
+          {schedules.map((s) => (
+            <Card key={s.id} className="p-3">
+              <div className="flex items-start gap-3">
+                <div className="w-3 h-3 rounded-full mt-1 flex-shrink-0" style={{ backgroundColor: s.color || "#3b82f6" }} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{s.title}</span>
+                    <Badge className={`text-[10px] ${STATUS_COLORS_SCHEDULE[s.status] || ""}`}>{s.status}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {s.startDate.replace(/-/g, "/")} 〜 {s.endDate.replace(/-/g, "/")}
+                    <span className="ml-2">
+                      ({Math.round((new Date(s.endDate).getTime() - new Date(s.startDate).getTime()) / 86400000) + 1}日間)
+                    </span>
+                  </p>
+                  {s.memo && <p className="text-xs text-muted-foreground mt-1">{s.memo}</p>}
+                </div>
+                <div className="flex gap-1">
+                  {s.status !== "完了" && (
+                    <button
+                      onClick={() => updateMut.mutate({ id: s.id, status: s.status === "予定" ? "進行中" : "完了" })}
+                      className="p-1.5 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors"
+                      title={s.status === "予定" ? "進行中にする" : "完了にする"}
+                    >
+                      <CheckSquare className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  <button onClick={() => startEdit(s)} className="p-1.5 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors">
+                    <PenLine className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => { if (confirm("この工程を削除しますか？")) deleteMut.mutate({ id: s.id }); }}
+                    className="p-1.5 hover:bg-destructive/10 rounded text-muted-foreground hover:text-destructive transition-colors"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -62,6 +62,10 @@ import {
   getAppSetting,
   setAppSetting,
   getAllAppSettings,
+  listSchedulesByCase,
+  createSchedule,
+  updateSchedule,
+  deleteSchedule,
 } from "./db";
 import { makeRequest } from "./_core/map";
 import {
@@ -2674,6 +2678,56 @@ export const appRouter = router({
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         await deleteFullwidthExclusion(input.id);
+        return { success: true };
+      }),
+  }),
+
+  // ─── 工程スケジュール ──────────────────────────────────────────────────────────────
+  schedules: router({
+    listByCase: protectedProcedure
+      .input(z.object({ caseId: z.number() }))
+      .query(({ input }) => listSchedulesByCase(input.caseId)),
+    create: protectedProcedure
+      .input(z.object({
+        caseId: z.number(),
+        title: z.string().trim().min(1).max(255),
+        startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        status: z.enum(["予定", "進行中", "完了"]).default("予定"),
+        color: z.string().max(16).optional(),
+        memo: z.string().max(1000).optional(),
+        orderNo: z.number().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { id } = await createSchedule({
+          ...input,
+          memo: input.memo ?? null,
+          color: input.color ?? "#3b82f6",
+          orderNo: input.orderNo ?? 0,
+          createdBy: ctx.user.id,
+        });
+        return { id };
+      }),
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        title: z.string().trim().min(1).max(255).optional(),
+        startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        status: z.enum(["予定", "進行中", "完了"]).optional(),
+        color: z.string().max(16).optional(),
+        memo: z.string().max(1000).optional(),
+        orderNo: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        await updateSchedule(id, data);
+        return { success: true };
+      }),
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteSchedule(input.id);
         return { success: true };
       }),
   }),

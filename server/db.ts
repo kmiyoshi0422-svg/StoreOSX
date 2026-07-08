@@ -5,6 +5,8 @@ import {
   caseSignatures,
   caseReportDrafts,
   InsertCaseReportDraft,
+  caseSchedules,
+  InsertCaseSchedule,
   fullwidthExclusions,
   InsertFullwidthExclusion,
   checklistItems,
@@ -738,4 +740,31 @@ export async function getAllAppSettings(): Promise<Record<string, unknown>> {
     try { result[row.settingKey] = JSON.parse(row.settingValue); } catch { result[row.settingKey] = row.settingValue; }
   }
   return result;
+}
+
+
+// ─── Case Schedules (工程管理) ─────────────────────────────────────────────
+export async function listSchedulesByCase(caseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(caseSchedules).where(eq(caseSchedules.caseId, caseId)).orderBy(caseSchedules.orderNo);
+}
+
+export async function createSchedule(data: InsertCaseSchedule) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(caseSchedules).values(data);
+  return { id: result.insertId };
+}
+
+export async function updateSchedule(id: number, data: Partial<Omit<InsertCaseSchedule, "id" | "caseId" | "createdAt" | "createdBy">>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(caseSchedules).set(data).where(eq(caseSchedules.id, id));
+}
+
+export async function deleteSchedule(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(caseSchedules).where(eq(caseSchedules.id, id));
 }
