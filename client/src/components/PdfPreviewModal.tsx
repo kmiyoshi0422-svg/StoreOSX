@@ -5,7 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Download, Loader2, X, ZoomIn, ZoomOut, ChevronLeft, ChevronRight } from "lucide-react";
+import { Download, Loader2, Printer, X, ZoomIn, ZoomOut, ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import html2canvas from "html2canvas-pro";
 import jsPDF from "jspdf";
@@ -79,6 +79,55 @@ export function PdfPreviewModal({
       generatePreview();
     }
   }, [open, generatePreview]);
+
+  // ブラウザ印刷
+  const handlePrint = useCallback(() => {
+    if (pages.length === 0) return;
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    const imagesHtml = pages
+      .map(
+        (src, i) =>
+          `<div class="page"><img src="${src}" /></div>${i < pages.length - 1 ? "" : ""}`,
+      )
+      .join("");
+    printWindow.document.write(`<!DOCTYPE html>
+<html><head><title>${fileName}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  @page { size: A4 portrait; margin: 0; }
+  body { background: #fff; }
+  .page { page-break-after: always; width: 100%; display: flex; align-items: flex-start; justify-content: center; }
+  .page:last-child { page-break-after: auto; }
+  .page img { width: 100%; height: auto; display: block; }
+</style>
+</head><body>${imagesHtml}</body></html>`);
+    printWindow.document.close();
+    // 画像が読み込まれてから印刷を実行
+    const imgs = printWindow.document.querySelectorAll("img");
+    let loaded = 0;
+    const tryPrint = () => {
+      loaded++;
+      if (loaded >= imgs.length) {
+        setTimeout(() => {
+          printWindow.focus();
+          printWindow.print();
+        }, 200);
+      }
+    };
+    if (imgs.length === 0) {
+      printWindow.print();
+    } else {
+      imgs.forEach((img) => {
+        if (img.complete) {
+          tryPrint();
+        } else {
+          img.onload = tryPrint;
+          img.onerror = tryPrint;
+        }
+      });
+    }
+  }, [pages, fileName]);
 
   // PDFダウンロード
   const handleDownload = async () => {
@@ -162,6 +211,11 @@ export function PdfPreviewModal({
                   </Button>
                 </div>
               )}
+              {/* 印刷 */}
+              <Button size="sm" variant="outline" onClick={handlePrint} disabled={loading || pages.length === 0}>
+                <Printer className="h-4 w-4 mr-1" />
+                印刷
+              </Button>
               {/* ダウンロード */}
               <Button size="sm" onClick={handleDownload} disabled={generating || loading}>
                 {generating ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Download className="h-4 w-4 mr-1" />}
