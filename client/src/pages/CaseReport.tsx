@@ -1254,35 +1254,41 @@ export default function CaseReport({
                   </p>
                 </>
               )}
-              {reportType === "survey" && caseData.surveyImpression && (
-                <>
-                  <SectionBand>所感</SectionBand>
-                  <p className="text-[12.5px] whitespace-pre-wrap leading-[1.7] mb-4 px-0.5">
-                    {reportLabel(caseData.surveyImpression)}
-                  </p>
-                  {caseData.surveyImpressionAuthor && (
-                    <p className="text-[11px] text-right text-muted-foreground mb-7 px-0.5">
-                      記入者：{caseData.surveyImpressionAuthor}
-                    </p>
-                  )}
-                </>
-              )}
             </>
           );
+
+          const impressionBlock = reportType === "survey" && caseData.surveyImpression ? (
+            <section className="report-page bg-white border border-border/60 shadow-sm mb-6 flex flex-col">
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <SectionBand>所感</SectionBand>
+                <p className="text-[12.5px] whitespace-pre-wrap leading-[1.7] mb-4 px-0.5">
+                  {reportLabel(caseData.surveyImpression)}
+                </p>
+                {caseData.surveyImpressionAuthor && (
+                  <p className="text-[11px] text-right text-muted-foreground mb-7 px-0.5">
+                    記入者：{caseData.surveyImpressionAuthor}
+                  </p>
+                )}
+              </div>
+            </section>
+          ) : null;
 
           if (!needsSplit) {
             // 1ページに収まる場合
             return (
-              <section className="report-page bg-white border border-border/60 shadow-sm mb-6 flex flex-col">
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  {headerBlock}
-                  {tableBlock}
-                  {bodyBlock}
-                </div>
-                <div className="shrink-0 pt-4">
-                  <SignatureBlock signature={signature} />
-                </div>
-              </section>
+              <>
+                <section className="report-page bg-white border border-border/60 shadow-sm mb-6 flex flex-col">
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    {headerBlock}
+                    {tableBlock}
+                    {bodyBlock}
+                  </div>
+                  <div className="shrink-0 pt-4">
+                    <SignatureBlock signature={signature} />
+                  </div>
+                </section>
+                {impressionBlock}
+              </>
             );
           } else {
             // 2ページに分割：1ページ目=ヘッダー+テーブル、2ページ目=本文+確認欄
@@ -1302,6 +1308,7 @@ export default function CaseReport({
                     <SignatureBlock signature={signature} />
                   </div>
                 </section>
+                {impressionBlock}
               </>
             );
           }
