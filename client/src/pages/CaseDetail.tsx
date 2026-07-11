@@ -54,6 +54,8 @@ import {
   Clock,
   CheckSquare,
   CalendarDays,
+  Calendar,
+  ExternalLink,
 } from "lucide-react";
 import { generateQuotePDF, generateCompletionReportPDF } from "@/lib/documentPdf";
 import {
@@ -2217,6 +2219,21 @@ function ScheduleTab({ caseId }: { caseId: number }) {
     onSuccess: () => { utils.schedules.listByCase.invalidate({ caseId }); toast.success("工程を削除しました"); },
   });
 
+  // ICSカレンダーフィード
+  const { data: feedData } = trpc.schedules.getCaseCalendarFeedToken.useQuery({ caseId });
+  const generateFeedMut = trpc.schedules.generateCaseCalendarFeedToken.useMutation({
+    onSuccess: () => { utils.schedules.getCaseCalendarFeedToken.invalidate({ caseId }); },
+  });
+  const [showCalendarPanel, setShowCalendarPanel] = useState(false);
+
+  const feedUrl = feedData?.token
+    ? `${window.location.origin}/api/calendar/feed/${feedData.token}.ics`
+    : null;
+
+  const googleCalendarSubscribeUrl = feedUrl
+    ? `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(feedUrl.replace(/^https?:\/\//, ""))}`
+    : null;
+
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState({ title: "", startDate: "", endDate: "", status: "予定" as "予定" | "進行中" | "完了", color: "#3b82f6", memo: "", progress: 0 });
@@ -2348,13 +2365,89 @@ function ScheduleTab({ caseId }: { caseId: number }) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-foreground">工程スケジュール</h3>
-        <button
-          onClick={() => { setShowForm(!showForm); setEditId(null); setForm({ title: "", startDate: "", endDate: "", status: "予定", color: "#3b82f6", memo: "", progress: 0 }); }}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
-        >
-          {showForm ? "キャンセル" : "+ 工程を追加"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowCalendarPanel(!showCalendarPanel)}
+            className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            title="カレンダー連動"
+          >
+            <Calendar className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">カレンダー連動</span>
+          </button>
+          <button
+            onClick={() => { setShowForm(!showForm); setEditId(null); setForm({ title: "", startDate: "", endDate: "", status: "予定", color: "#3b82f6", memo: "", progress: 0 }); }}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+          >
+            {showForm ? "キャンセル" : "+ 工程を追加"}
+          </button>
+        </div>
       </div>
+
+      {/* Calendar Sync Panel */}
+      {showCalendarPanel && (
+        <Card className="p-4 border-blue-200 bg-blue-50/50">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-blue-600" />
+              <h4 className="text-sm font-medium text-blue-900">カレンダー連動（ICS購読）</h4>
+            </div>
+            <p className="text-xs text-blue-700">
+              この案件の工程スケジュールをGoogleカレンダーやAppleカレンダーに同期できます。工程の追加・変更は自動的に反映されます。
+            </p>
+            {!feedData?.token ? (
+              <button
+                onClick={() => generateFeedMut.mutate({ caseId })}
+                disabled={generateFeedMut.isPending}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                <Calendar className="h-3.5 w-3.5" />
+                {generateFeedMut.isPending ? "生成中..." : "購読URLを生成"}
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={feedUrl || ""}
+                    className="flex-1 text-[11px] px-2 py-1.5 bg-white border rounded font-mono truncate"
+                  />
+                  <button
+                    onClick={() => {
+                      if (feedUrl) {
+                        navigator.clipboard.writeText(feedUrl).then(
+                          () => toast.success("URLをコピーしました"),
+                          () => toast.error("コピーに失敗しました")
+                        );
+                      }
+                    }}
+                    className="p-1.5 hover:bg-blue-100 rounded text-blue-600 transition-colors"
+                    title="URLをコピー"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {googleCalendarSubscribeUrl && (
+                    <a
+                      href={googleCalendarSubscribeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-200 text-blue-700 text-xs font-medium rounded-md hover:bg-blue-50 transition-colors"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      Googleカレンダーに追加
+                    </a>
+                  )}
+                </div>
+                <p className="text-[10px] text-blue-600/70">
+                  ※ Googleカレンダーの反映は数時間かかる場合があります。AppleカレンダーやOutlookは上記URLを「照会」で追加してください。
+                </p>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
 
       {/* Add/Edit Form */}
       {showForm && (
@@ -2465,16 +2558,17 @@ function ScheduleTab({ caseId }: { caseId: number }) {
       {schedules.length > 0 && ganttData && (
         <Card className="overflow-hidden">
           <div
-            className="overflow-x-auto"
+            className="overflow-x-auto -webkit-overflow-scrolling-touch"
             ref={ganttContainerRef}
             onMouseMove={drag ? handleDragMove : undefined}
             onMouseUp={drag ? handleDragEnd : undefined}
             onMouseLeave={drag ? handleDragEnd : undefined}
+            style={{ WebkitOverflowScrolling: "touch" }}
           >
-            <div className={`min-w-[600px] ${drag ? "select-none" : ""}`}>
+            <div className={`min-w-[480px] sm:min-w-[600px] ${drag ? "select-none" : ""}`}>
               {/* Date header */}
               <div className="flex border-b bg-muted/30">
-                <div className="w-[200px] flex-shrink-0 px-3 py-2 text-[10px] font-medium text-muted-foreground border-r">
+                <div className="w-[120px] sm:w-[200px] flex-shrink-0 px-2 sm:px-3 py-2 text-[10px] font-medium text-muted-foreground border-r">
                   工程名
                 </div>
                 <div className="flex-1 relative" data-gantt-area>
@@ -2510,22 +2604,22 @@ function ScheduleTab({ caseId }: { caseId: number }) {
                 const widthPct = (durationDays / ganttData.totalDays) * 100;
                 return (
                   <div key={s.id} className="flex border-b last:border-b-0 hover:bg-muted/20 transition-colors group">
-                    <div className="w-[200px] flex-shrink-0 px-3 py-2.5 border-r flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color || "#3b82f6" }} />
+                    <div className="w-[120px] sm:w-[200px] flex-shrink-0 px-2 sm:px-3 py-2.5 border-r flex items-center gap-1.5 sm:gap-2">
+                      <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color || "#3b82f6" }} />
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs font-medium truncate">{s.title}</p>
+                        <p className="text-[11px] sm:text-xs font-medium truncate">{s.title}</p>
                         <div className="flex items-center gap-1 mt-0.5">
-                          <Badge className={`text-[9px] px-1 py-0 h-4 ${STATUS_COLORS_SCHEDULE[s.status] || ""}`}>
+                          <Badge className={`text-[8px] sm:text-[9px] px-1 py-0 h-3.5 sm:h-4 ${STATUS_COLORS_SCHEDULE[s.status] || ""}`}>
                             {s.status}
                           </Badge>
                           {isDragging && dragPreview && (
-                            <span className="text-[9px] text-primary font-medium">
+                            <span className="text-[8px] sm:text-[9px] text-primary font-medium">
                               {dragPreview.startDate.slice(5)} 〜 {dragPreview.endDate.slice(5)}
                             </span>
                           )}
                         </div>
                       </div>
-                      <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity">
+                      <div className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 flex gap-0.5 transition-opacity">
                         <button onClick={() => startEdit(s)} className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground">
                           <PenLine className="h-3 w-3" />
                         </button>
@@ -2600,30 +2694,30 @@ function ScheduleTab({ caseId }: { caseId: number }) {
         <div className="space-y-2">
           <h4 className="text-xs font-medium text-muted-foreground">工程一覧</h4>
           {schedules.map((s) => (
-            <Card key={s.id} className="p-3">
-              <div className="flex items-start gap-3">
-                <div className="w-3 h-3 rounded-full mt-1 flex-shrink-0" style={{ backgroundColor: s.color || "#3b82f6" }} />
+            <Card key={s.id} className="p-2.5 sm:p-3">
+              <div className="flex items-start gap-2 sm:gap-3">
+                <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full mt-1 flex-shrink-0" style={{ backgroundColor: s.color || "#3b82f6" }} />
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{s.title}</span>
-                    <Badge className={`text-[10px] ${STATUS_COLORS_SCHEDULE[s.status] || ""}`}>{s.status}</Badge>
-                    <span className="text-[10px] font-medium text-muted-foreground">{s.progress}%</span>
+                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                    <span className="text-xs sm:text-sm font-medium">{s.title}</span>
+                    <Badge className={`text-[9px] sm:text-[10px] ${STATUS_COLORS_SCHEDULE[s.status] || ""}`}>{s.status}</Badge>
+                    <span className="text-[9px] sm:text-[10px] font-medium text-muted-foreground">{s.progress}%</span>
                   </div>
                   <div className="flex items-center gap-2 mt-1">
                     <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                       <div className="h-full rounded-full transition-all duration-300" style={{ width: `${s.progress}%`, backgroundColor: s.color || "#3b82f6" }} />
                     </div>
-                    <span className="text-[10px] text-muted-foreground w-8">{s.progress}%</span>
+                    <span className="text-[9px] sm:text-[10px] text-muted-foreground w-8">{s.progress}%</span>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {s.startDate.replace(/-/g, "/")} 〒 {s.endDate.replace(/-/g, "/")}
-                    <span className="ml-2">
+                  <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5">
+                    {s.startDate.replace(/-/g, "/")} 〜 {s.endDate.replace(/-/g, "/")}
+                    <span className="ml-1 sm:ml-2">
                       ({Math.round((new Date(s.endDate).getTime() - new Date(s.startDate).getTime()) / 86400000) + 1}日間)
                     </span>
                   </p>
-                  {s.memo && <p className="text-xs text-muted-foreground mt-1">{s.memo}</p>}
+                  {s.memo && <p className="text-[11px] sm:text-xs text-muted-foreground mt-1">{s.memo}</p>}
                 </div>
-                <div className="flex gap-1">
+                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-1">
                   {s.status !== "完了" && (
                     <button
                       onClick={() => updateMut.mutate({ id: s.id, status: s.status === "予定" ? "進行中" : "完了" })}

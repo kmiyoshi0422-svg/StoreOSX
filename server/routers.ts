@@ -88,6 +88,7 @@ import { scoreCandidates, topMatches, pickBestMatch } from "../shared/estimate-m
 import { pickLatestEstimate } from "../shared/estimate-aggregator";
 import { invokeLLM } from "./_core/llm";
 import { ENV } from "./_core/env";
+import { generateCalendarToken } from "./calendarFeed";
 import {
   EMPTY_COMPLETION_CONTENT,
   parseCompletionContent,
@@ -2732,6 +2733,36 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         await deleteSchedule(input.id);
         return { success: true };
+      }),
+    // ICSフィードトークン取得（全件）
+    getCalendarFeedToken: protectedProcedure
+      .query(async () => {
+        const existing = await getAppSetting<{ token: string }>("calendarFeedToken");
+        return { token: existing?.token ?? null };
+      }),
+    // ICSフィードトークン生成（全件）
+    generateCalendarFeedToken: protectedProcedure
+      .mutation(async () => {
+        const token = generateCalendarToken();
+        await setAppSetting("calendarFeedToken", { token });
+        return { token };
+      }),
+    // ICSフィードトークン取得（案件別）
+    getCaseCalendarFeedToken: protectedProcedure
+      .input(z.object({ caseId: z.number() }))
+      .query(async ({ input }) => {
+        const tokens = await getAppSetting<Record<string, string>>("calendarFeedTokens") ?? {};
+        return { token: tokens[String(input.caseId)] ?? null };
+      }),
+    // ICSフィードトークン生成（案件別）
+    generateCaseCalendarFeedToken: protectedProcedure
+      .input(z.object({ caseId: z.number() }))
+      .mutation(async ({ input }) => {
+        const tokens = await getAppSetting<Record<string, string>>("calendarFeedTokens") ?? {};
+        const token = generateCalendarToken();
+        tokens[String(input.caseId)] = token;
+        await setAppSetting("calendarFeedTokens", tokens);
+        return { token };
       }),
   }),
 });
