@@ -203,42 +203,46 @@ export default function CaseDetail({ id }: { id: number }) {
 
       {/* Tabs */}
       <Tabs defaultValue="info" className="space-y-4">
-        <TabsList className="flex flex-wrap h-auto gap-1 p-1 w-full">
-          <TabsTrigger value="info" className="flex-none px-3 py-1.5">
-            <Info className="h-3.5 w-3.5" />
-            基本情報
-          </TabsTrigger>
-          <TabsTrigger value="checklist" className="flex-none px-3 py-1.5">
-            <ListChecks className="h-3.5 w-3.5" />
-            チェック
-            <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 h-4">
-              {checklist.filter((i) => i.checked).length}/{checklist.length}
-            </Badge>
-          </TabsTrigger>
-          <TabsTrigger value="photos" className="flex-none px-3 py-1.5">
-            <ImageIcon className="h-3.5 w-3.5" />
-            写真
-            <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 h-4">
-              {photos.length}
-            </Badge>
-          </TabsTrigger>
-          <TabsTrigger value="estimates" className="flex-none px-3 py-1.5">
-            <Receipt className="h-3.5 w-3.5" />
-            見積書
-          </TabsTrigger>
-          <TabsTrigger value="profit" className="flex-none px-3 py-1.5">
-            <Wallet className="h-3.5 w-3.5" />
-            収支
-          </TabsTrigger>
-          <TabsTrigger value="expenses" className="flex-none px-3 py-1.5">
-            <Receipt className="h-3.5 w-3.5" />
-            経費
-          </TabsTrigger>
-          <TabsTrigger value="schedule" className="flex-none px-3 py-1.5">
-            <CalendarDays className="h-3.5 w-3.5" />
-            工程
-          </TabsTrigger>
-        </TabsList>
+        <div className="relative w-full">
+          {/* スクロールヒント（右側フェード） */}
+          <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none z-10 md:hidden" />
+          <TabsList className="flex h-auto gap-1 p-1 w-full overflow-x-auto scrollbar-hide [-webkit-overflow-scrolling:touch] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <TabsTrigger value="info" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
+              <Info className="h-3.5 w-3.5" />
+              基本情報
+            </TabsTrigger>
+            <TabsTrigger value="checklist" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
+              <ListChecks className="h-3.5 w-3.5" />
+              チェック
+              <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 h-4">
+                {checklist.filter((i) => i.checked).length}/{checklist.length}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger value="photos" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
+              <ImageIcon className="h-3.5 w-3.5" />
+              写真
+              <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 h-4">
+                {photos.length}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger value="estimates" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
+              <Receipt className="h-3.5 w-3.5" />
+              見積書
+            </TabsTrigger>
+            <TabsTrigger value="profit" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
+              <Wallet className="h-3.5 w-3.5" />
+              収支
+            </TabsTrigger>
+            <TabsTrigger value="expenses" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
+              <Receipt className="h-3.5 w-3.5" />
+              経費
+            </TabsTrigger>
+            <TabsTrigger value="schedule" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
+              <CalendarDays className="h-3.5 w-3.5" />
+              工程
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="info">
           <InfoTab caseData={caseData} onUpdated={() => utils.cases.get.invalidate({ id })} />
