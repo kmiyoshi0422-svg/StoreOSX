@@ -7,6 +7,8 @@ import {
   InsertCaseReportDraft,
   caseSchedules,
   InsertCaseSchedule,
+  scheduleTemplates,
+  InsertScheduleTemplate,
   fullwidthExclusions,
   InsertFullwidthExclusion,
   checklistItems,
@@ -767,4 +769,34 @@ export async function deleteSchedule(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.delete(caseSchedules).where(eq(caseSchedules.id, id));
+}
+
+
+// ============================================================
+// Schedule Templates
+// ============================================================
+
+export async function listScheduleTemplates() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(scheduleTemplates).orderBy(desc(scheduleTemplates.updatedAt));
+}
+
+export async function createScheduleTemplate(data: InsertScheduleTemplate) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(scheduleTemplates).values(data);
+  return result.insertId;
+}
+
+export async function deleteScheduleTemplate(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(scheduleTemplates).where(eq(scheduleTemplates.id, id));
+}
+
+export async function updateScheduleTemplate(id: number, data: Partial<Omit<InsertScheduleTemplate, "id" | "createdAt" | "createdBy">>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(scheduleTemplates).set(data).where(eq(scheduleTemplates.id, id));
 }

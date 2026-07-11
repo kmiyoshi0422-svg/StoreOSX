@@ -57,6 +57,7 @@ import {
   Calendar,
   ExternalLink,
   X,
+  FolderOpen,
 } from "lucide-react";
 import { generateQuotePDF, generateCompletionReportPDF } from "@/lib/documentPdf";
 import { PdfPreviewModal } from "@/components/PdfPreviewModal";
@@ -282,7 +283,7 @@ export default function CaseDetail({ id }: { id: number }) {
         </TabsContent>
 
         <TabsContent value="schedule">
-          <ScheduleTab caseId={id} />
+          <ScheduleTab caseId={id} caseData={caseData} />
         </TabsContent>
       </Tabs>
     </div>
@@ -2209,7 +2210,7 @@ function ExpensesTab({ caseId }: { caseId: number }) {
 
 
 // ─── Schedule Tab (工程管理ガントチャート) ─────────────────────────────────────
-function ScheduleTab({ caseId }: { caseId: number }) {
+function ScheduleTab({ caseId, caseData }: { caseId: number; caseData: any }) {
   const utils = trpc.useUtils();
   const { data: schedules = [], isLoading } = trpc.schedules.listByCase.useQuery({ caseId });
   const createMut = trpc.schedules.create.useMutation({
@@ -2238,14 +2239,18 @@ function ScheduleTab({ caseId }: { caseId: number }) {
     if (!scheduleExportRef.current) return;
     setExportingImage(true);
     try {
+      // Show export header temporarily
+      const header = scheduleExportRef.current.querySelector('.export-header') as HTMLElement;
+      if (header) header.style.display = 'block';
       const canvas = await html2canvas(scheduleExportRef.current, {
         scale: 2,
         useCORS: true,
         backgroundColor: "#ffffff",
         logging: false,
       });
+      if (header) header.style.display = 'none';
       const link = document.createElement("a");
-      link.download = `工程表_${caseId}.png`;
+      link.download = `工程表_${caseData?.storeName || caseId}.png`;
       link.href = canvas.toDataURL("image/png");
       link.click();
       toast.success("画像をダウンロードしました");
@@ -2255,6 +2260,30 @@ function ScheduleTab({ caseId }: { caseId: number }) {
       setExportingImage(false);
     }
   };
+
+  // Templates
+  const { data: templates } = trpc.scheduleTemplates.list.useQuery();
+  const [showTemplatePanel, setShowTemplatePanel] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false);
+  const saveTemplateMut = trpc.scheduleTemplates.saveFromCase.useMutation({
+    onSuccess: () => {
+      utils.scheduleTemplates.list.invalidate();
+      setShowSaveTemplate(false);
+      setTemplateName("");
+      toast.success("テンプレートを保存しました");
+    },
+  });
+  const applyTemplateMut = trpc.scheduleTemplates.applyToCase.useMutation({
+    onSuccess: () => {
+      utils.schedules.listByCase.invalidate({ caseId });
+      setShowTemplatePanel(false);
+      toast.success("テンプレートを適用しました");
+    },
+  });
+  const deleteTemplateMut = trpc.scheduleTemplates.delete.useMutation({
+    onSuccess: () => { utils.scheduleTemplates.list.invalidate(); },
+  });
 
   // AI工程提案
   const suggestMut = trpc.schedules.suggestSchedules.useMutation();
@@ -2439,6 +2468,24 @@ function ScheduleTab({ caseId }: { caseId: number }) {
         <h3 className="text-sm font-semibold text-foreground">工程スケジュール</h3>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setShowTemplatePanel(!showTemplatePanel)}
+            className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            title="テンプレート"
+          >
+            <FolderOpen className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">テンプレート</span>
+          </button>
+          {schedules.length > 0 && (
+            <button
+              onClick={() => setShowSaveTemplate(true)}
+              className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+              title="現在の工程をテンプレートとして保存"
+            >
+              <Save className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">保存</span>
+            </button>
+          )}
+          <button
             onClick={handleSuggest}
             disabled={suggestMut.isPending}
             className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 hover:text-amber-700 disabled:opacity-50 transition-colors"
@@ -2484,6 +2531,80 @@ function ScheduleTab({ caseId }: { caseId: number }) {
           </button>
         </div>
       </div>
+
+      {/* Template Panel */}
+      {showTemplatePanel && (
+        <Card className="p-4 border-blue-200 bg-blue-50/50">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FolderOpen className="h-4 w-4 text-blue-600" />
+                <h4 className="text-sm font-medium text-blue-900">工程テンプレート</h4>
+              </div>
+              <button onClick={() => setShowTemplatePanel(false)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+            </div>
+            {(!templates || templates.length === 0) ? (
+              <p className="text-xs text-muted-foreground">保存済みのテンプレートはありません。工程を作成後「保存」ボタンでテンプレート化できます。</p>
+            ) : (
+              <div className="space-y-2">
+                {templates.map((tpl) => {
+                  const items = JSON.parse(tpl.items) as Array<{ title: string; durationDays: number; color: string }>;
+                  return (
+                    <div key={tpl.id} className="flex items-center gap-2 p-2 rounded-md border bg-white hover:bg-blue-50 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{tpl.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{items.length}工程・合計{items.reduce((s, i) => s + i.durationDays, 0)}日間</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const startDate = new Date().toISOString().slice(0, 10);
+                          applyTemplateMut.mutate({ templateId: tpl.id, caseId, startDate });
+                        }}
+                        disabled={applyTemplateMut.isPending}
+                        className="text-[10px] px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        適用
+                      </button>
+                      <button
+                        onClick={() => { if (confirm("このテンプレートを削除しますか？")) deleteTemplateMut.mutate({ id: tpl.id }); }}
+                        className="text-[10px] px-1.5 py-1 text-destructive hover:bg-destructive/10 rounded"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* Save Template Dialog */}
+      {showSaveTemplate && (
+        <Card className="p-4 border-green-200 bg-green-50/50">
+          <div className="space-y-3">
+            <h4 className="text-sm font-medium text-green-900">現在の工程をテンプレートとして保存</h4>
+            <input
+              type="text"
+              value={templateName}
+              onChange={(e) => setTemplateName(e.target.value)}
+              placeholder="テンプレート名（例: サッシ修理5工程セット）"
+              className="w-full text-xs border rounded-md px-3 py-2 bg-white"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => saveTemplateMut.mutate({ caseId, name: templateName })}
+                disabled={!templateName.trim() || saveTemplateMut.isPending}
+                className="text-xs px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
+              >
+                {saveTemplateMut.isPending ? "保存中..." : "保存"}
+              </button>
+              <button onClick={() => { setShowSaveTemplate(false); setTemplateName(""); }} className="text-xs px-3 py-1.5 border rounded-md hover:bg-muted">キャンセル</button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* AI Suggestion Panel */}
       {suggestions && (
@@ -2778,6 +2899,19 @@ function ScheduleTab({ caseId }: { caseId: number }) {
 
       {/* Export target wrapper */}
       <div ref={scheduleExportRef} className="schedule-export-area">
+      {/* Export Header (visible in export) */}
+      <div className="export-header hidden print:block" style={{ display: 'none' }}>
+        <div className="p-4 border-b border-gray-200 bg-white">
+          <h2 className="text-base font-bold text-gray-900 mb-1">工程表: {caseData?.storeName || ''} {caseData?.requestNumber || ''}</h2>
+          <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-600">
+            {caseData?.address && <span>現場: {caseData.address}</span>}
+            {schedules.length > 0 && (
+              <span>施工期間: {schedules.reduce((min: string, s: any) => s.startDate < min ? s.startDate : min, schedules[0].startDate)} 〜 {schedules.reduce((max: string, s: any) => s.endDate > max ? s.endDate : max, schedules[0].endDate)}</span>
+            )}
+            {caseData?.repairCategory && <span>工事区分: {caseData.repairCategory}</span>}
+          </div>
+        </div>
+      </div>
       {/* Gantt Chart */}
       {schedules.length > 0 && ganttData && (
         <Card className="overflow-hidden">
@@ -2907,8 +3041,11 @@ function ScheduleTab({ caseId }: { caseId: number }) {
                           onPointerDown={(e) => handleDragStart(e, s.id, "resize-end", s.startDate, s.endDate)}
                           style={{ touchAction: "none" }}
                         />
-                        {/* Label */}
-                        <span className="absolute inset-0 flex items-center justify-center text-[9px] text-white font-medium truncate px-3 z-[5] drop-shadow-sm pointer-events-none">
+                        {/* Label with status icon */}
+                        <span className="absolute inset-0 flex items-center justify-center text-[9px] text-white font-medium truncate px-3 z-[5] drop-shadow-sm pointer-events-none gap-0.5">
+                          {s.status === "完了" && <span>✓</span>}
+                          {s.status === "進行中" && <span className="animate-pulse">▶</span>}
+                          {s.status === "予定" && durationDays <= 2 && <span>○</span>}
                           {s.progress > 0 ? `${s.progress}%` : (durationDays > 2 ? `${durationDays}日` : "")}
                         </span>
                       </div>

@@ -141,6 +141,13 @@
       "when": 1783471583430,
       "tag": "0019_solid_human_robot",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1783803801104,
+      "tag": "0020_curvy_pepper_potts",
+      "breakpoints": true
     }
   ]
 }

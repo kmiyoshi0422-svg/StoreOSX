@@ -403,3 +403,19 @@ export const caseSchedules = mysqlTable("case_schedules", {
 });
 export type CaseSchedule = typeof caseSchedules.$inferSelect;
 export type InsertCaseSchedule = typeof caseSchedules.$inferInsert;
+
+
+/**
+ * 工程テンプレートテーブル
+ */
+export const scheduleTemplates = mysqlTable("schedule_templates", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(), // テンプレート名 例: "サッシ修理5工程セット"
+  description: text("description"), // 説明
+  items: text("items").notNull(), // JSON: [{title, durationDays, color, memo, orderNo}]
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ScheduleTemplate = typeof scheduleTemplates.$inferSelect;
+export type InsertScheduleTemplate = typeof scheduleTemplates.$inferInsert;

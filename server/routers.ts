@@ -66,6 +66,9 @@ import {
   createSchedule,
   updateSchedule,
   deleteSchedule,
+  listScheduleTemplates,
+  createScheduleTemplate,
+  deleteScheduleTemplate,
 } from "./db";
 import { makeRequest } from "./_core/map";
 import {
@@ -2875,6 +2878,108 @@ JSONスキーマに従って回答してください。`,
         } catch {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI応答のパースに失敗しました" });
         }
+      }),
+  }),
+
+  // 工程テンプレート
+  scheduleTemplates: router({
+    list: protectedProcedure.query(async () => {
+      return listScheduleTemplates();
+    }),
+
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1),
+        description: z.string().optional(),
+        items: z.array(z.object({
+          title: z.string(),
+          durationDays: z.number().min(1),
+          color: z.string(),
+          memo: z.string().optional(),
+          orderNo: z.number(),
+        })),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const id = await createScheduleTemplate({
+          name: input.name,
+          description: input.description || null,
+          items: JSON.stringify(input.items),
+          createdBy: ctx.user.id,
+        });
+        return { id };
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteScheduleTemplate(input.id);
+        return { success: true };
+      }),
+
+    saveFromCase: protectedProcedure
+      .input(z.object({
+        caseId: z.number(),
+        name: z.string().min(1),
+        description: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const schedules = await listSchedulesByCase(input.caseId);
+        if (schedules.length === 0) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "工程がありません" });
+        }
+        const items = schedules.map((s, i) => {
+          const start = new Date(s.startDate);
+          const end = new Date(s.endDate);
+          const durationDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+          return {
+            title: s.title,
+            durationDays,
+            color: s.color || "#3b82f6",
+            memo: s.memo || "",
+            orderNo: s.orderNo || i,
+          };
+        });
+        const id = await createScheduleTemplate({
+          name: input.name,
+          description: input.description || null,
+          items: JSON.stringify(items),
+          createdBy: ctx.user.id,
+        });
+        return { id };
+      }),
+
+    applyToCase: protectedProcedure
+      .input(z.object({
+        templateId: z.number(),
+        caseId: z.number(),
+        startDate: z.string(), // YYYY-MM-DD
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const templates = await listScheduleTemplates();
+        const tpl = templates.find(t => t.id === input.templateId);
+        if (!tpl) throw new TRPCError({ code: "NOT_FOUND", message: "テンプレートが見つかりません" });
+        const items = JSON.parse(tpl.items) as Array<{ title: string; durationDays: number; color: string; memo?: string; orderNo: number }>;
+        let currentDate = new Date(input.startDate);
+        const created: number[] = [];
+        for (const item of items.sort((a, b) => a.orderNo - b.orderNo)) {
+          const startDate = currentDate.toISOString().slice(0, 10);
+          const endDate = new Date(currentDate.getTime() + (item.durationDays - 1) * 86400000).toISOString().slice(0, 10);
+          const result = await createSchedule({
+            caseId: input.caseId,
+            title: item.title,
+            startDate,
+            endDate,
+            status: "予定",
+            color: item.color,
+            memo: item.memo || null,
+            progress: 0,
+            orderNo: item.orderNo,
+            createdBy: ctx.user.id,
+          });
+          created.push(result.id);
+          currentDate = new Date(currentDate.getTime() + item.durationDays * 86400000);
+        }
+        return { created };
       }),
   }),
 });
