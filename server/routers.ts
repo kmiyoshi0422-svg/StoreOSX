@@ -75,6 +75,7 @@ import {
 import { getSessionCookieOptions } from "./_core/cookies";
 import { storagePut, storageGetSignedUrl } from "./storage";
 import { systemRouter } from "./_core/systemRouter";
+import { TRPCError } from "@trpc/server";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { BUDGET_RATIO, calcBudget } from "../shared/budget";
 import { calcCaseProfit } from "../shared/profit";
@@ -2763,6 +2764,117 @@ export const appRouter = router({
         tokens[String(input.caseId)] = token;
         await setAppSetting("calendarFeedTokens", tokens);
         return { token };
+      }),
+    // AI工程提案（現場調査報告書+依頼案件情報から工程表の叩き台を生成）
+    suggestSchedules: protectedProcedure
+      .input(z.object({ caseId: z.number() }))
+      .mutation(async ({ input }) => {
+        // 案件情報を取得
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+
+        // チェックリストを取得
+        const checklist = await getChecklistByCaseId(input.caseId);
+
+        // コンテキストを構築
+        const context = [
+          `【依頼案件情報】`,
+          `依頼番号: ${caseData.requestNumber}`,
+          `店舗名: ${caseData.storeName}`,
+          `ブランド: ${caseData.brand}`,
+          `工事区分: ${caseData.workType || "未設定"}`,
+          `修理大項目: ${caseData.categoryLarge || "未設定"}`,
+          `修理中項目: ${caseData.categoryMedium || "未設定"}`,
+          `修理小項目: ${caseData.categorySmall || "未設定"}`,
+          `依頼内容: ${caseData.requestContent || "なし"}`,
+          `緊急度: ${caseData.urgency}`,
+          `現調日: ${caseData.surveyDate ? new Date(caseData.surveyDate).toISOString().slice(0, 10) : "未定"}`,
+          `施工日: ${caseData.constructionDate ? new Date(caseData.constructionDate).toISOString().slice(0, 10) : "未定"}`,
+          `所感: ${caseData.surveyImpression || "なし"}`,
+          `備考: ${caseData.notes || "なし"}`,
+          ``,
+          `【現場調査報告書（チェックリスト）】`,
+          ...checklist.map(item => {
+            const status = item.checked ? "✓" : "□";
+            return `${status} [${item.phase}] ${item.title}${item.memo ? ` → ${item.memo}` : ""}`;
+          }),
+        ].join("\n");
+
+        // 今日の日付を基準にする
+        const today = new Date().toISOString().slice(0, 10);
+        const baseDate = caseData.constructionDate
+          ? new Date(caseData.constructionDate).toISOString().slice(0, 10)
+          : today;
+
+        const response = await invokeLLM({
+          messages: [
+            {
+              role: "system",
+              content: `あなたはプレナス店舗の修理・工事の工程管理のエキスパートです。
+現場調査報告書と依頼案件情報から、工程表の叩き台を提案してください。
+
+ルール:
+- 各工程は基本的に1日で完結するものとして設定
+- 大規模な工事（内装全体、外壁、屋根等）は複数日にする
+- 工程は時系列順に並べる
+- 工程名は具体的で簡潔に（20文字以内）
+- 工程数は3～8程度が適切
+- 開始日は ${baseDate} を基準に設定
+- 各工程に適切な色を割り当てる（hexカラーコード）
+
+JSONスキーマに従って回答してください。`,
+            },
+            {
+              role: "user",
+              content: context,
+            },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "schedule_suggestion",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  schedules: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        title: { type: "string", description: "工程名（20文字以内）" },
+                        startDate: { type: "string", description: "YYYY-MM-DD" },
+                        endDate: { type: "string", description: "YYYY-MM-DD" },
+                        color: { type: "string", description: "hexカラーコード" },
+                        memo: { type: "string", description: "工程の説明" },
+                      },
+                      required: ["title", "startDate", "endDate", "color", "memo"],
+                      additionalProperties: false,
+                    },
+                  },
+                  reasoning: { type: "string", description: "提案理由の説明" },
+                },
+                required: ["schedules", "reasoning"],
+                additionalProperties: false,
+              },
+            },
+          },
+        });
+
+        const content = response.choices[0]?.message?.content;
+        if (!content || typeof content !== "string") {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AIからの応答が空です" });
+        }
+
+        try {
+          const result = JSON.parse(content) as {
+            schedules: Array<{ title: string; startDate: string; endDate: string; color: string; memo: string }>;
+            reasoning: string;
+          };
+          return result;
+        } catch {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI応答のパースに失敗しました" });
+        }
       }),
   }),
 });

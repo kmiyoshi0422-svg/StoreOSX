@@ -2226,6 +2226,42 @@ function ScheduleTab({ caseId }: { caseId: number }) {
   });
   const [showCalendarPanel, setShowCalendarPanel] = useState(false);
 
+  // AI工程提案
+  const suggestMut = trpc.schedules.suggestSchedules.useMutation();
+  const [suggestions, setSuggestions] = useState<Array<{ title: string; startDate: string; endDate: string; color: string; memo: string }> | null>(null);
+  const [suggestReasoning, setSuggestReasoning] = useState<string>("");
+
+  const handleSuggest = async () => {
+    try {
+      const result = await suggestMut.mutateAsync({ caseId });
+      setSuggestions(result.schedules);
+      setSuggestReasoning(result.reasoning);
+    } catch (e: any) {
+      toast.error(e.message || "AI提案に失敗しました");
+    }
+  };
+
+  const handleApplySuggestions = async () => {
+    if (!suggestions) return;
+    for (let i = 0; i < suggestions.length; i++) {
+      const s = suggestions[i];
+      await createMut.mutateAsync({
+        caseId,
+        title: s.title,
+        startDate: s.startDate,
+        endDate: s.endDate,
+        color: s.color,
+        memo: s.memo,
+        status: "予定",
+        progress: 0,
+        orderNo: i,
+      });
+    }
+    setSuggestions(null);
+    setSuggestReasoning("");
+    toast.success("工程を登録しました");
+  };
+
   const feedUrl = feedData?.token
     ? `${window.location.origin}/api/calendar/feed/${feedData.token}.ics`
     : null;
@@ -2367,6 +2403,15 @@ function ScheduleTab({ caseId }: { caseId: number }) {
         <h3 className="text-sm font-semibold text-foreground">工程スケジュール</h3>
         <div className="flex items-center gap-2">
           <button
+            onClick={handleSuggest}
+            disabled={suggestMut.isPending}
+            className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 hover:text-amber-700 disabled:opacity-50 transition-colors"
+            title="AIが工程表を提案"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{suggestMut.isPending ? "提案中..." : "AI提案"}</span>
+          </button>
+          <button
             onClick={() => setShowCalendarPanel(!showCalendarPanel)}
             className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
             title="カレンダー連動"
@@ -2382,6 +2427,66 @@ function ScheduleTab({ caseId }: { caseId: number }) {
           </button>
         </div>
       </div>
+
+      {/* AI Suggestion Panel */}
+      {suggestions && (
+        <Card className="p-4 border-amber-200 bg-amber-50/50">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-amber-600" />
+                <h4 className="text-sm font-medium text-amber-900">AI工程提案</h4>
+              </div>
+              <button
+                onClick={() => { setSuggestions(null); setSuggestReasoning(""); }}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                閉じる
+              </button>
+            </div>
+            {suggestReasoning && (
+              <p className="text-xs text-amber-700 bg-amber-100/50 p-2 rounded">{suggestReasoning}</p>
+            )}
+            <div className="space-y-1.5">
+              {suggestions.map((s, i) => (
+                <div key={i} className="flex items-center gap-2 p-2 bg-white rounded border border-amber-100">
+                  <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">{s.title}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {s.startDate.replace(/-/g, "/")} 〜 {s.endDate.replace(/-/g, "/")}
+                      {s.memo && <span className="ml-2 text-amber-600">{s.memo}</span>}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleApplySuggestions}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white text-xs font-medium rounded-md hover:bg-amber-700 transition-colors"
+              >
+                <CheckSquare className="h-3.5 w-3.5" />
+                この工程を登録
+              </button>
+              <button
+                onClick={handleSuggest}
+                disabled={suggestMut.isPending}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-amber-200 text-amber-700 text-xs font-medium rounded-md hover:bg-amber-50 disabled:opacity-50 transition-colors"
+              >
+                <RotateCw className="h-3.5 w-3.5" />
+                再提案
+              </button>
+              <button
+                onClick={() => { setSuggestions(null); setSuggestReasoning(""); }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-xs font-medium rounded-md hover:bg-gray-50 transition-colors"
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Calendar Sync Panel */}
       {showCalendarPanel && (
