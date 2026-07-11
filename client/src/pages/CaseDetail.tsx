@@ -203,38 +203,38 @@ export default function CaseDetail({ id }: { id: number }) {
 
       {/* Tabs */}
       <Tabs defaultValue="info" className="space-y-4">
-        <TabsList className="grid grid-cols-7 w-full md:w-auto md:inline-grid">
-          <TabsTrigger value="info">
+        <TabsList className="flex flex-wrap h-auto gap-1 p-1 w-full">
+          <TabsTrigger value="info" className="flex-none px-3 py-1.5">
             <Info className="h-3.5 w-3.5" />
             基本情報
           </TabsTrigger>
-          <TabsTrigger value="checklist">
+          <TabsTrigger value="checklist" className="flex-none px-3 py-1.5">
             <ListChecks className="h-3.5 w-3.5" />
             チェック
             <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 h-4">
               {checklist.filter((i) => i.checked).length}/{checklist.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger value="photos">
+          <TabsTrigger value="photos" className="flex-none px-3 py-1.5">
             <ImageIcon className="h-3.5 w-3.5" />
             写真
             <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 h-4">
               {photos.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger value="estimates">
+          <TabsTrigger value="estimates" className="flex-none px-3 py-1.5">
             <Receipt className="h-3.5 w-3.5" />
             見積書
           </TabsTrigger>
-          <TabsTrigger value="profit">
+          <TabsTrigger value="profit" className="flex-none px-3 py-1.5">
             <Wallet className="h-3.5 w-3.5" />
             収支
           </TabsTrigger>
-          <TabsTrigger value="expenses">
+          <TabsTrigger value="expenses" className="flex-none px-3 py-1.5">
             <Receipt className="h-3.5 w-3.5" />
             経費
           </TabsTrigger>
-          <TabsTrigger value="schedule">
+          <TabsTrigger value="schedule" className="flex-none px-3 py-1.5">
             <CalendarDays className="h-3.5 w-3.5" />
             工程
           </TabsTrigger>
