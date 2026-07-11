@@ -56,8 +56,11 @@ import {
   CalendarDays,
   Calendar,
   ExternalLink,
+  X,
 } from "lucide-react";
 import { generateQuotePDF, generateCompletionReportPDF } from "@/lib/documentPdf";
+import { PdfPreviewModal } from "@/components/PdfPreviewModal";
+import html2canvas from "html2canvas-pro";
 import {
   CATEGORY_LARGE_OPTIONS,
   CATEGORY_MEDIUM_OPTIONS,
@@ -2226,6 +2229,33 @@ function ScheduleTab({ caseId }: { caseId: number }) {
   });
   const [showCalendarPanel, setShowCalendarPanel] = useState(false);
 
+  // Export
+  const scheduleExportRef = useRef<HTMLDivElement>(null);
+  const [showExportPreview, setShowExportPreview] = useState(false);
+  const [exportingImage, setExportingImage] = useState(false);
+
+  const handleExportImage = async () => {
+    if (!scheduleExportRef.current) return;
+    setExportingImage(true);
+    try {
+      const canvas = await html2canvas(scheduleExportRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+      });
+      const link = document.createElement("a");
+      link.download = `工程表_${caseId}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+      toast.success("画像をダウンロードしました");
+    } catch (e) {
+      toast.error("エクスポートに失敗しました");
+    } finally {
+      setExportingImage(false);
+    }
+  };
+
   // AI工程提案
   const suggestMut = trpc.schedules.suggestSchedules.useMutation();
   const [suggestions, setSuggestions] = useState<Array<{ title: string; startDate: string; endDate: string; color: string; memo: string }> | null>(null);
@@ -2318,7 +2348,7 @@ function ScheduleTab({ caseId }: { caseId: number }) {
     return d.toISOString().slice(0, 10);
   }
 
-  const handleDragStart = useCallback((e: React.MouseEvent, id: number, mode: "move" | "resize-start" | "resize-end", startDate: string, endDate: string) => {
+  const handleDragStart = useCallback((e: React.PointerEvent | React.MouseEvent, id: number, mode: "move" | "resize-start" | "resize-end", startDate: string, endDate: string) => {
     e.preventDefault();
     e.stopPropagation();
     const container = ganttContainerRef.current;
@@ -2326,13 +2356,19 @@ function ScheduleTab({ caseId }: { caseId: number }) {
     const ganttArea = container.querySelector('[data-gantt-area]') as HTMLElement;
     if (!ganttArea) return;
     const containerWidth = ganttArea.getBoundingClientRect().width;
-    setDrag({ id, mode, startX: e.clientX, origStartDate: startDate, origEndDate: endDate, containerWidth });
+    const clientX = 'clientX' in e ? e.clientX : 0;
+    setDrag({ id, mode, startX: clientX, origStartDate: startDate, origEndDate: endDate, containerWidth });
     setDragPreview({ startDate, endDate });
+    // Capture pointer for touch support
+    if ('pointerId' in e && (e as React.PointerEvent).pointerId) {
+      (e.currentTarget as HTMLElement).setPointerCapture((e as React.PointerEvent).pointerId);
+    }
   }, []);
 
-  const handleDragMove = useCallback((e: React.MouseEvent) => {
+  const handleDragMove = useCallback((e: React.PointerEvent | React.MouseEvent) => {
     if (!drag || !ganttData) return;
-    const deltaX = e.clientX - drag.startX;
+    const clientX = 'clientX' in e ? e.clientX : 0;
+    const deltaX = clientX - drag.startX;
     const deltaDays = Math.round((deltaX / drag.containerWidth) * ganttData.totalDays);
     if (deltaDays === 0 && dragPreview?.startDate === drag.origStartDate) return;
 
@@ -2411,6 +2447,27 @@ function ScheduleTab({ caseId }: { caseId: number }) {
             <Sparkles className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{suggestMut.isPending ? "提案中..." : "AI提案"}</span>
           </button>
+          {schedules.length > 0 && (
+            <button
+              onClick={handleExportImage}
+              disabled={exportingImage}
+              className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+              title="画像でダウンロード"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{exportingImage ? "出力中..." : "エクスポート"}</span>
+            </button>
+          )}
+          {schedules.length > 0 && (
+            <button
+              onClick={() => setShowExportPreview(true)}
+              className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+              title="PDFプレビュー"
+            >
+              <FileText className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">PDF</span>
+            </button>
+          )}
           <button
             onClick={() => setShowCalendarPanel(!showCalendarPanel)}
             className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
@@ -2435,7 +2492,7 @@ function ScheduleTab({ caseId }: { caseId: number }) {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-amber-600" />
-                <h4 className="text-sm font-medium text-amber-900">AI工程提案</h4>
+                <h4 className="text-sm font-medium text-amber-900">AI工程提案 <span className="text-[10px] font-normal text-amber-600">(クリックで編集可能)</span></h4>
               </div>
               <button
                 onClick={() => { setSuggestions(null); setSuggestReasoning(""); }}
@@ -2447,21 +2504,81 @@ function ScheduleTab({ caseId }: { caseId: number }) {
             {suggestReasoning && (
               <p className="text-xs text-amber-700 bg-amber-100/50 p-2 rounded">{suggestReasoning}</p>
             )}
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               {suggestions.map((s, i) => (
-                <div key={i} className="flex items-center gap-2 p-2 bg-white rounded border border-amber-100">
-                  <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium truncate">{s.title}</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {s.startDate.replace(/-/g, "/")} 〜 {s.endDate.replace(/-/g, "/")}
-                      {s.memo && <span className="ml-2 text-amber-600">{s.memo}</span>}
-                    </p>
+                <div key={i} className="p-2.5 bg-white rounded border border-amber-100 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={s.color}
+                      onChange={(e) => {
+                        const updated = [...suggestions];
+                        updated[i] = { ...updated[i], color: e.target.value };
+                        setSuggestions(updated);
+                      }}
+                      className="w-5 h-5 rounded border-0 cursor-pointer p-0"
+                    />
+                    <input
+                      type="text"
+                      value={s.title}
+                      onChange={(e) => {
+                        const updated = [...suggestions];
+                        updated[i] = { ...updated[i], title: e.target.value };
+                        setSuggestions(updated);
+                      }}
+                      className="flex-1 text-xs font-medium bg-transparent border-b border-transparent hover:border-amber-200 focus:border-amber-400 focus:outline-none px-1 py-0.5"
+                    />
+                    <button
+                      onClick={() => {
+                        const updated = suggestions.filter((_, idx) => idx !== i);
+                        setSuggestions(updated);
+                      }}
+                      className="text-gray-400 hover:text-red-500 transition-colors"
+                      title="削除"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2 pl-7">
+                    <input
+                      type="date"
+                      value={s.startDate}
+                      onChange={(e) => {
+                        const updated = [...suggestions];
+                        updated[i] = { ...updated[i], startDate: e.target.value };
+                        setSuggestions(updated);
+                      }}
+                      className="text-[11px] border border-gray-200 rounded px-1.5 py-0.5 focus:border-amber-400 focus:outline-none"
+                    />
+                    <span className="text-[10px] text-muted-foreground">〜</span>
+                    <input
+                      type="date"
+                      value={s.endDate}
+                      onChange={(e) => {
+                        const updated = [...suggestions];
+                        updated[i] = { ...updated[i], endDate: e.target.value };
+                        setSuggestions(updated);
+                      }}
+                      className="text-[11px] border border-gray-200 rounded px-1.5 py-0.5 focus:border-amber-400 focus:outline-none"
+                    />
+                  </div>
+                  <div className="pl-7">
+                    <input
+                      type="text"
+                      value={s.memo}
+                      onChange={(e) => {
+                        const updated = [...suggestions];
+                        updated[i] = { ...updated[i], memo: e.target.value };
+                        setSuggestions(updated);
+                      }}
+                      placeholder="メモ"
+                      className="w-full text-[10px] text-amber-600 bg-transparent border-b border-transparent hover:border-amber-200 focus:border-amber-400 focus:outline-none px-1 py-0.5"
+                    />
                   </div>
                 </div>
               ))}
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={handleApplySuggestions}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white text-xs font-medium rounded-md hover:bg-amber-700 transition-colors"
@@ -2659,6 +2776,8 @@ function ScheduleTab({ caseId }: { caseId: number }) {
         </Card>
       )}
 
+      {/* Export target wrapper */}
+      <div ref={scheduleExportRef} className="schedule-export-area">
       {/* Gantt Chart */}
       {schedules.length > 0 && ganttData && (
         <Card className="overflow-hidden">
@@ -2668,7 +2787,9 @@ function ScheduleTab({ caseId }: { caseId: number }) {
             onMouseMove={drag ? handleDragMove : undefined}
             onMouseUp={drag ? handleDragEnd : undefined}
             onMouseLeave={drag ? handleDragEnd : undefined}
-            style={{ WebkitOverflowScrolling: "touch" }}
+            onPointerMove={drag ? handleDragMove : undefined}
+            onPointerUp={drag ? handleDragEnd : undefined}
+            style={{ WebkitOverflowScrolling: drag ? "auto" : "touch", touchAction: drag ? "none" : "auto" }}
           >
             <div className={`min-w-[480px] sm:min-w-[600px] ${drag ? "select-none" : ""}`}>
               {/* Date header */}
@@ -2767,18 +2888,24 @@ function ScheduleTab({ caseId }: { caseId: number }) {
                         />
                         {/* Left resize handle */}
                         <div
-                          className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize z-20 hover:bg-white/30 rounded-l-full"
+                          className="absolute left-0 top-0 bottom-0 w-3 sm:w-2 cursor-ew-resize z-20 hover:bg-white/30 rounded-l-full"
                           onMouseDown={(e) => handleDragStart(e, s.id, "resize-start", s.startDate, s.endDate)}
+                          onPointerDown={(e) => handleDragStart(e, s.id, "resize-start", s.startDate, s.endDate)}
+                          style={{ touchAction: "none" }}
                         />
                         {/* Center move area */}
                         <div
-                          className="absolute left-2 right-2 top-0 bottom-0 cursor-grab active:cursor-grabbing z-10"
+                          className="absolute left-3 right-3 sm:left-2 sm:right-2 top-0 bottom-0 cursor-grab active:cursor-grabbing z-10"
                           onMouseDown={(e) => handleDragStart(e, s.id, "move", s.startDate, s.endDate)}
+                          onPointerDown={(e) => handleDragStart(e, s.id, "move", s.startDate, s.endDate)}
+                          style={{ touchAction: "none" }}
                         />
                         {/* Right resize handle */}
                         <div
-                          className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize z-20 hover:bg-white/30 rounded-r-full"
+                          className="absolute right-0 top-0 bottom-0 w-3 sm:w-2 cursor-ew-resize z-20 hover:bg-white/30 rounded-r-full"
                           onMouseDown={(e) => handleDragStart(e, s.id, "resize-end", s.startDate, s.endDate)}
+                          onPointerDown={(e) => handleDragStart(e, s.id, "resize-end", s.startDate, s.endDate)}
+                          style={{ touchAction: "none" }}
                         />
                         {/* Label */}
                         <span className="absolute inset-0 flex items-center justify-center text-[9px] text-white font-medium truncate px-3 z-[5] drop-shadow-sm pointer-events-none">
@@ -2847,6 +2974,16 @@ function ScheduleTab({ caseId }: { caseId: number }) {
           ))}
         </div>
       )}
+      </div>{/* end schedule-export-area */}
+
+      {/* PDF Preview Modal */}
+      <PdfPreviewModal
+        open={showExportPreview}
+        onOpenChange={setShowExportPreview}
+        containerRef={scheduleExportRef}
+        fileName={`工程表_${caseId}`}
+        pageSelector=".schedule-export-area"
+      />
     </div>
   );
 }
