@@ -1,0 +1,1 @@
+ALTER TABLE `expenses` MODIFY COLUMN `category` enum('材料費','外注費','交通費','消耗品','車両費','宿泊費','接待交際費','人件費','現調費','その他') NOT NULL DEFAULT 'その他';

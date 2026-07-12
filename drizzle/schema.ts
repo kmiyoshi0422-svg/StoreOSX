@@ -313,6 +313,8 @@ export const expenses = mysqlTable("expenses", {
     "車両費",
     "宿泊費",
     "接待交際費",
+    "人件費",
+    "現調費",
     "その他",
   ]).default("その他").notNull(),
   note: text("note"),

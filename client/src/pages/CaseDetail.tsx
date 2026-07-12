@@ -58,6 +58,7 @@ import {
   ExternalLink,
   X,
   FolderOpen,
+  Plus,
 } from "lucide-react";
 import { generateQuotePDF, generateCompletionReportPDF } from "@/lib/documentPdf";
 import { PdfPreviewModal } from "@/components/PdfPreviewModal";
@@ -2116,6 +2117,37 @@ function ExpensesTab({ caseId }: { caseId: number }) {
     },
     onError: (e) => toast.error(e.message),
   });
+  const addMutation = trpc.expenses.bulkSave.useMutation({
+    onSuccess: () => {
+      utils.expenses.listByCase.invalidate({ caseId });
+      utils.cases.get.invalidate({ id: caseId });
+      toast.success("原価を登録しました");
+      setShowAddForm(false);
+      setAddVendor(""); setAddAmount(""); setAddCategory("その他"); setAddDate(""); setAddNote("");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addVendor, setAddVendor] = useState("");
+  const [addAmount, setAddAmount] = useState("");
+  const [addCategory, setAddCategory] = useState<string>("その他");
+  const [addDate, setAddDate] = useState("");
+  const [addNote, setAddNote] = useState("");
+  const CATEGORIES = ["材料費", "外注費", "交通費", "消耗品", "車両費", "宿泊費", "接待交際費", "人件費", "現調費", "その他"];
+  const handleAddExpense = () => {
+    const amt = Number(addAmount);
+    if (!Number.isFinite(amt) || amt <= 0) { toast.error("金額を正しく入力してください"); return; }
+    addMutation.mutate({
+      items: [{
+        caseId,
+        vendorName: addVendor || null,
+        amount: amt,
+        expenseDate: addDate || null,
+        category: addCategory as any,
+        note: addNote || null,
+      }],
+    });
+  };
 
   const yen = (n: number | null | undefined) =>
     n != null ? `¥${Math.round(n).toLocaleString()}` : "—";
@@ -2124,6 +2156,50 @@ function ExpensesTab({ caseId }: { caseId: number }) {
 
   return (
     <div className="space-y-4">
+      {/* 原価手入力フォーム */}
+      {showAddForm && (
+        <Card>
+          <CardContent className="p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-medium">原価を手入力</h3>
+              <Button size="sm" variant="ghost" onClick={() => setShowAddForm(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">支払先・業者名</Label>
+                <Input placeholder="例: 自社、○○建設" value={addVendor} onChange={(e) => setAddVendor(e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">金額（税込）</Label>
+                <Input type="number" placeholder="例: 15000" value={addAmount} onChange={(e) => setAddAmount(e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">区分</Label>
+                <select className="w-full border rounded-md px-3 py-2 text-sm bg-background" value={addCategory} onChange={(e) => setAddCategory(e.target.value)}>
+                  {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label className="text-xs">日付</Label>
+                <Input type="date" value={addDate} onChange={(e) => setAddDate(e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">摘要・メモ</Label>
+              <Input placeholder="例: 現場調査交通費、パートナー現調費" value={addNote} onChange={(e) => setAddNote(e.target.value)} />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setShowAddForm(false)}>キャンセル</Button>
+              <Button size="sm" onClick={handleAddExpense} disabled={addMutation.isPending}>
+                {addMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
+                登録
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       <Card>
         <CardContent className="p-5">
           <div className="flex items-center justify-between mb-3">
@@ -2132,11 +2208,18 @@ function ExpensesTab({ caseId }: { caseId: number }) {
               <h3 className="font-medium">経費一覧</h3>
               <Badge variant="outline">{expenses.length}件</Badge>
             </div>
-            <div className="text-sm">
-              合計:{" "}
-              <span className="font-semibold tabular-nums text-base">
-                {yen(total)}
-              </span>
+            <div className="flex items-center gap-3">
+              {!showAddForm && (
+                <Button size="sm" variant="outline" onClick={() => setShowAddForm(true)}>
+                  <Plus className="h-3.5 w-3.5 mr-1" />原価入力
+                </Button>
+              )}
+              <div className="text-sm">
+                合計:{" "}
+                <span className="font-semibold tabular-nums text-base">
+                  {yen(total)}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -3041,11 +3124,24 @@ function ScheduleTab({ caseId, caseData }: { caseId: number; caseData: any }) {
                           onPointerDown={(e) => handleDragStart(e, s.id, "resize-end", s.startDate, s.endDate)}
                           style={{ touchAction: "none" }}
                         />
-                        {/* Label with status icon */}
-                        <span className="absolute inset-0 flex items-center justify-center text-[9px] text-white font-medium truncate px-3 z-[5] drop-shadow-sm pointer-events-none gap-0.5">
-                          {s.status === "完了" && <span>✓</span>}
-                          {s.status === "進行中" && <span className="animate-pulse">▶</span>}
-                          {s.status === "予定" && durationDays <= 2 && <span>○</span>}
+                        {/* Label with status icon (clickable to cycle status) */}
+                        <span className="absolute inset-0 flex items-center justify-center text-[9px] text-white font-medium truncate px-3 z-[5] drop-shadow-sm gap-0.5">
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-center w-4 h-4 rounded-full hover:bg-white/30 active:scale-90 transition-transform cursor-pointer z-30"
+                            title="クリックでステータス切替（予定→進行中→完了）"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const next = s.status === "予定" ? "進行中" : s.status === "進行中" ? "完了" : "予定";
+                              const prog = next === "完了" ? 100 : next === "進行中" ? 50 : 0;
+                              updateMut.mutate({ id: s.id, status: next, progress: prog });
+                            }}
+                            onPointerDown={(e) => e.stopPropagation()}
+                          >
+                            {s.status === "完了" && "✓"}
+                            {s.status === "進行中" && <span className="animate-pulse">▶</span>}
+                            {s.status === "予定" && "○"}
+                          </button>
                           {s.progress > 0 ? `${s.progress}%` : (durationDays > 2 ? `${durationDays}日` : "")}
                         </span>
                       </div>

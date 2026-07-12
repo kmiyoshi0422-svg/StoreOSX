@@ -148,6 +148,13 @@
       "when": 1783803801104,
       "tag": "0020_curvy_pepper_potts",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "5",
+      "when": 1783863299176,
+      "tag": "0021_empty_star_brand",
+      "breakpoints": true
     }
   ]
 }
