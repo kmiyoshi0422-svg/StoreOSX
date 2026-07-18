@@ -38,6 +38,7 @@ const menuItems: MenuItem[] = [
   { icon: FilePlus, label: "案件登録", path: "/cases/new" },
   { icon: FileSearch, label: "PDFから案件登録", path: "/cases/import-pdf" },
   { icon: FileText, label: "見積書取込", path: "/estimates/import" },
+  { icon: FileSearch, label: "見積書OCR→Excel", path: "/estimates/ocr-excel" },
   { icon: Upload, label: "CSVインポート", path: "/cases/import" },
   { icon: Briefcase, label: "協力会社", path: "/partners" },
   { icon: Users, label: "協力会社取込", path: "/partners/import" },

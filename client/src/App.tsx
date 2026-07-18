@@ -18,6 +18,7 @@ import CasePdfImport from "./pages/CasePdfImport";
 import CasesMap from "./pages/CasesMap";
 import PartnerImport from "./pages/PartnerImport";
 import EstimateImport from "./pages/EstimateImport";
+import EstimateOcrExcel from "./pages/EstimateOcrExcel";
 import ExpenseImport from "./pages/ExpenseImport";
 import ExpenseByUser from "./pages/ExpenseByUser";
 import Reports from "./pages/Reports";
@@ -52,6 +53,7 @@ function Router() {
         <Route path={"/cases/map"} component={CasesMap} />
         <Route path={"/partners/import"} component={PartnerImport} />
         <Route path={"/estimates/import"} component={EstimateImport} />
+        <Route path={"/estimates/ocr-excel"} component={EstimateOcrExcel} />
         <Route path={"/expenses/import"} component={ExpenseImport} />
         <Route path={"/expenses/by-user"}>
           <AdminOnly>

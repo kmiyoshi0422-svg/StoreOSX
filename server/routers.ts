@@ -1752,6 +1752,186 @@ export const appRouter = router({
         }
         return { token };
       }),
+
+    // 見積書OCR: 明細行レベルで抽出
+    extractLineItems: protectedProcedure
+      .input(
+        z.object({
+          fileKey: z.string().min(1),
+          mimeType: z.string(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const key = input.fileKey.replace(/^\/manus-storage\//, "");
+        const publicUrl = await storageGetSignedUrl(key);
+        const isImage = input.mimeType.startsWith("image/");
+        const schema = {
+          type: "object",
+          properties: {
+            header: {
+              type: "object",
+              properties: {
+                vendorName: { type: ["string", "null"], description: "見積を作成した会社名" },
+                estimateDate: { type: ["string", "null"], description: "見積日 (YYYY-MM-DD)" },
+                estimateNumber: { type: ["string", "null"], description: "見積番号" },
+                customerName: { type: ["string", "null"], description: "宛先・顧客名" },
+                projectName: { type: ["string", "null"], description: "件名・工事名" },
+                validUntil: { type: ["string", "null"], description: "有効期限 (YYYY-MM-DD)" },
+                paymentTerms: { type: ["string", "null"], description: "支払条件" },
+              },
+              required: ["vendorName", "estimateDate", "estimateNumber", "customerName", "projectName", "validUntil", "paymentTerms"],
+              additionalProperties: false,
+            },
+            items: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  no: { type: ["integer", "null"], description: "行番号" },
+                  name: { type: "string", description: "項目名・品名" },
+                  specification: { type: ["string", "null"], description: "仕様・規格" },
+                  quantity: { type: ["number", "null"], description: "数量" },
+                  unit: { type: ["string", "null"], description: "単位" },
+                  unitPrice: { type: ["number", "null"], description: "単価(円)" },
+                  amount: { type: ["number", "null"], description: "金額(円)" },
+                  remarks: { type: ["string", "null"], description: "備考" },
+                },
+                required: ["name"],
+                additionalProperties: false,
+              },
+            },
+            summary: {
+              type: "object",
+              properties: {
+                subtotal: { type: ["number", "null"], description: "小計(税抜)" },
+                tax: { type: ["number", "null"], description: "消費税" },
+                total: { type: ["number", "null"], description: "合計(税込)" },
+              },
+              required: ["subtotal", "tax", "total"],
+              additionalProperties: false,
+            },
+          },
+          required: ["header", "items", "summary"],
+          additionalProperties: false,
+        };
+        const messages: any = [
+          {
+            role: "system",
+            content:
+              "あなたは見積書・請求書から明細行を正確に読み取るAIです。ヘッダー情報（会社名・見積日・見積番号・宛先・件名・有効期限・支払条件）、明細行（行番号・項目名・仕様・数量・単位・単価・金額・備考）、合計情報（小計・消費税・合計）をJSONで返してください。金額は円単位の整数。不明なフィールドはnull。明細行は文書に記載された順番で返してください。",
+          },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "この見積書の全ての明細行とヘッダー・合計情報を抽出してJSONで返してください。" },
+              isImage
+                ? { type: "image_url", image_url: { url: publicUrl, detail: "high" } }
+                : { type: "file_url", file_url: { url: publicUrl, mime_type: "application/pdf" } },
+            ],
+          },
+        ];
+        try {
+          const res = await invokeLLM({
+            messages,
+            response_format: {
+              type: "json_schema",
+              json_schema: { name: "estimate_line_items", strict: false, schema },
+            },
+          });
+          const content = res.choices?.[0]?.message?.content ?? "{}";
+          const parsed = typeof content === "string" ? JSON.parse(content) : content;
+          return {
+            header: parsed.header ?? {},
+            items: parsed.items ?? [],
+            summary: parsed.summary ?? {},
+          };
+        } catch (e: any) {
+          console.warn("[estimates.extractLineItems] LLM抽出失敗", e);
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "見積書の解析に失敗しました" });
+        }
+      }),
+
+    // 明細データからExcel(.xlsx)を生成してS3に保存しURLを返す
+    generateExcel: protectedProcedure
+      .input(
+        z.object({
+          header: z.object({
+            vendorName: z.string().nullish(),
+            estimateDate: z.string().nullish(),
+            estimateNumber: z.string().nullish(),
+            customerName: z.string().nullish(),
+            projectName: z.string().nullish(),
+            validUntil: z.string().nullish(),
+            paymentTerms: z.string().nullish(),
+          }),
+          items: z.array(
+            z.object({
+              no: z.number().nullish(),
+              name: z.string(),
+              specification: z.string().nullish(),
+              quantity: z.number().nullish(),
+              unit: z.string().nullish(),
+              unitPrice: z.number().nullish(),
+              amount: z.number().nullish(),
+              remarks: z.string().nullish(),
+            })
+          ),
+          summary: z.object({
+            subtotal: z.number().nullish(),
+            tax: z.number().nullish(),
+            total: z.number().nullish(),
+          }),
+          fileName: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const XLSX = await import("xlsx");
+        const wb = XLSX.utils.book_new();
+
+        // ヘッダーシート
+        const headerData = [
+          ["項目", "内容"],
+          ["見積作成会社", input.header.vendorName ?? ""],
+          ["見積日", input.header.estimateDate ?? ""],
+          ["見積番号", input.header.estimateNumber ?? ""],
+          ["宛先", input.header.customerName ?? ""],
+          ["件名", input.header.projectName ?? ""],
+          ["有効期限", input.header.validUntil ?? ""],
+          ["支払条件", input.header.paymentTerms ?? ""],
+        ];
+        const wsHeader = XLSX.utils.aoa_to_sheet(headerData);
+        wsHeader["!cols"] = [{ wch: 14 }, { wch: 40 }];
+        XLSX.utils.book_append_sheet(wb, wsHeader, "ヘッダー");
+
+        // 明細シート
+        const itemHeaders = ["No", "項目名", "仕様・規格", "数量", "単位", "単価", "金額", "備考"];
+        const itemRows = input.items.map((item, idx) => [
+          item.no ?? idx + 1,
+          item.name,
+          item.specification ?? "",
+          item.quantity ?? "",
+          item.unit ?? "",
+          item.unitPrice ?? "",
+          item.amount ?? "",
+          item.remarks ?? "",
+        ]);
+        // 合計行を追加
+        itemRows.push([]);
+        itemRows.push(["", "", "", "", "", "小計", input.summary.subtotal ?? "", ""]);
+        itemRows.push(["", "", "", "", "", "消費税", input.summary.tax ?? "", ""]);
+        itemRows.push(["", "", "", "", "", "合計", input.summary.total ?? "", ""]);
+        const wsItems = XLSX.utils.aoa_to_sheet([itemHeaders, ...itemRows]);
+        wsItems["!cols"] = [
+          { wch: 5 }, { wch: 30 }, { wch: 20 }, { wch: 8 }, { wch: 6 }, { wch: 12 }, { wch: 14 }, { wch: 20 },
+        ];
+        XLSX.utils.book_append_sheet(wb, wsItems, "明細");
+
+        const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+        const safeName = (input.fileName ?? "見積書").replace(/[^\w\d._\-\u3000-\u9fff]/g, "_");
+        const key = `estimate-excel/${safeName}_${Date.now()}.xlsx`;
+        const { url } = await storagePut(key, buf, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        return { url, fileName: `${safeName}.xlsx` };
+      }),
   }),
 
   // ==========================================================
