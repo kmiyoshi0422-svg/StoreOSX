@@ -80,6 +80,13 @@ export const cases = mysqlTable("cases", {
   estimatedMaterialCost: int("estimatedMaterialCost"), // 見積：材料費
   estimatedLaborCost: int("estimatedLaborCost"), // 見積：作業費
   is10mYen: boolean("is10mYen").default(false), // 10万円超フラグ
+  // 管理費・現場経費
+  managementFee: int("managementFee"), // 自社管理費（円）
+  siteExpense: int("siteExpense"), // 現場経費（円）
+  ownSurveyCost: int("ownSurveyCost"), // 自社現調費（円）
+  partnerSurveyCost: int("partnerSurveyCost"), // パートナー現調費（円）
+  transportCost: int("transportCost"), // 交通費（円）
+  laborCost: int("laborCost"), // 人件費（円）
   // 実績
   actualCost: int("actualCost"), // 実績金額合計（円）
   actualMaterialCost: int("actualMaterialCost"), // 実績：材料費

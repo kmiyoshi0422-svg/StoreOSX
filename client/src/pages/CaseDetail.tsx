@@ -1909,6 +1909,13 @@ function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => v
   const [vendorInput, setVendorInput] = useState<string>(
     caseData.estimatedCost != null ? String(caseData.estimatedCost) : ""
   );
+  // 管理費・現場経費入力
+  const [mgmtFee, setMgmtFee] = useState<string>(caseData.managementFee != null ? String(caseData.managementFee) : "");
+  const [siteExp, setSiteExp] = useState<string>(caseData.siteExpense != null ? String(caseData.siteExpense) : "");
+  const [ownSurvey, setOwnSurvey] = useState<string>(caseData.ownSurveyCost != null ? String(caseData.ownSurveyCost) : "");
+  const [partnerSurvey, setPartnerSurvey] = useState<string>(caseData.partnerSurveyCost != null ? String(caseData.partnerSurveyCost) : "");
+  const [transport, setTransport] = useState<string>(caseData.transportCost != null ? String(caseData.transportCost) : "");
+  const [labor, setLabor] = useState<string>(caseData.laborCost != null ? String(caseData.laborCost) : "");
 
   const saveMutation = trpc.cases.update.useMutation({
     onSuccess: () => {
@@ -1929,12 +1936,19 @@ function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => v
       toast.error("協力業者額が不正です");
       return;
     }
+    const toNum = (s: string) => s.trim() === "" ? null : Number(s);
     saveMutation.mutate({
       id: caseData.id,
       data: {
         plenusQuoteAmount: plenus,
         estimatedCost: vendor,
         is10mYen: (plenus ?? 0) >= 100000,
+        managementFee: toNum(mgmtFee),
+        siteExpense: toNum(siteExp),
+        ownSurveyCost: toNum(ownSurvey),
+        partnerSurveyCost: toNum(partnerSurvey),
+        transportCost: toNum(transport),
+        laborCost: toNum(labor),
       },
     });
   };
@@ -1955,14 +1969,24 @@ function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => v
         : 0;
   const salesIsEstimated = plenusAmount == null && sales > 0;
 
-  // 原価 = 協力業者見積額 + 経費合計
-  const cost = (vendorAmount ?? 0) + expensesTotal;
+  // 管理費・現場経費の合計
+  const overheadTotal = [mgmtFee, siteExp, ownSurvey, partnerSurvey, transport, labor]
+    .reduce((sum, v) => sum + (v.trim() === "" ? 0 : Number(v) || 0), 0);
+
+  // 原価 = 協力業者見積額 + 経費合計 + 管理費・現場経費
+  const cost = (vendorAmount ?? 0) + expensesTotal + overheadTotal;
   const grossProfit = sales - cost;
   const grossMargin = sales > 0 ? grossProfit / sales : 0;
 
   const dirty =
     plenusInput !== (caseData.plenusQuoteAmount != null ? String(caseData.plenusQuoteAmount) : "") ||
-    vendorInput !== (caseData.estimatedCost != null ? String(caseData.estimatedCost) : "");
+    vendorInput !== (caseData.estimatedCost != null ? String(caseData.estimatedCost) : "") ||
+    mgmtFee !== (caseData.managementFee != null ? String(caseData.managementFee) : "") ||
+    siteExp !== (caseData.siteExpense != null ? String(caseData.siteExpense) : "") ||
+    ownSurvey !== (caseData.ownSurveyCost != null ? String(caseData.ownSurveyCost) : "") ||
+    partnerSurvey !== (caseData.partnerSurveyCost != null ? String(caseData.partnerSurveyCost) : "") ||
+    transport !== (caseData.transportCost != null ? String(caseData.transportCost) : "") ||
+    labor !== (caseData.laborCost != null ? String(caseData.laborCost) : "");
 
   return (
     <div className="space-y-4">
@@ -2026,6 +2050,63 @@ function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => v
             </div>
           </div>
 
+          {/* 管理費・現場経費入力 */}
+          <div className="border-t pt-4 mt-4">
+            <h4 className="text-sm font-medium mb-3 flex items-center gap-1.5">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-orange-500"></span>
+              管理費・現場経費
+            </h4>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">自社管理費</Label>
+                <div className="relative">
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">¥</span>
+                  <Input type="number" inputMode="numeric" className="pl-5 h-8 text-sm tabular-nums" placeholder="0" value={mgmtFee} onChange={(e) => setMgmtFee(e.target.value)} />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">現場経費</Label>
+                <div className="relative">
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">¥</span>
+                  <Input type="number" inputMode="numeric" className="pl-5 h-8 text-sm tabular-nums" placeholder="0" value={siteExp} onChange={(e) => setSiteExp(e.target.value)} />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">自社現調費</Label>
+                <div className="relative">
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">¥</span>
+                  <Input type="number" inputMode="numeric" className="pl-5 h-8 text-sm tabular-nums" placeholder="0" value={ownSurvey} onChange={(e) => setOwnSurvey(e.target.value)} />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">パートナー現調費</Label>
+                <div className="relative">
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">¥</span>
+                  <Input type="number" inputMode="numeric" className="pl-5 h-8 text-sm tabular-nums" placeholder="0" value={partnerSurvey} onChange={(e) => setPartnerSurvey(e.target.value)} />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">交通費</Label>
+                <div className="relative">
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">¥</span>
+                  <Input type="number" inputMode="numeric" className="pl-5 h-8 text-sm tabular-nums" placeholder="0" value={transport} onChange={(e) => setTransport(e.target.value)} />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">人件費</Label>
+                <div className="relative">
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">¥</span>
+                  <Input type="number" inputMode="numeric" className="pl-5 h-8 text-sm tabular-nums" placeholder="0" value={labor} onChange={(e) => setLabor(e.target.value)} />
+                </div>
+              </div>
+            </div>
+            {overheadTotal > 0 && (
+              <div className="text-xs text-muted-foreground mt-2 text-right">
+                管理費・現場経費 小計: <span className="font-medium text-foreground">{yen(overheadTotal)}</span>
+              </div>
+            )}
+          </div>
+
           <div className="flex justify-end">
             <Button onClick={handleSave} disabled={!dirty || saveMutation.isPending} className="active:scale-[0.97] transition-transform">
               {saveMutation.isPending ? (
@@ -2064,6 +2145,13 @@ function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => v
               <div className="text-xl font-semibold tracking-tight">{yen(expensesTotal)}</div>
               <div className="text-[11px] text-amber-700/80 mt-1">原価計: {yen(cost)}</div>
             </div>
+            {overheadTotal > 0 && (
+              <div className="rounded-md border p-3 bg-orange-50 border-orange-200">
+                <div className="text-xs text-orange-700 mb-1">管理費・現場経費</div>
+                <div className="text-xl font-semibold tracking-tight">{yen(overheadTotal)}</div>
+                <div className="text-[11px] text-orange-700/80 mt-1">原価に含まれます</div>
+              </div>
+            )}
             <div className={`rounded-md border p-3 ${grossProfit >= 0 ? "bg-violet-50 border-violet-200" : "bg-red-50 border-red-200"}`}>
               <div className="text-xs mb-1 text-muted-foreground">粗利・売上−原価</div>
               <div className={`text-xl font-semibold tracking-tight ${grossProfit >= 0 ? "text-violet-700" : "text-red-700"}`}>
@@ -2077,7 +2165,7 @@ function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => v
 
           <div className="text-xs text-muted-foreground space-y-1 leading-relaxed pt-2 border-t">
             <div>・売上：プレナスへ提出した見積金額。未入力時は協力業者額から想定表示</div>
-            <div>・原価：協力業者見積額 ＋ 領収書取込分の経費合計</div>
+            <div>・原価：協力業者見積額 ＋ 領収書経費 ＋ 管理費・現場経費</div>
             <div>・粗利・粗利率は金額を保存すると即時に反映されます</div>
           </div>
         </CardContent>

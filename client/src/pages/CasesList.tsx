@@ -44,7 +44,11 @@ import {
   Layers,
   AlertTriangle,
   Map as MapIcon,
+  LayoutGrid,
+  List,
+  Table2,
 } from "lucide-react";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Dialog,
   DialogContent,
@@ -143,6 +147,12 @@ export default function CasesList() {
   const [assignee, setAssignee] = useState("all");
   const [storeDialogKey, setStoreDialogKey] = useState<string | null>(null);
   const [groupByPref, setGroupByPref] = useState(false);
+  const [viewMode, setViewMode] = useState<"card" | "compact" | "table">(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("cases-view-mode") as any) || "card";
+    }
+    return "card";
+  });
   const [prefFilter, setPrefFilter] = useState("all");
   // 折り畳んだ地方ラベルの集合（デフォルトは全展開）
   const [collapsedRegions, setCollapsedRegions] = useState<Set<string>>(new Set());
@@ -431,6 +441,27 @@ export default function CasesList() {
           </Label>
           <Switch id="groupByPref" checked={groupByPref} onCheckedChange={setGroupByPref} />
         </div>
+        <ToggleGroup
+          type="single"
+          value={viewMode}
+          onValueChange={(v) => {
+            if (v) {
+              setViewMode(v as any);
+              localStorage.setItem("cases-view-mode", v);
+            }
+          }}
+          className="border rounded-md p-0.5 bg-muted/30"
+        >
+          <ToggleGroupItem value="card" aria-label="カード表示" className="h-8 w-8 p-0">
+            <LayoutGrid className="h-4 w-4" />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="compact" aria-label="コンパクト表示" className="h-8 w-8 p-0">
+            <List className="h-4 w-4" />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="table" aria-label="テーブル表示" className="h-8 w-8 p-0">
+            <Table2 className="h-4 w-4" />
+          </ToggleGroupItem>
+        </ToggleGroup>
       </div>
 
       {/* 複数案件を抱える店舗サマリー */}
@@ -551,8 +582,84 @@ export default function CasesList() {
             );
           })}
         </div>
-      ) : (
+      ) : viewMode === "card" ? (
         <div className="grid gap-3">{filtered.map((c) => renderCard(c))}</div>
+      ) : viewMode === "compact" ? (
+        <div className="divide-y border rounded-lg overflow-hidden bg-card">
+          {filtered.map((c) => {
+            const stage = (c.progressStage as ProgressStage) ?? "未対応";
+            const assigneeUser = c.assigneeId ? userMap.get(c.assigneeId) : null;
+            return (
+              <div
+                key={c.id}
+                className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 cursor-pointer transition-colors"
+                onClick={() => setLocation(`/cases/${c.id}`)}
+              >
+                <span className={`inline-flex h-5 min-w-5 px-1 items-center justify-center rounded text-[9px] font-bold ${URGENCY_COLORS[c.urgency]}`}>
+                  {c.urgency}
+                </span>
+                <Badge variant="outline" className={`text-[9px] shrink-0 ${STATUS_COLORS[c.status]}`}>{c.status}</Badge>
+                <span className="text-sm font-medium truncate min-w-0 flex-1">{c.storeName}</span>
+                <span className="text-[11px] text-muted-foreground font-mono shrink-0 hidden sm:inline">{c.requestNumber}</span>
+                {c.plenusQuoteAmount != null && (
+                  <span className="text-xs font-mono text-emerald-700 shrink-0">¥{c.plenusQuoteAmount.toLocaleString()}</span>
+                )}
+                {assigneeUser && (
+                  <Avatar className="h-6 w-6 shrink-0">
+                    <AvatarFallback className={`text-[9px] font-semibold ${avatarColor(assigneeUser.id)}`}>
+                      {userInitials(assigneeUser.name, assigneeUser.email)}
+                    </AvatarFallback>
+                  </Avatar>
+                )}
+                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="border rounded-lg overflow-x-auto bg-card">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
+                <th className="px-3 py-2 text-left font-medium">緑急</th>
+                <th className="px-3 py-2 text-left font-medium">ステータス</th>
+                <th className="px-3 py-2 text-left font-medium">店舗名</th>
+                <th className="px-3 py-2 text-left font-medium hidden md:table-cell">依頼番号</th>
+                <th className="px-3 py-2 text-left font-medium hidden lg:table-cell">工事区分</th>
+                <th className="px-3 py-2 text-right font-medium">出し見積</th>
+                <th className="px-3 py-2 text-left font-medium hidden sm:table-cell">担当</th>
+                <th className="px-3 py-2"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {filtered.map((c) => {
+                const assigneeUser = c.assigneeId ? userMap.get(c.assigneeId) : null;
+                return (
+                  <tr key={c.id} className="hover:bg-muted/30 cursor-pointer transition-colors" onClick={() => setLocation(`/cases/${c.id}`)}>
+                    <td className="px-3 py-2">
+                      <span className={`inline-flex h-5 min-w-5 px-1 items-center justify-center rounded text-[9px] font-bold ${URGENCY_COLORS[c.urgency]}`}>{c.urgency}</span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <Badge variant="outline" className={`text-[9px] ${STATUS_COLORS[c.status]}`}>{c.status}</Badge>
+                    </td>
+                    <td className="px-3 py-2 font-medium truncate max-w-[200px]">{c.storeName}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-muted-foreground hidden md:table-cell">{c.requestNumber}</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground hidden lg:table-cell">{c.categoryLarge || "—"}</td>
+                    <td className="px-3 py-2 text-right font-mono text-xs">{c.plenusQuoteAmount != null ? `¥${c.plenusQuoteAmount.toLocaleString()}` : "—"}</td>
+                    <td className="px-3 py-2 hidden sm:table-cell">
+                      {assigneeUser ? (
+                        <span className="text-xs">{assigneeUser.name || assigneeUser.email}</span>
+                      ) : (
+                        <span className="text-xs text-amber-600">未割当</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2"><ChevronRight className="h-4 w-4 text-muted-foreground" /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {/* 同一店舗案件ダイアログ */}
