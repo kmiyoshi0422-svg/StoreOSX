@@ -711,3 +711,7 @@
 - [x] 「案件に保存」ボタンを追加し、extractAndCreate相当の処理でDB登録
 - [x] 保存時にestimatedCost/materialAmount/laborAmountを案件に自動反映（pickLatestEstimate）
 - [x] 保存成功後のフィードバック表示
+
+## 金額閲覧を自社スタッフのみに制限（ユーザー指示）
+- [x] サーバー側：partnerViewルーターから金額データ（見積金額・予算・実績等）を除外
+- [x] フロントエンド：PartnerView画面から金額表示を除去

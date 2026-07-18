@@ -5,8 +5,6 @@ import {
   MapPin,
   Phone,
   Clock,
-  FileText,
-  Receipt,
   AlertTriangle,
   CheckCircle2,
 } from "lucide-react";
@@ -57,9 +55,7 @@ export default function PartnerView({ token }: { token: string }) {
           <h1 className="font-serif-jp text-2xl md:text-3xl font-semibold">
             修理依頼 共有ページ
           </h1>
-          <p className="text-xs text-stone-300 mt-2">
-            このページにはプレナス向け原価は表示されません。表示金額は 75% 価格です。
-          </p>
+
         </div>
       </header>
 
@@ -127,61 +123,7 @@ export default function PartnerView({ token }: { token: string }) {
           </CardContent>
         </Card>
 
-        {/* Partner Amount */}
-        <Card className="border-emerald-200 bg-emerald-50/40">
-          <CardContent className="p-5">
-            <div className="flex items-center gap-2 mb-2">
-              <Receipt className="h-4 w-4 text-emerald-700" />
-              <p className="text-[10px] uppercase tracking-wider text-emerald-800 font-medium">
-                協力業者向け金額・プレナス見積の 75%
-              </p>
-            </div>
-            {data.totalPartnerAmount != null ? (
-              <p className="font-serif-jp text-4xl md:text-5xl font-semibold text-emerald-900 tracking-tight">
-                ¥{data.totalPartnerAmount.toLocaleString()}
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                見積金額が確定次第こちらに表示されます。
-              </p>
-            )}
-            <p className="text-[11px] text-muted-foreground mt-2">
-              ※ 表示金額は確定金額ではありません。最終金額は別途ご連絡いたします。
-            </p>
-          </CardContent>
-        </Card>
 
-        {/* Estimates List (per-file) */}
-        {data.estimates.length > 0 && (
-          <Card>
-            <CardContent className="p-5 space-y-3">
-              <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-muted-foreground" />
-                <h3 className="font-medium text-sm">見積書ごとの金額・75%</h3>
-              </div>
-              <div className="divide-y divide-border/60">
-                {data.estimates.map((e) => (
-                  <div key={e.id} className="py-3 flex flex-wrap items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {e.fileName ?? "見積書"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {e.vendorName ? `${e.vendorName} · ` : ""}
-                        {e.estimateDate
-                          ? new Date(e.estimateDate).toLocaleDateString("ja-JP")
-                          : new Date(e.createdAt).toLocaleDateString("ja-JP")}
-                      </p>
-                    </div>
-                    <span className="font-serif-jp text-lg font-semibold">
-                      ¥{e.partnerAmount.toLocaleString()}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         <div className="text-center text-xs text-muted-foreground py-4 flex items-center justify-center gap-1.5">
           <CheckCircle2 className="h-3.5 w-3.5" />

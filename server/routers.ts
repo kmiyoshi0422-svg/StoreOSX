@@ -1943,19 +1943,7 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const c = await getCaseByPartnerToken(input.token);
         if (!c) throw new Error("リンクが無効です");
-        const ests = await listEstimatesByCase(c.id);
-        // 原価は返さず、75%金額のみ返す
-        const partnerEstimates = ests
-          .filter((e) => e.totalAmount != null)
-          .map((e) => ({
-            id: e.id,
-            fileName: e.fileName,
-            vendorName: e.vendorName,
-            estimateDate: e.estimateDate,
-            partnerAmount: Math.round((e.totalAmount as number) * 0.75),
-            createdAt: e.createdAt,
-          }));
-        const totalPartnerAmount = c.estimatedCost != null ? Math.round(c.estimatedCost * 0.75) : null;
+        // 金額情報は自社スタッフのみ閲覧可能。協力会社には返さない
         return {
           requestNumber: c.requestNumber,
           storeName: c.storeName,
@@ -1971,8 +1959,6 @@ export const appRouter = router({
           progressStage: c.progressStage,
           surveyDate: c.surveyDate,
           constructionDate: c.constructionDate,
-          totalPartnerAmount,
-          estimates: partnerEstimates,
         };
       }),
   }),
