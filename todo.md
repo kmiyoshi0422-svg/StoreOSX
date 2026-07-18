@@ -705,3 +705,9 @@
 - [x] 抽出データをExcel（.xlsx）ファイルとしてダウンロード出力
 - [x] 既存の見積書取込ページ（/estimates/import）に統合またはサイドバーに新メニュー追加
 - [x] テストデータ削除
+
+## OCR読取結果を既存案件に紐付けて保存→予実反映（ユーザー指示）
+- [x] EstimateOcrExcel画面に案件選択ドロップダウンを追加
+- [x] 「案件に保存」ボタンを追加し、extractAndCreate相当の処理でDB登録
+- [x] 保存時にestimatedCost/materialAmount/laborAmountを案件に自動反映（pickLatestEstimate）
+- [x] 保存成功後のフィードバック表示

@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { useRef, useState } from "react";
 import {
@@ -13,6 +14,9 @@ import {
   Camera,
   Table2,
   Pencil,
+  Save,
+  CheckCircle2,
+  LinkIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -57,6 +61,9 @@ type ExtractedData = {
   items: LineItem[];
   summary: Summary;
   fileName: string;
+  fileKey: string;
+  fileUrl: string;
+  mimeType: string;
 };
 
 export default function EstimateOcrExcel() {
@@ -65,12 +72,18 @@ export default function EstimateOcrExcel() {
   const [isDragging, setIsDragging] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [savedCaseId, setSavedCaseId] = useState<number | null>(null);
+  const [selectedCaseId, setSelectedCaseId] = useState<string>("");
   const [extracted, setExtracted] = useState<ExtractedData | null>(null);
   const [editingItem, setEditingItem] = useState<number | null>(null);
 
   const uploadMutation = trpc.estimates.uploadFile.useMutation();
   const extractMutation = trpc.estimates.extractLineItems.useMutation();
   const excelMutation = trpc.estimates.generateExcel.useMutation();
+  const extractAndCreateMutation = trpc.estimates.extractAndCreate.useMutation();
+  const allCases = trpc.cases.list.useQuery();
+  const utils = trpc.useUtils();
 
   async function handleFile(file: File) {
     setIsExtracting(true);
@@ -95,7 +108,12 @@ export default function EstimateOcrExcel() {
         })),
         summary: result.summary as Summary,
         fileName: file.name.replace(/\.[^.]+$/, ""),
+        fileKey: up.fileKey,
+        fileUrl: up.url,
+        mimeType: file.type || "application/pdf",
       });
+      setSavedCaseId(null);
+      setSelectedCaseId("");
       toast.success("見積書の読み取りが完了しました");
     } catch (e: any) {
       toast.error(e?.message || "読み取りに失敗しました");
@@ -156,6 +174,28 @@ export default function EstimateOcrExcel() {
       ...extracted,
       items: extracted.items.filter((_, i) => i !== idx),
     });
+  }
+
+  async function handleSaveToCase() {
+    if (!extracted || !selectedCaseId) return;
+    setIsSaving(true);
+    try {
+      const caseId = Number(selectedCaseId);
+      await extractAndCreateMutation.mutateAsync({
+        caseId,
+        fileKey: extracted.fileKey,
+        fileUrl: extracted.fileUrl,
+        fileName: extracted.fileName,
+        mimeType: extracted.mimeType,
+      });
+      setSavedCaseId(caseId);
+      utils.cases.list.invalidate();
+      toast.success("見積書を案件に保存し、予実管理に反映しました");
+    } catch (e: any) {
+      toast.error(e?.message || "保存に失敗しました");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   function addItem() {
@@ -515,6 +555,68 @@ export default function EstimateOcrExcel() {
             </CardContent>
           </Card>
 
+          {/* 案件紐付け・保存 */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <LinkIcon className="h-4 w-4 text-primary" />
+                案件に紐付けて保存
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {savedCaseId ? (
+                <div className="flex items-center gap-3 p-3 rounded-md bg-green-50 border border-green-200">
+                  <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+                  <div className="text-sm">
+                    <div className="font-medium text-green-800">見積書を案件に保存しました</div>
+                    <div className="text-green-600 text-xs mt-0.5">予実管理（見積金額・材料費・作業費）に自動反映済み</div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="ml-auto"
+                    onClick={() => window.open(`/cases/${savedCaseId}`, "_blank")}
+                  >
+                    案件を開く
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-end gap-3">
+                  <div className="flex-1">
+                    <label className="text-xs text-muted-foreground mb-1 block">紐付け先の案件を選択</label>
+                    <Select value={selectedCaseId} onValueChange={setSelectedCaseId}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="案件を検索・選択..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(allCases.data ?? []).map((c) => (
+                          <SelectItem key={c.id} value={String(c.id)}>
+                            {c.requestNumber} ・ {c.storeName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    onClick={handleSaveToCase}
+                    disabled={!selectedCaseId || isSaving}
+                    className="gap-2"
+                  >
+                    {isSaving ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    案件に保存
+                  </Button>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground mt-2">
+                保存すると、見積合計金額・材料費・作業費が案件の予実管理に自動反映されます。
+              </p>
+            </CardContent>
+          </Card>
+
           {/* アクションバー */}
           <div className="flex items-center justify-between border-t pt-4">
             <Button
@@ -522,6 +624,8 @@ export default function EstimateOcrExcel() {
               onClick={() => {
                 setExtracted(null);
                 setEditingItem(null);
+                setSavedCaseId(null);
+                setSelectedCaseId("");
               }}
             >
               別の見積書を読み取る
