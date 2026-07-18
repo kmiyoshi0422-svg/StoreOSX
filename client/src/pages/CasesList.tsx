@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { calcCaseProfit } from "@shared/profit";
+import { CASE_STATUSES } from "@shared/stageStatus";
+import { toast } from "sonner";
 import {
   resolveCasePrefecture,
   prefectureSortIndex,
@@ -24,7 +26,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useLocation } from "wouter";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import {
   Plus,
   Search,
@@ -128,6 +130,22 @@ export default function CasesList() {
   const { data: cases = [], isLoading } = trpc.cases.list.useQuery();
   const { data: users = [] } = trpc.users.list.useQuery();
   const userMap = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
+  const utils = trpc.useUtils();
+
+  const updateStatusMutation = trpc.cases.update.useMutation({
+    onSuccess: () => {
+      toast.success("ステータスを更新しました");
+      utils.cases.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const handleStatusChange = useCallback(
+    (caseId: number, newStatus: string) => {
+      updateStatusMutation.mutate({ id: caseId, data: { status: newStatus as any } });
+    },
+    [updateStatusMutation]
+  );
 
   // URLクエリを初期フィルタとして読み込む（ダッシュボードKPIからの遷移用）
   // 例: /cases?status=進行中  /cases?status=完了  /cases?urgency=high
@@ -598,7 +616,24 @@ export default function CasesList() {
                 <span className={`inline-flex h-5 min-w-5 px-1 items-center justify-center rounded text-[9px] font-bold ${URGENCY_COLORS[c.urgency]}`}>
                   {c.urgency}
                 </span>
-                <Badge variant="outline" className={`text-[9px] shrink-0 ${STATUS_COLORS[c.status]}`}>{c.status}</Badge>
+                <Select
+                  value={c.status}
+                  onValueChange={(v) => handleStatusChange(c.id, v)}
+                >
+                  <SelectTrigger
+                    className={`h-6 w-auto min-w-[70px] px-2 text-[9px] font-medium border ${STATUS_COLORS[c.status]} shrink-0`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CASE_STATUSES.map((s) => (
+                      <SelectItem key={s} value={s} className="text-xs">
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <span className="text-sm font-medium truncate min-w-0 flex-1">{c.storeName}</span>
                 <span className="text-[11px] text-muted-foreground font-mono shrink-0 hidden sm:inline">{c.requestNumber}</span>
                 {c.plenusQuoteAmount != null && (
@@ -640,7 +675,24 @@ export default function CasesList() {
                       <span className={`inline-flex h-5 min-w-5 px-1 items-center justify-center rounded text-[9px] font-bold ${URGENCY_COLORS[c.urgency]}`}>{c.urgency}</span>
                     </td>
                     <td className="px-3 py-2">
-                      <Badge variant="outline" className={`text-[9px] ${STATUS_COLORS[c.status]}`}>{c.status}</Badge>
+                      <Select
+                        value={c.status}
+                        onValueChange={(v) => handleStatusChange(c.id, v)}
+                      >
+                        <SelectTrigger
+                          className={`h-6 w-auto min-w-[70px] px-2 text-[9px] font-medium border ${STATUS_COLORS[c.status]}`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CASE_STATUSES.map((s) => (
+                            <SelectItem key={s} value={s} className="text-xs">
+                              {s}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </td>
                     <td className="px-3 py-2 font-medium truncate max-w-[200px]">{c.storeName}</td>
                     <td className="px-3 py-2 font-mono text-xs text-muted-foreground hidden md:table-cell">{c.requestNumber}</td>
@@ -773,9 +825,24 @@ export default function CasesList() {
                         <Badge variant="outline" className={`text-[10px] ${STAGE_BADGE[stage]}`}>
                           {stage}
                         </Badge>
-                        <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[c.status]}`}>
-                          {c.status}
-                        </Badge>
+                        <Select
+                          value={c.status}
+                          onValueChange={(v) => handleStatusChange(c.id, v)}
+                        >
+                          <SelectTrigger
+                            className={`h-6 w-auto min-w-[70px] px-2 text-[10px] font-medium border ${STATUS_COLORS[c.status]}`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CASE_STATUSES.map((s) => (
+                              <SelectItem key={s} value={s} className="text-xs">
+                                {s}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         <Badge variant="secondary" className="text-[10px]">
                           {c.brand}
                         </Badge>
