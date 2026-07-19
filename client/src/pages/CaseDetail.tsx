@@ -1,5 +1,16 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -943,34 +954,72 @@ function ChecklistTab({
                 </div>
                 <div className="flex items-center gap-2">
                   {done < total && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-6 text-xs px-2"
-                      disabled={bulkToggleMutation.isPending}
-                      onClick={() => {
-                        const uncheckedIds = phaseItems.filter((i) => !i.checked).map((i) => i.id);
-                        if (uncheckedIds.length > 0) {
-                          bulkToggleMutation.mutate({ ids: uncheckedIds, checked: true });
-                        }
-                      }}
-                    >
-                      一括チェック
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 text-xs px-2"
+                          disabled={bulkToggleMutation.isPending}
+                        >
+                          一括チェック
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>一括チェックの確認</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            「{phase}」の未チェック項目 {total - done}件 を全てチェックします。よろしいですか？
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => {
+                              const uncheckedIds = phaseItems.filter((i) => !i.checked).map((i) => i.id);
+                              if (uncheckedIds.length > 0) {
+                                bulkToggleMutation.mutate({ ids: uncheckedIds, checked: true });
+                              }
+                            }}
+                          >
+                            実行
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   )}
                   {done > 0 && done === total && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-6 text-xs px-2 text-muted-foreground"
-                      disabled={bulkToggleMutation.isPending}
-                      onClick={() => {
-                        const allIds = phaseItems.map((i) => i.id);
-                        bulkToggleMutation.mutate({ ids: allIds, checked: false });
-                      }}
-                    >
-                      解除
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 text-xs px-2 text-muted-foreground"
+                          disabled={bulkToggleMutation.isPending}
+                        >
+                          解除
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>一括解除の確認</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            「{phase}」のチェック {total}件 を全て解除します。よろしいですか？
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => {
+                              const allIds = phaseItems.map((i) => i.id);
+                              bulkToggleMutation.mutate({ ids: allIds, checked: false });
+                            }}
+                          >
+                            解除する
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   )}
                   <div className="w-24 h-1 bg-muted rounded-full overflow-hidden">
                     <div
