@@ -37,6 +37,7 @@ const menuItems: MenuItem[] = [
   { icon: Gauge, label: "ワークロード", path: "/workload", adminOnly: true },
   { icon: FilePlus, label: "案件登録", path: "/cases/new" },
   { icon: FileSearch, label: "PDFから案件登録", path: "/cases/import-pdf" },
+  { icon: Droplets, label: "雨漏り調査", path: "/rain-leak" },
   { icon: FileText, label: "見積書取込", path: "/estimates/import" },
   { icon: FileSearch, label: "見積書OCR→Excel", path: "/estimates/ocr-excel" },
   { icon: Upload, label: "CSVインポート", path: "/cases/import" },
@@ -48,7 +49,6 @@ const menuItems: MenuItem[] = [
   { icon: BarChart3, label: "月次レポート", path: "/reports/monthly", adminOnly: true },
   { icon: TrendingUp, label: "実績レポート", path: "/reports", adminOnly: true },
   { icon: BookMarked, label: "全角化除外辞書", path: "/settings/exclusions" },
-  { icon: Droplets, label: "雨漏り調査", path: "/rain-leak" },
   { icon: Sparkles, label: "所感AI設定", path: "/settings/impression" },
 ];
 
