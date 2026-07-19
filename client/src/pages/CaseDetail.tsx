@@ -906,6 +906,14 @@ function ChecklistTab({
       onUpdated();
     },
   });
+  const bulkToggleMutation = trpc.checklist.bulkToggle.useMutation({
+    onSuccess: (res) => {
+      if (res?.autoAdvanced) {
+        toast.success(`ステータスを「${res.autoAdvanced.from}」→「${res.autoAdvanced.to}」に自動更新しました`);
+      }
+      onUpdated();
+    },
+  });
   const memoMutation = trpc.checklist.updateMemo.useMutation({ onSuccess: onUpdated });
 
   const phases = ["受付", "現調", "施工", "完了"] as const;
@@ -933,11 +941,43 @@ function ChecklistTab({
                     {done}/{total}
                   </span>
                 </div>
-                <div className="w-24 h-1 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary transition-all duration-300"
-                    style={{ width: `${pct}%` }}
-                  />
+                <div className="flex items-center gap-2">
+                  {done < total && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-xs px-2"
+                      disabled={bulkToggleMutation.isPending}
+                      onClick={() => {
+                        const uncheckedIds = phaseItems.filter((i) => !i.checked).map((i) => i.id);
+                        if (uncheckedIds.length > 0) {
+                          bulkToggleMutation.mutate({ ids: uncheckedIds, checked: true });
+                        }
+                      }}
+                    >
+                      一括チェック
+                    </Button>
+                  )}
+                  {done > 0 && done === total && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 text-xs px-2 text-muted-foreground"
+                      disabled={bulkToggleMutation.isPending}
+                      onClick={() => {
+                        const allIds = phaseItems.map((i) => i.id);
+                        bulkToggleMutation.mutate({ ids: allIds, checked: false });
+                      }}
+                    >
+                      解除
+                    </Button>
+                  )}
+                  <div className="w-24 h-1 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary transition-all duration-300"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
                 </div>
               </div>
               <div className="space-y-1">

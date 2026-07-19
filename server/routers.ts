@@ -935,6 +935,57 @@ export const appRouter = router({
         await updateChecklistItem(input.id, { memo: input.memo });
         return { success: true };
       }),
+
+    bulkToggle: protectedProcedure
+      .input(z.object({ ids: z.array(z.number()), checked: z.boolean() }))
+      .mutation(async ({ ctx, input }) => {
+        for (const id of input.ids) {
+          await updateChecklistItem(id, {
+            checked: input.checked,
+            checkedAt: input.checked ? new Date() : null,
+            checkedBy: input.checked ? ctx.user.id : null,
+          });
+        }
+        // 最後のアイテムからケースを特定してステータス自動遷移
+        let autoAdvanced: { from: string; to: string } | null = null;
+        try {
+          if (input.checked && input.ids.length > 0) {
+            const items = await import("./db").then((m) => m.getChecklistItemById(input.ids[0]));
+            if (items) {
+              const caseData = await getCaseById(items.caseId);
+              if (caseData) {
+                const all = await getChecklistByCaseId(items.caseId);
+                const phaseItems = all.filter((i) => i.phase === items.phase);
+                const allChecked = phaseItems.length > 0 && phaseItems.every((i) => i.checked);
+                if (allChecked) {
+                  const phaseToNext: Record<string, string> = {
+                    受付: "現調中",
+                    現調: "見積中",
+                    施工: "完了",
+                    完了: "クローズ",
+                  };
+                  const next = phaseToNext[items.phase];
+                  const order = ["受付", "現調中", "見積中", "施工待ち", "施工中", "完了", "クローズ"];
+                  if (next && order.indexOf(next) > order.indexOf(caseData.status)) {
+                    const nextStage = syncStageFromStatus(
+                      next as CaseStatus,
+                      (caseData.progressStage as ProgressStage) ?? "未対応",
+                    );
+                    await updateCase(items.caseId, {
+                      status: next as any,
+                      progressStage: nextStage as any,
+                    });
+                    autoAdvanced = { from: caseData.status, to: next };
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("[bulkToggle autoAdvance] failed:", e);
+        }
+        return { success: true, autoAdvanced };
+      }),
   }),
 
   photos: router({
