@@ -69,6 +69,12 @@ import {
   listScheduleTemplates,
   createScheduleTemplate,
   deleteScheduleTemplate,
+  getRainLeakInspectionByCaseId,
+  createRainLeakInspection,
+  updateRainLeakInspection,
+  getRainLeakCheckItems,
+  upsertRainLeakCheckItems,
+  updateRainLeakCheckItem,
 } from "./db";
 import { makeRequest } from "./_core/map";
 import {
@@ -3154,6 +3160,122 @@ JSONスキーマに従って回答してください。`,
           currentDate = new Date(currentDate.getTime() + item.durationDays * 86400000);
         }
         return { created };
+      }),
+  }),
+
+  // 雨漏り調査チェックリスト
+  rainLeak: router({
+    // 案件の雨漏り調査を取得（なければテンプレートで新規作成）
+    getByCaseId: protectedProcedure
+      .input(z.object({ caseId: z.number() }))
+      .query(async ({ input }) => {
+        const inspection = await getRainLeakInspectionByCaseId(input.caseId);
+        if (!inspection) return null;
+        const items = await getRainLeakCheckItems(inspection.id);
+        return { inspection, items };
+      }),
+
+    // 新規作成（テンプレートからチェック項目を自動生成）
+    create: protectedProcedure
+      .input(z.object({
+        caseId: z.number(),
+        inspectionDate: z.string().optional(),
+        buildingStructure: z.string().optional(),
+        buildingAge: z.string().optional(),
+        inspector: z.string().optional(),
+        weather: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const { RAIN_LEAK_CHECKLIST_TEMPLATE } = await import("../shared/rain-leak-template");
+        const { id } = await createRainLeakInspection({
+          caseId: input.caseId,
+          inspectionDate: input.inspectionDate || null,
+          buildingStructure: input.buildingStructure || null,
+          buildingAge: input.buildingAge || null,
+          inspector: input.inspector || null,
+          weather: input.weather || null,
+          createdBy: ctx.user.id,
+        });
+        // テンプレートからチェック項目を生成
+        const items = RAIN_LEAK_CHECKLIST_TEMPLATE.map((t) => ({
+          inspectionId: id,
+          section: t.section,
+          orderNo: t.orderNo,
+          category: t.category,
+          itemTitle: t.itemTitle,
+        }));
+        await upsertRainLeakCheckItems(id, items as any);
+        const allItems = await getRainLeakCheckItems(id);
+        const inspection = await getRainLeakInspectionByCaseId(input.caseId);
+        return { inspection, items: allItems };
+      }),
+
+    // 表紙情報・総括所見・浸入経路推定を更新
+    updateInspection: protectedProcedure
+      .input(z.object({
+        caseId: z.number(),
+        inspectionDate: z.string().optional(),
+        buildingStructure: z.string().optional(),
+        buildingAge: z.string().optional(),
+        inspector: z.string().optional(),
+        weather: z.string().optional(),
+        routeEstimations: z.string().optional(),
+        summary: z.string().optional(),
+        overallJudgment: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const inspection = await getRainLeakInspectionByCaseId(input.caseId);
+        if (!inspection) throw new Error("調査が存在しません");
+        await updateRainLeakInspection(inspection.id, {
+          inspectionDate: input.inspectionDate ?? inspection.inspectionDate,
+          buildingStructure: input.buildingStructure ?? inspection.buildingStructure,
+          buildingAge: input.buildingAge ?? inspection.buildingAge,
+          inspector: input.inspector ?? inspection.inspector,
+          weather: input.weather ?? inspection.weather,
+          routeEstimations: input.routeEstimations ?? inspection.routeEstimations,
+          summary: input.summary ?? inspection.summary,
+          overallJudgment: input.overallJudgment ?? inspection.overallJudgment,
+        });
+        return { success: true };
+      }),
+
+    // 個別チェック項目を更新
+    updateItem: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        status: z.enum(["未確認", "有", "無", "不明"]).optional(),
+        urgency: z.enum(["none", "urgent", "caution", "observe"]).optional(),
+        memo: z.string().optional(),
+        photoNo: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        await updateRainLeakCheckItem(id, data);
+        return { success: true };
+      }),
+
+    // 集計を再計算してinspectionに保存
+    recalcSummary: protectedProcedure
+      .input(z.object({ caseId: z.number() }))
+      .mutation(async ({ input }) => {
+        const inspection = await getRainLeakInspectionByCaseId(input.caseId);
+        if (!inspection) throw new Error("調査が存在しません");
+        const items = await getRainLeakCheckItems(inspection.id);
+        const issueItems = items.filter((i) => i.status === "有");
+        const urgentCount = issueItems.filter((i) => i.urgency === "urgent").length;
+        const cautionCount = issueItems.filter((i) => i.urgency === "caution").length;
+        const observeCount = issueItems.filter((i) => i.urgency === "observe").length;
+        let overallJudgment = "🟢 経過観察";
+        if (urgentCount > 0) overallJudgment = "🔴 緊急";
+        else if (cautionCount > 0) overallJudgment = "🟡 要注意";
+        await updateRainLeakInspection(inspection.id, {
+          totalIssueCount: issueItems.length,
+          urgentCount,
+          cautionCount,
+          observeCount,
+          overallJudgment,
+        });
+        return { totalIssueCount: issueItems.length, urgentCount, cautionCount, observeCount, overallJudgment };
       }),
   }),
 });

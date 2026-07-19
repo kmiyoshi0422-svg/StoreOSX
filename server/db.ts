@@ -31,6 +31,10 @@ import {
   routeAssignments,
   teamSettings,
   users,
+  rainLeakInspections,
+  rainLeakCheckItems,
+  InsertRainLeakInspection,
+  InsertRainLeakCheckItem,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -799,4 +803,51 @@ export async function updateScheduleTemplate(id: number, data: Partial<Omit<Inse
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(scheduleTemplates).set(data).where(eq(scheduleTemplates.id, id));
+}
+
+
+// ============================================================
+// Rain Leak Inspection（雨漏り調査）
+// ============================================================
+
+export async function getRainLeakInspectionByCaseId(caseId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(rainLeakInspections).where(eq(rainLeakInspections.caseId, caseId));
+  return rows[0] ?? null;
+}
+
+export async function createRainLeakInspection(data: InsertRainLeakInspection) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const [result] = await db.insert(rainLeakInspections).values(data);
+  return { id: result.insertId };
+}
+
+export async function updateRainLeakInspection(id: number, data: Partial<InsertRainLeakInspection>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.update(rainLeakInspections).set(data).where(eq(rainLeakInspections.id, id));
+}
+
+export async function getRainLeakCheckItems(inspectionId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(rainLeakCheckItems).where(eq(rainLeakCheckItems.inspectionId, inspectionId)).orderBy(rainLeakCheckItems.orderNo);
+}
+
+export async function upsertRainLeakCheckItems(inspectionId: number, items: InsertRainLeakCheckItem[]) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  // Delete existing items and re-insert
+  await db.delete(rainLeakCheckItems).where(eq(rainLeakCheckItems.inspectionId, inspectionId));
+  if (items.length > 0) {
+    await db.insert(rainLeakCheckItems).values(items);
+  }
+}
+
+export async function updateRainLeakCheckItem(id: number, data: { status?: "未確認" | "有" | "無" | "不明"; urgency?: "none" | "urgent" | "caution" | "observe"; memo?: string; photoNo?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.update(rainLeakCheckItems).set(data).where(eq(rainLeakCheckItems.id, id));
 }

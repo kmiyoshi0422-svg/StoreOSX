@@ -428,3 +428,61 @@ export const scheduleTemplates = mysqlTable("schedule_templates", {
 });
 export type ScheduleTemplate = typeof scheduleTemplates.$inferSelect;
 export type InsertScheduleTemplate = typeof scheduleTemplates.$inferInsert;
+
+
+/**
+ * 雨漏り調査チェックリスト（案件ごとに1件）
+ * 表紙情報 + 総括所見 + 浸入経路推定をJSONで保持
+ */
+export const rainLeakInspections = mysqlTable("rain_leak_inspections", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("caseId").notNull(),
+  // 表紙情報
+  inspectionDate: varchar("inspectionDate", { length: 10 }), // YYYY-MM-DD
+  buildingStructure: varchar("buildingStructure", { length: 128 }), // 建物構造
+  buildingAge: varchar("buildingAge", { length: 64 }), // 築年数
+  inspector: varchar("inspector", { length: 128 }), // 調査員
+  weather: varchar("weather", { length: 64 }), // 天候
+  // 浸入経路推定（JSON配列: [{location, suspect1, suspect2, suspect3, applicable}]）
+  routeEstimations: text("routeEstimations"),
+  // 総括所見（JSON: {overview, symptoms, cause, urgencyReason, plan, remarks, nextInspection}）
+  summary: text("summary"),
+  // 集計
+  totalIssueCount: int("totalIssueCount").default(0).notNull(),
+  urgentCount: int("urgentCount").default(0).notNull(), // 🔴
+  cautionCount: int("cautionCount").default(0).notNull(), // 🟡
+  observeCount: int("observeCount").default(0).notNull(), // 🟢
+  overallJudgment: varchar("overallJudgment", { length: 64 }), // 緊急度判定
+  // メタ
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  uniqCase: unique("uniq_rain_leak_case").on(t.caseId),
+}));
+export type RainLeakInspection = typeof rainLeakInspections.$inferSelect;
+export type InsertRainLeakInspection = typeof rainLeakInspections.$inferInsert;
+
+/**
+ * 雨漏り調査チェック項目（各チェック項目の記録）
+ */
+export const rainLeakCheckItems = mysqlTable("rain_leak_check_items", {
+  id: int("id").autoincrement().primaryKey(),
+  inspectionId: int("inspectionId").notNull(), // rain_leak_inspections.id
+  // セクション区分
+  section: mysqlEnum("section", ["室内", "天井裏", "外部"]).notNull(),
+  // 項目情報
+  orderNo: int("orderNo").notNull(), // 表示順
+  category: varchar("category", { length: 64 }).notNull(), // 例: 天井, 壁, 窓, 屋根
+  itemTitle: varchar("itemTitle", { length: 255 }).notNull(), // チェック項目名
+  // 記録
+  status: mysqlEnum("status", ["未確認", "有", "無", "不明"]).default("未確認").notNull(),
+  urgency: mysqlEnum("urgency", ["none", "urgent", "caution", "observe"]).default("none").notNull(), // 🔴/🟡/🟢/-
+  memo: text("memo"),
+  photoNo: varchar("photoNo", { length: 32 }), // 写真番号
+  // メタ
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type RainLeakCheckItem = typeof rainLeakCheckItems.$inferSelect;
+export type InsertRainLeakCheckItem = typeof rainLeakCheckItems.$inferInsert;
