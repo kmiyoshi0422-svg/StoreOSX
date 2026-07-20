@@ -23,6 +23,7 @@ import {
   getPhotosByCaseIds,
   getCasesByIds,
   listCases,
+  listCasesSummary,
   listCasesByPartner,
   listEstimatesByCase,
   listPartners,
@@ -451,6 +452,7 @@ export const appRouter = router({
 
   cases: router({
     list: protectedProcedure.query(() => listCases()),
+    listSummary: protectedProcedure.query(() => listCasesSummary()),
 
     get: protectedProcedure.input(z.object({ id: z.number() })).query(({ input }) =>
       getCaseById(input.id)

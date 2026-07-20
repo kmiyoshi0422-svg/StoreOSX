@@ -27,6 +27,7 @@ import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useLocation } from "wouter";
 import { useMemo, useState, useCallback } from "react";
+import { useDebounce } from "@/hooks/useDebounce";
 import {
   Plus,
   Search,
@@ -127,7 +128,7 @@ function storeKey(c: { storeCode: string | null; storeName: string }) {
 export default function CasesList() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
-  const { data: cases = [], isLoading } = trpc.cases.list.useQuery();
+  const { data: cases = [], isLoading } = trpc.cases.listSummary.useQuery();
   const { data: users = [] } = trpc.users.list.useQuery();
   const userMap = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
   const utils = trpc.useUtils();
@@ -135,7 +136,7 @@ export default function CasesList() {
   const updateStatusMutation = trpc.cases.update.useMutation({
     onSuccess: () => {
       toast.success("ステータスを更新しました");
-      utils.cases.list.invalidate();
+      utils.cases.listSummary.invalidate();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -159,6 +160,7 @@ export default function CasesList() {
   }, []);
 
   const [q, setQ] = useState("");
+  const debouncedQ = useDebounce(q, 300);
   const [stageTab, setStageTab] = useState<"all" | ProgressStage>("all");
   const [urgency, setUrgency] = useState(initialParams.urgency);
   const [statusFilter, setStatusFilter] = useState(initialParams.status);
@@ -240,8 +242,8 @@ export default function CasesList() {
       if (assignee !== "all" && assignee !== "mine" && assignee !== "unassigned") {
         if (c.assigneeId !== Number(assignee)) return false;
       }
-      if (q) {
-        const keyword = q.toLowerCase();
+      if (debouncedQ) {
+        const keyword = debouncedQ.toLowerCase();
         return (
           c.storeName.toLowerCase().includes(keyword) ||
           c.requestNumber.toLowerCase().includes(keyword) ||
@@ -252,7 +254,7 @@ export default function CasesList() {
       }
       return true;
     });
-  }, [cases, q, stageTab, urgency, statusFilter, prefFilter, assignee, user?.id]);
+  }, [cases, debouncedQ, stageTab, urgency, statusFilter, prefFilter, assignee, user?.id]);
 
   // アクティブなクイックフィルタ（チップ表示用）
   const activeQuickFilter = useMemo(() => {
