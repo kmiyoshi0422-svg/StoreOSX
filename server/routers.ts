@@ -75,6 +75,10 @@ import {
   getRainLeakCheckItems,
   upsertRainLeakCheckItems,
   updateRainLeakCheckItem,
+  createDocument,
+  listDocumentsByCase,
+  deleteDocument,
+  updateDocumentMemo,
 } from "./db";
 import { makeRequest } from "./_core/map";
 import {
@@ -3327,6 +3331,63 @@ JSONスキーマに従って回答してください。`,
           overallJudgment,
         });
         return { totalIssueCount: issueItems.length, urgentCount, cautionCount, observeCount, overallJudgment };
+      }),
+  }),
+
+  // ============================================================
+  // Documents (図面・仕様書・資料)
+  // ============================================================
+  documents: router({
+    list: protectedProcedure
+      .input(z.object({ caseId: z.number() }))
+      .query(async ({ input }) => {
+        return listDocumentsByCase(input.caseId);
+      }),
+
+    upload: protectedProcedure
+      .input(z.object({
+        caseId: z.number(),
+        fileName: z.string(),
+        fileData: z.string(), // base64
+        mimeType: z.string().optional(),
+        fileSize: z.number().optional(),
+        category: z.enum(["図面", "仕様書", "見積書", "報告書", "写真", "その他"]).default("その他"),
+        memo: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Upload to S3
+        const ext = input.fileName.split(".").pop() || "bin";
+        const key = `documents/${input.caseId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        const buf = Buffer.from(input.fileData, "base64");
+        const { url } = await storagePut(key, buf, input.mimeType || "application/octet-stream");
+
+        // Save to DB
+        const id = await createDocument({
+          caseId: input.caseId,
+          fileName: input.fileName,
+          fileKey: key,
+          fileUrl: url,
+          mimeType: input.mimeType || null,
+          fileSize: input.fileSize || buf.length,
+          category: input.category,
+          memo: input.memo || null,
+          uploadedBy: ctx.user.id,
+        });
+        return { id, fileUrl: url };
+      }),
+
+    updateMemo: protectedProcedure
+      .input(z.object({ id: z.number(), memo: z.string().nullable() }))
+      .mutation(async ({ input }) => {
+        await updateDocumentMemo(input.id, input.memo);
+        return { success: true };
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteDocument(input.id);
+        return { success: true };
       }),
   }),
 });

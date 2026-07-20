@@ -486,3 +486,23 @@ export const rainLeakCheckItems = mysqlTable("rain_leak_check_items", {
 });
 export type RainLeakCheckItem = typeof rainLeakCheckItems.$inferSelect;
 export type InsertRainLeakCheckItem = typeof rainLeakCheckItems.$inferInsert;
+
+
+/**
+ * 案件ドキュメント（図面・仕様書・資料）
+ */
+export const documents = mysqlTable("documents", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("caseId").notNull(),
+  fileName: varchar("fileName", { length: 500 }).notNull(),
+  fileKey: varchar("fileKey", { length: 500 }).notNull(),
+  fileUrl: varchar("fileUrl", { length: 1000 }).notNull(),
+  mimeType: varchar("mimeType", { length: 100 }),
+  fileSize: int("fileSize"), // bytes
+  category: mysqlEnum("category", ["図面", "仕様書", "見積書", "報告書", "写真", "その他"]).default("その他").notNull(),
+  memo: text("memo"),
+  uploadedBy: int("uploadedBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type Document = typeof documents.$inferSelect;
+export type InsertDocument = typeof documents.$inferInsert;

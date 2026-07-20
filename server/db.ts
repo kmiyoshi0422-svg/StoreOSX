@@ -35,6 +35,8 @@ import {
   rainLeakCheckItems,
   InsertRainLeakInspection,
   InsertRainLeakCheckItem,
+  documents,
+  InsertDocument,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -850,4 +852,33 @@ export async function updateRainLeakCheckItem(id: number, data: { status?: "未�
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   await db.update(rainLeakCheckItems).set(data).where(eq(rainLeakCheckItems.id, id));
+}
+
+
+// ============================================================
+// Documents (図面・仕様書・資料)
+// ============================================================
+export async function createDocument(doc: InsertDocument) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const [result] = await db.insert(documents).values(doc);
+  return result.insertId;
+}
+
+export async function listDocumentsByCase(caseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(documents).where(eq(documents.caseId, caseId)).orderBy(desc(documents.createdAt));
+}
+
+export async function deleteDocument(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.delete(documents).where(eq(documents.id, id));
+}
+
+export async function updateDocumentMemo(id: number, memo: string | null) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.update(documents).set({ memo }).where(eq(documents.id, id));
 }
