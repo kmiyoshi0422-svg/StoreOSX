@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   cases,
@@ -881,4 +881,52 @@ export async function updateDocumentMemo(id: number, memo: string | null) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   await db.update(documents).set({ memo }).where(eq(documents.id, id));
+}
+
+export async function listAllDocuments(opts: { category?: string; search?: string; limit?: number; offset?: number }) {
+  const db = await getDb();
+  if (!db) return { items: [], total: 0 };
+
+  const conditions = [];
+  if (opts.category) {
+    conditions.push(eq(documents.category, opts.category as any));
+  }
+  if (opts.search) {
+    conditions.push(like(documents.fileName, `%${opts.search}%`));
+  }
+
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+  const limit = opts.limit || 50;
+  const offset = opts.offset || 0;
+
+  const items = await db
+    .select({
+      id: documents.id,
+      caseId: documents.caseId,
+      fileName: documents.fileName,
+      fileKey: documents.fileKey,
+      fileUrl: documents.fileUrl,
+      mimeType: documents.mimeType,
+      fileSize: documents.fileSize,
+      category: documents.category,
+      memo: documents.memo,
+      createdAt: documents.createdAt,
+      storeName: cases.storeName,
+      requestNumber: cases.requestNumber,
+    })
+    .from(documents)
+    .leftJoin(cases, eq(documents.caseId, cases.id))
+    .where(where)
+    .orderBy(desc(documents.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  // Count total
+  const countResult = await db
+    .select({ id: documents.id })
+    .from(documents)
+    .where(where);
+  const total = countResult.length;
+
+  return { items, total };
 }

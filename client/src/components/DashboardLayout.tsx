@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, FilePlus, ClipboardList, Upload, Wallet, BarChart3, Briefcase, FileSearch, FileText, Users, Building2, Gauge, Receipt, TrendingUp, MapPinned, Images, BookMarked, Sparkles, Droplets } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, FilePlus, ClipboardList, Upload, Wallet, BarChart3, Briefcase, FileSearch, FileText, Users, Building2, Gauge, Receipt, TrendingUp, MapPinned, Images, BookMarked, Sparkles, Droplets, Library } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -37,6 +37,7 @@ const menuItems: MenuItem[] = [
   { icon: Gauge, label: "ワークロード", path: "/workload", adminOnly: true },
   { icon: FilePlus, label: "案件登録", path: "/cases/new" },
   { icon: FileSearch, label: "PDFから案件登録", path: "/cases/import-pdf" },
+  { icon: Library, label: "資料DB庫", path: "/document-library" },
   { icon: Droplets, label: "雨漏り調査", path: "/rain-leak" },
   { icon: FileText, label: "見積書取込", path: "/estimates/import" },
   { icon: FileSearch, label: "見積書OCR→Excel", path: "/estimates/ocr-excel" },

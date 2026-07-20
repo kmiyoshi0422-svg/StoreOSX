@@ -33,6 +33,7 @@ import Workload from "./pages/Workload";
 import FullwidthExclusions from "./pages/FullwidthExclusions";
 import ImpressionSettings from "./pages/ImpressionSettings";
 import RainLeakInspection from "./pages/RainLeakInspection";
+import DocumentLibrary from "./pages/DocumentLibrary";
 
 function Router() {
   return (
@@ -74,6 +75,7 @@ function Router() {
         <Route path={"/workload"} component={Workload} />
         <Route path={"/settings/exclusions"} component={FullwidthExclusions} />
         <Route path={"/settings/impression"} component={ImpressionSettings} />
+        <Route path={"/document-library"} component={DocumentLibrary} />
         <Route path={"/rain-leak"} component={RainLeakInspection} />
         <Route path={"/partners"} component={Partners} />
         <Route path={"/partners/:id"}>

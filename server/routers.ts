@@ -77,6 +77,7 @@ import {
   updateRainLeakCheckItem,
   createDocument,
   listDocumentsByCase,
+  listAllDocuments,
   deleteDocument,
   updateDocumentMemo,
 } from "./db";
@@ -3342,6 +3343,17 @@ JSONスキーマに従って回答してください。`,
       .input(z.object({ caseId: z.number() }))
       .query(async ({ input }) => {
         return listDocumentsByCase(input.caseId);
+      }),
+
+    listAll: protectedProcedure
+      .input(z.object({
+        category: z.string().optional(),
+        search: z.string().optional(),
+        limit: z.number().optional(),
+        offset: z.number().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return listAllDocuments(input || {});
       }),
 
     upload: protectedProcedure
