@@ -3411,13 +3411,17 @@ JSONスキーマに従って回答してください。`,
 
   // 横断工程表（各業者のスケジュール横断可視化）
   crossSchedule: router({
-    list: protectedProcedure.query(async () => {
-      const [schedules, routes] = await Promise.all([
-        listCrossPartnerSchedules(),
-        listCrossPartnerRoutes(),
-      ]);
-      return { schedules, routes };
-    }),
+    list: protectedProcedure
+      .input(z.object({ rangeStart: z.string().optional(), rangeEnd: z.string().optional() }).optional())
+      .query(async ({ input }) => {
+        const rangeStart = input?.rangeStart;
+        const rangeEnd = input?.rangeEnd;
+        const [schedules, routes] = await Promise.all([
+          listCrossPartnerSchedules(rangeStart, rangeEnd),
+          listCrossPartnerRoutes(rangeStart, rangeEnd),
+        ]);
+        return { schedules, routes };
+      }),
   }),
 });
 export type AppRouter = typeof appRouter;

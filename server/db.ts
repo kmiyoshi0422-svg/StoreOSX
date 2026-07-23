@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, like } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, lte, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   cases,
@@ -1002,9 +1002,13 @@ export async function listAllDocuments(opts: { category?: string; search?: strin
  * 全案件の工程スケジュールを、案件情報（店舗名・業者ID）付きで取得する。
  * フロントエンドで業者ごとにグループ化してガントチャートを描画する。
  */
-export async function listCrossPartnerSchedules() {
+export async function listCrossPartnerSchedules(rangeStart?: string, rangeEnd?: string) {
   const db = await getDb();
   if (!db) return [];
+  const conditions = [eq(caseSchedules.caseId, cases.id)];
+  // 日付フィルタ: endDate >= rangeStart AND startDate <= rangeEnd
+  if (rangeStart) conditions.push(gte(caseSchedules.endDate, rangeStart));
+  if (rangeEnd) conditions.push(lte(caseSchedules.startDate, rangeEnd));
   return db
     .select({
       id: caseSchedules.id,
@@ -1026,7 +1030,7 @@ export async function listCrossPartnerSchedules() {
       progressStage: cases.progressStage,
     })
     .from(caseSchedules)
-    .innerJoin(cases, eq(caseSchedules.caseId, cases.id))
+    .innerJoin(cases, and(...conditions))
     .orderBy(caseSchedules.startDate, cases.storeName);
 }
 
@@ -1034,9 +1038,13 @@ export async function listCrossPartnerSchedules() {
  * route_assignments も横断工程表に含める（現調・工事の予定）
  * 案件情報付きで取得
  */
-export async function listCrossPartnerRoutes() {
+export async function listCrossPartnerRoutes(rangeStart?: string, rangeEnd?: string) {
   const db = await getDb();
   if (!db) return [];
+  const conditions = [eq(routeAssignments.caseId, cases.id)];
+  // 日付フィルタ: scheduledDate >= rangeStart AND scheduledDate <= rangeEnd
+  if (rangeStart) conditions.push(gte(routeAssignments.scheduledDate, rangeStart));
+  if (rangeEnd) conditions.push(lte(routeAssignments.scheduledDate, rangeEnd));
   return db
     .select({
       id: routeAssignments.id,
@@ -1055,6 +1063,6 @@ export async function listCrossPartnerRoutes() {
       urgency: cases.urgency,
     })
     .from(routeAssignments)
-    .innerJoin(cases, eq(routeAssignments.caseId, cases.id))
+    .innerJoin(cases, and(...conditions))
     .orderBy(routeAssignments.scheduledDate, cases.storeName);
 }

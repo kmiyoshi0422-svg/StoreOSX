@@ -108,7 +108,6 @@ type PartnerRow = {
 
 export default function CrossSchedule() {
   const [, setLocation] = useLocation();
-  const { data, isLoading } = trpc.crossSchedule.list.useQuery();
   const { data: partnersData } = trpc.partners.list.useQuery();
   const utils = trpc.useUtils();
 
@@ -123,6 +122,11 @@ export default function CrossSchedule() {
   }, [offset]);
 
   const rangeEnd = useMemo(() => addDays(rangeStart, rangeWeeks * 7 - 1), [rangeStart, rangeWeeks]);
+
+  // 前後1週間の余裕を持たせてデータを取得（スクロール時の体感速度向上）
+  const queryRangeStart = useMemo(() => fmtYmd(addDays(rangeStart, -7)), [rangeStart]);
+  const queryRangeEnd = useMemo(() => fmtYmd(addDays(rangeEnd, 7)), [rangeEnd]);
+  const { data, isLoading } = trpc.crossSchedule.list.useQuery({ rangeStart: queryRangeStart, rangeEnd: queryRangeEnd });
   const totalDays = rangeWeeks * 7;
 
   // Build partner map
