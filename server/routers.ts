@@ -24,6 +24,7 @@ import {
   getCasesByIds,
   listCases,
   listCasesSummary,
+  listCasesForMap,
   listCasesByPartner,
   listEstimatesByCase,
   listPartners,
@@ -65,6 +66,8 @@ import {
   getAllAppSettings,
   listSchedulesByCase,
   listAllSchedulesWithCase,
+  listCrossPartnerSchedules,
+  listCrossPartnerRoutes,
   createSchedule,
   updateSchedule,
   deleteSchedule,
@@ -454,6 +457,7 @@ export const appRouter = router({
   cases: router({
     list: protectedProcedure.query(() => listCases()),
     listSummary: protectedProcedure.query(() => listCasesSummary()),
+    listForMap: protectedProcedure.query(() => listCasesForMap()),
 
     get: protectedProcedure.input(z.object({ id: z.number() })).query(({ input }) =>
       getCaseById(input.id)
@@ -3406,6 +3410,21 @@ JSONスキーマに従って回答してください。`,
       .mutation(async ({ input }) => {
         await deleteDocument(input.id);
         return { success: true };
+      }),
+  }),
+
+  // 横断工程表（各業者のスケジュール横断可視化）
+  crossSchedule: router({
+    list: protectedProcedure
+      .input(z.object({ rangeStart: z.string().optional(), rangeEnd: z.string().optional() }).optional())
+      .query(async ({ input }) => {
+        const rangeStart = input?.rangeStart;
+        const rangeEnd = input?.rangeEnd;
+        const [schedules, routes] = await Promise.all([
+          listCrossPartnerSchedules(rangeStart, rangeEnd),
+          listCrossPartnerRoutes(rangeStart, rangeEnd),
+        ]);
+        return { schedules, routes };
       }),
   }),
 });

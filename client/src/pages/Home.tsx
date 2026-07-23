@@ -45,7 +45,7 @@ export default function Home() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
-  const { data: cases = [], isLoading } = trpc.cases.list.useQuery();
+  const { data: cases = [], isLoading } = trpc.cases.listSummary.useQuery();
   const { data: summary } = trpc.cases.summary.useQuery(undefined, { enabled: isAdmin });
 
   const total = cases.length;

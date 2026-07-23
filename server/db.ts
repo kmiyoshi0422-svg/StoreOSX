@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, like } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, lte, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   cases,
@@ -171,6 +171,32 @@ export async function listCasesSummary() {
       createdAt: cases.createdAt,
     })
     .from(cases)
+    .orderBy(desc(cases.createdAt));
+}
+
+/**
+ * マップ表示専用の軽量クエリ。
+ * 座標が設定されている案件のみ、マップ表示に必要な最小限のカラムを返却する。
+ */
+export async function listCasesForMap() {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: cases.id,
+      requestNumber: cases.requestNumber,
+      storeName: cases.storeName,
+      brand: cases.brand,
+      address: cases.address,
+      storePhone: cases.storePhone,
+      latitude: cases.latitude,
+      longitude: cases.longitude,
+      urgency: cases.urgency,
+      progressStage: cases.progressStage,
+      status: cases.status,
+    })
+    .from(cases)
+    .where(and(isNotNull(cases.latitude), isNotNull(cases.longitude)))
     .orderBy(desc(cases.createdAt));
 }
 
@@ -996,4 +1022,73 @@ export async function listAllSchedulesWithCase() {
     .from(caseSchedules)
     .innerJoin(cases, eq(caseSchedules.caseId, cases.id))
     .orderBy(caseSchedules.startDate);
+}
+
+/**
+ * 全案件の工程スケジュールを、案件情報（店舗名・業者ID）付きで取得する。
+ * フロントエンドで業者ごとにグループ化してガントチャートを描画する。
+ */
+export async function listCrossPartnerSchedules(rangeStart?: string, rangeEnd?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(caseSchedules.caseId, cases.id)];
+  // 日付フィルタ: endDate >= rangeStart AND startDate <= rangeEnd
+  if (rangeStart) conditions.push(gte(caseSchedules.endDate, rangeStart));
+  if (rangeEnd) conditions.push(lte(caseSchedules.startDate, rangeEnd));
+  return db
+    .select({
+      id: caseSchedules.id,
+      caseId: caseSchedules.caseId,
+      title: caseSchedules.title,
+      startDate: caseSchedules.startDate,
+      endDate: caseSchedules.endDate,
+      status: caseSchedules.status,
+      color: caseSchedules.color,
+      progress: caseSchedules.progress,
+      memo: caseSchedules.memo,
+      // 案件情報
+      storeName: cases.storeName,
+      requestNumber: cases.requestNumber,
+      brand: cases.brand,
+      partnerId: cases.partnerId,
+      contractorName: cases.contractorName,
+      urgency: cases.urgency,
+      progressStage: cases.progressStage,
+    })
+    .from(caseSchedules)
+    .innerJoin(cases, and(...conditions))
+    .orderBy(caseSchedules.startDate, cases.storeName);
+}
+
+/**
+ * route_assignments も横断工程表に含める（現調・工事の予定）
+ * 案件情報付きで取得
+ */
+export async function listCrossPartnerRoutes(rangeStart?: string, rangeEnd?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(routeAssignments.caseId, cases.id)];
+  // 日付フィルタ: scheduledDate >= rangeStart AND scheduledDate <= rangeEnd
+  if (rangeStart) conditions.push(gte(routeAssignments.scheduledDate, rangeStart));
+  if (rangeEnd) conditions.push(lte(routeAssignments.scheduledDate, rangeEnd));
+  return db
+    .select({
+      id: routeAssignments.id,
+      caseId: routeAssignments.caseId,
+      team: routeAssignments.team,
+      taskType: routeAssignments.taskType,
+      scheduledDate: routeAssignments.scheduledDate,
+      assigneeId: routeAssignments.assigneeId,
+      notes: routeAssignments.notes,
+      // 案件情報
+      storeName: cases.storeName,
+      requestNumber: cases.requestNumber,
+      brand: cases.brand,
+      partnerId: cases.partnerId,
+      contractorName: cases.contractorName,
+      urgency: cases.urgency,
+    })
+    .from(routeAssignments)
+    .innerJoin(cases, and(...conditions))
+    .orderBy(routeAssignments.scheduledDate, cases.storeName);
 }

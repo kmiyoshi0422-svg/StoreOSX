@@ -100,7 +100,7 @@ function createPinElement(color: string, emphasized: boolean) {
 
 export default function CasesMap() {
   const [, setLocation] = useLocation();
-  const { data: cases = [], isLoading } = trpc.cases.list.useQuery();
+  const { data: cases = [], isLoading } = trpc.cases.listForMap.useQuery();
   const utils = trpc.useUtils();
 
   const geocodeMutation = trpc.routes.geocodeMissing.useMutation({
@@ -108,7 +108,7 @@ export default function CasesMap() {
       toast.success(
         `位置情報を ${res.updated} 件取得しました・対象 ${res.total} 件`
       );
-      utils.cases.list.invalidate();
+      utils.cases.listForMap.invalidate();
     },
     onError: (e) => toast.error(e.message ?? "位置情報の取得に失敗しました"),
   });
