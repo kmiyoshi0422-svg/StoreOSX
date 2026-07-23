@@ -65,6 +65,8 @@ import {
   setAppSetting,
   getAllAppSettings,
   listSchedulesByCase,
+  listCrossPartnerSchedules,
+  listCrossPartnerRoutes,
   createSchedule,
   updateSchedule,
   deleteSchedule,
@@ -3405,6 +3407,17 @@ JSONスキーマに従って回答してください。`,
         await deleteDocument(input.id);
         return { success: true };
       }),
+  }),
+
+  // 横断工程表（各業者のスケジュール横断可視化）
+  crossSchedule: router({
+    list: protectedProcedure.query(async () => {
+      const [schedules, routes] = await Promise.all([
+        listCrossPartnerSchedules(),
+        listCrossPartnerRoutes(),
+      ]);
+      return { schedules, routes };
+    }),
   }),
 });
 export type AppRouter = typeof appRouter;

@@ -992,3 +992,69 @@ export async function listAllDocuments(opts: { category?: string; search?: strin
 
   return { items, total };
 }
+
+
+// ============================================================
+// Cross-Partner Schedule (横断工程表)
+// ============================================================
+
+/**
+ * 全案件の工程スケジュールを、案件情報（店舗名・業者ID）付きで取得する。
+ * フロントエンドで業者ごとにグループ化してガントチャートを描画する。
+ */
+export async function listCrossPartnerSchedules() {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: caseSchedules.id,
+      caseId: caseSchedules.caseId,
+      title: caseSchedules.title,
+      startDate: caseSchedules.startDate,
+      endDate: caseSchedules.endDate,
+      status: caseSchedules.status,
+      color: caseSchedules.color,
+      progress: caseSchedules.progress,
+      memo: caseSchedules.memo,
+      // 案件情報
+      storeName: cases.storeName,
+      requestNumber: cases.requestNumber,
+      brand: cases.brand,
+      partnerId: cases.partnerId,
+      contractorName: cases.contractorName,
+      urgency: cases.urgency,
+      progressStage: cases.progressStage,
+    })
+    .from(caseSchedules)
+    .innerJoin(cases, eq(caseSchedules.caseId, cases.id))
+    .orderBy(caseSchedules.startDate, cases.storeName);
+}
+
+/**
+ * route_assignments も横断工程表に含める（現調・工事の予定）
+ * 案件情報付きで取得
+ */
+export async function listCrossPartnerRoutes() {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: routeAssignments.id,
+      caseId: routeAssignments.caseId,
+      team: routeAssignments.team,
+      taskType: routeAssignments.taskType,
+      scheduledDate: routeAssignments.scheduledDate,
+      assigneeId: routeAssignments.assigneeId,
+      notes: routeAssignments.notes,
+      // 案件情報
+      storeName: cases.storeName,
+      requestNumber: cases.requestNumber,
+      brand: cases.brand,
+      partnerId: cases.partnerId,
+      contractorName: cases.contractorName,
+      urgency: cases.urgency,
+    })
+    .from(routeAssignments)
+    .innerJoin(cases, eq(routeAssignments.caseId, cases.id))
+    .orderBy(routeAssignments.scheduledDate, cases.storeName);
+}
