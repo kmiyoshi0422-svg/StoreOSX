@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, like } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   cases,
@@ -171,6 +171,32 @@ export async function listCasesSummary() {
       createdAt: cases.createdAt,
     })
     .from(cases)
+    .orderBy(desc(cases.createdAt));
+}
+
+/**
+ * マップ表示専用の軽量クエリ。
+ * 座標が設定されている案件のみ、マップ表示に必要な最小限のカラムを返却する。
+ */
+export async function listCasesForMap() {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: cases.id,
+      requestNumber: cases.requestNumber,
+      storeName: cases.storeName,
+      brand: cases.brand,
+      address: cases.address,
+      storePhone: cases.storePhone,
+      latitude: cases.latitude,
+      longitude: cases.longitude,
+      urgency: cases.urgency,
+      progressStage: cases.progressStage,
+      status: cases.status,
+    })
+    .from(cases)
+    .where(and(isNotNull(cases.latitude), isNotNull(cases.longitude)))
     .orderBy(desc(cases.createdAt));
 }
 
