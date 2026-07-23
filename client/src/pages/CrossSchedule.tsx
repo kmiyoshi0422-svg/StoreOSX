@@ -436,22 +436,41 @@ export default function CrossSchedule() {
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
 
+      // Header - Logo (left side)
+      const logoSize = 14;
+      try {
+        const logoResp = await fetch("/manus-storage/mdo-logo_4253fe3c.png");
+        const logoBlob = await logoResp.blob();
+        const logoDataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(logoBlob);
+        });
+        pdf.addImage(logoDataUrl, "PNG", 10, 5, logoSize, logoSize);
+      } catch {
+        // Logo load failed - continue without it
+      }
+
       // Header - Company info (right side)
       pdf.setFontSize(10);
       pdf.text("三好\u3000慶", pageWidth - 50, 10);
       pdf.setFontSize(8);
       pdf.text("TEL: 090-9240-1656", pageWidth - 50, 15);
 
-      // Header - Title (left side)
+      // Header - Title (next to logo)
+      const titleX = 10 + logoSize + 3;
       pdf.setFontSize(14);
-      pdf.text("横断工程表", 10, 12);
+      pdf.text("横断工程表", titleX, 12);
       pdf.setFontSize(9);
-      pdf.text(`期間: ${fmtYmd(rangeStart)} 〜 ${fmtYmd(rangeEnd)}`, 10, 18);
-      pdf.text(`業者数: ${activePartners} / 工程数: ${totalSchedules + totalRoutes}件`, 10, 23);
-      pdf.text(`出力日: ${fmtYmd(new Date())}`, 10, 28);
+      pdf.text(`期間: ${fmtYmd(rangeStart)} 〜 ${fmtYmd(rangeEnd)}`, titleX, 18);
 
-      // Header - Case addresses (below title)
-      let headerY = 33;
+      // Header - Stats (below logo)
+      pdf.setFontSize(8);
+      pdf.text(`業者数: ${activePartners} / 工程数: ${totalSchedules + totalRoutes}件`, 10, 5 + logoSize + 5);
+      pdf.text(`出力日: ${fmtYmd(new Date())}`, 10, 5 + logoSize + 9);
+
+      // Header - Case addresses
+      let headerY = 5 + logoSize + 14;
       if (uniqueAddresses.length > 0) {
         pdf.setFontSize(7);
         pdf.setTextColor(80, 80, 80);
@@ -740,7 +759,7 @@ export default function CrossSchedule() {
                               top: `${topPx}px`,
                               backgroundColor: `color-mix(in srgb, ${item.color} 35%, transparent)`,
                             }}
-                            title={`${item.storeName} - ${item.title}\n${effectiveStart} 〜 ${effectiveEnd}\nステータス: ${item.status}${item.progress > 0 ? ` (${item.progress}%)` : ""}${item.type === "schedule" ? "\n※ドラッグで日程変更 / 端をドラッグで工期変更" : ""}`}
+                            title={isDragging ? undefined : `${item.storeName} - ${item.title}\n${effectiveStart} 〜 ${effectiveEnd}\nステータス: ${item.status}${item.progress > 0 ? ` (${item.progress}%)` : ""}${item.type === "schedule" ? "\n※ドラッグで日程変更 / 端をドラッグで工期変更" : ""}`}
                             onMouseDown={(e) => handleDragStart(e, item)}
                             onTouchStart={(e) => handleDragStart(e, item)}
                             onClick={(e) => {
@@ -748,6 +767,23 @@ export default function CrossSchedule() {
                               e.stopPropagation();
                             }}
                           >
+                            {/* Realtime date tooltip during drag/resize */}
+                            {isDragging && (
+                              <div
+                                className="absolute -top-7 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[9px] px-2 py-0.5 rounded shadow-lg whitespace-nowrap z-50 pointer-events-none"
+                                style={{ minWidth: "max-content" }}
+                              >
+                                {dragState?.resizeMode === "left" && (
+                                  <span>開始: <strong>{effectiveStart}</strong></span>
+                                )}
+                                {dragState?.resizeMode === "right" && (
+                                  <span>終了: <strong>{effectiveEnd}</strong></span>
+                                )}
+                                {!dragState?.resizeMode && (
+                                  <span>{effectiveStart} 〜 {effectiveEnd}</span>
+                                )}
+                              </div>
+                            )}
                             {/* Left resize handle */}
                             {item.type === "schedule" && (
                               <div

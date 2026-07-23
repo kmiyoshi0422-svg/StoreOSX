@@ -1,5 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import {
   MapPin,
@@ -7,6 +8,11 @@ import {
   Clock,
   AlertTriangle,
   CheckCircle2,
+  FileText,
+  Download,
+  FileImage,
+  FileSpreadsheet,
+  File,
 } from "lucide-react";
 
 const URGENCY_COLORS: Record<string, string> = {
@@ -17,8 +23,25 @@ const URGENCY_COLORS: Record<string, string> = {
 };
 const URGENCY_LABEL: Record<string, string> = { S: "緊急", A: "高", B: "中", C: "低" };
 
+function getFileIcon(mimeType: string | null) {
+  if (!mimeType) return <File className="h-5 w-5 text-muted-foreground" />;
+  if (mimeType.startsWith("image/")) return <FileImage className="h-5 w-5 text-blue-500" />;
+  if (mimeType.includes("pdf")) return <FileText className="h-5 w-5 text-red-500" />;
+  if (mimeType.includes("sheet") || mimeType.includes("excel") || mimeType.includes("csv"))
+    return <FileSpreadsheet className="h-5 w-5 text-green-500" />;
+  return <FileText className="h-5 w-5 text-muted-foreground" />;
+}
+
+function formatFileSize(bytes: number | null) {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function PartnerView({ token }: { token: string }) {
   const { data, isLoading, error } = trpc.partnerView.getByToken.useQuery({ token });
+  const { data: documents, isLoading: docsLoading } = trpc.partnerView.getDocuments.useQuery({ token });
 
   if (isLoading) {
     return (
@@ -27,7 +50,6 @@ export default function PartnerView({ token }: { token: string }) {
       </div>
     );
   }
-
   if (error || !data) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-stone-50 px-4">
@@ -43,7 +65,6 @@ export default function PartnerView({ token }: { token: string }) {
       </div>
     );
   }
-
   return (
     <div className="min-h-screen bg-stone-50">
       {/* Header */}
@@ -123,7 +144,76 @@ export default function PartnerView({ token }: { token: string }) {
           </CardContent>
         </Card>
 
+        {/* Documents Section */}
+        <Card>
+          <CardContent className="p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-muted-foreground" />
+              <h3 className="font-semibold text-base">共有ドキュメント</h3>
+            </div>
 
+            {docsLoading ? (
+              <div className="py-6 text-center text-sm text-muted-foreground">
+                読み込み中...
+              </div>
+            ) : !documents || documents.length === 0 ? (
+              <div className="py-6 text-center text-sm text-muted-foreground border border-dashed rounded-lg">
+                共有可能なドキュメントはありません
+              </div>
+            ) : (
+              <div className="divide-y divide-border/60">
+                {documents.map((doc) => (
+                  <div
+                    key={doc.id}
+                    className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
+                  >
+                    <div className="flex-shrink-0">
+                      {getFileIcon(doc.mimeType)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate" title={doc.fileName}>
+                        {doc.fileName}
+                      </p>
+                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
+                        {doc.category && (
+                          <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                            {doc.category}
+                          </Badge>
+                        )}
+                        {doc.fileSize && (
+                          <span>{formatFileSize(doc.fileSize)}</span>
+                        )}
+                        {doc.createdAt && (
+                          <span>{new Date(doc.createdAt).toLocaleDateString("ja-JP")}</span>
+                        )}
+                      </div>
+                      {doc.memo && (
+                        <p className="text-[11px] text-muted-foreground mt-1 truncate">{doc.memo}</p>
+                      )}
+                    </div>
+                    <div className="flex-shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-3"
+                        onClick={() => {
+                          const link = document.createElement("a");
+                          link.href = doc.fileUrl;
+                          link.download = doc.fileName;
+                          link.target = "_blank";
+                          link.click();
+                        }}
+                      >
+                        <Download className="h-3.5 w-3.5 mr-1" />
+                        DL
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <div className="text-center text-xs text-muted-foreground py-4 flex items-center justify-center gap-1.5">
           <CheckCircle2 className="h-3.5 w-3.5" />
