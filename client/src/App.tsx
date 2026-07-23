@@ -78,7 +78,6 @@ function Router() {
         <Route path={"/settings/exclusions"} component={FullwidthExclusions} />
         <Route path={"/settings/impression"} component={ImpressionSettings} />
         <Route path={"/document-library"} component={DocumentLibrary} />
-        <Route path={"/cross-schedule"} component={CrossSchedule} />
         <Route path={"/rain-leak"} component={RainLeakInspection} />
         <Route path={"/partners"} component={Partners} />
         <Route path={"/partners/:id"}>
