@@ -162,9 +162,12 @@ export async function listCasesSummary() {
       requestDate: cases.requestDate,
       constructionDate: cases.constructionDate,
       plenusQuoteAmount: cases.plenusQuoteAmount,
+      estimatedCost: cases.estimatedCost,
       actualCost: cases.actualCost,
       categoryLarge: cases.categoryLarge,
       categoryMedium: cases.categoryMedium,
+      requestContent: cases.requestContent,
+      requesterName: cases.requesterName,
       createdAt: cases.createdAt,
     })
     .from(cases)
