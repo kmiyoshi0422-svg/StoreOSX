@@ -34,6 +34,7 @@ import FullwidthExclusions from "./pages/FullwidthExclusions";
 import ImpressionSettings from "./pages/ImpressionSettings";
 import RainLeakInspection from "./pages/RainLeakInspection";
 import DocumentLibrary from "./pages/DocumentLibrary";
+import CrossSchedule from "./pages/CrossSchedule";
 
 function Router() {
   return (
@@ -76,6 +77,7 @@ function Router() {
         <Route path={"/settings/exclusions"} component={FullwidthExclusions} />
         <Route path={"/settings/impression"} component={ImpressionSettings} />
         <Route path={"/document-library"} component={DocumentLibrary} />
+        <Route path={"/cross-schedule"} component={CrossSchedule} />
         <Route path={"/rain-leak"} component={RainLeakInspection} />
         <Route path={"/partners"} component={Partners} />
         <Route path={"/partners/:id"}>

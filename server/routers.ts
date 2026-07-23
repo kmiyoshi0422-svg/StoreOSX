@@ -64,6 +64,7 @@ import {
   setAppSetting,
   getAllAppSettings,
   listSchedulesByCase,
+  listAllSchedulesWithCase,
   createSchedule,
   updateSchedule,
   deleteSchedule,
@@ -3116,9 +3117,12 @@ JSONスキーマに従って回答してください。`,
         } catch {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI応答のパースに失敗しました" });
         }
-      }),
+            }),
+    // 横断工程表：全案件のスケジュールを横断取得
+    listAll: protectedProcedure.query(async () => {
+      return listAllSchedulesWithCase();
+    }),
   }),
-
   // 工程テンプレート
   scheduleTemplates: router({
     list: protectedProcedure.query(async () => {

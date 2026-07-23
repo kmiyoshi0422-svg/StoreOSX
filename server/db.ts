@@ -966,3 +966,34 @@ export async function listAllDocuments(opts: { category?: string; search?: strin
 
   return { items, total };
 }
+
+// ============================================================
+// Cross-Project Schedule (横断工程表)
+// ============================================================
+export async function listAllSchedulesWithCase() {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      scheduleId: caseSchedules.id,
+      caseId: caseSchedules.caseId,
+      title: caseSchedules.title,
+      startDate: caseSchedules.startDate,
+      endDate: caseSchedules.endDate,
+      status: caseSchedules.status,
+      color: caseSchedules.color,
+      progress: caseSchedules.progress,
+      orderNo: caseSchedules.orderNo,
+      memo: caseSchedules.memo,
+      // Case info
+      storeName: cases.storeName,
+      requestNumber: cases.requestNumber,
+      brand: cases.brand,
+      prefecture: cases.prefecture,
+      caseStatus: cases.status,
+      assigneeId: cases.assigneeId,
+    })
+    .from(caseSchedules)
+    .innerJoin(cases, eq(caseSchedules.caseId, cases.id))
+    .orderBy(caseSchedules.startDate);
+}
