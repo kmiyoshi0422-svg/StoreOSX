@@ -75,6 +75,7 @@ type ScheduleItem = {
   contractorName: string | null;
   urgency: string;
   progressStage: string;
+  address: string | null;
 };
 
 type RouteItem = {
@@ -134,6 +135,7 @@ export default function CrossSchedule() {
     originalStart: string;
     originalEnd: string;
     dayOffset: number;
+    resizeMode?: "left" | "right" | null; // null = move entire bar
   } | null>(null);
   const dragStartX = useRef(0);
   const dragItemRef = useRef<HTMLDivElement | null>(null);
@@ -275,9 +277,9 @@ export default function CrossSchedule() {
 
   const ganttRef = useRef<HTMLDivElement>(null);
 
-  // ─── Drag & Drop ──────────────────────────────────────────
+  // ─── Drag & Drop (Move entire bar) ────────────────────────
   const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent, item: PartnerRow["items"][0]) => {
-    if (item.type !== "schedule") return; // Only schedules can be dragged
+    if (item.type !== "schedule") return;
     e.preventDefault();
     e.stopPropagation();
     const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
@@ -288,6 +290,7 @@ export default function CrossSchedule() {
       originalStart: item.startDate,
       originalEnd: item.endDate,
       dayOffset: 0,
+      resizeMode: null,
     });
 
     const handleMove = (ev: MouseEvent | TouchEvent) => {
@@ -323,6 +326,74 @@ export default function CrossSchedule() {
     document.addEventListener("touchend", handleEnd);
   }, [totalDays, updateSchedule]);
 
+  // ─── Resize (Left/Right edge drag) ────────────────────────
+  const handleResizeStart = useCallback((e: React.MouseEvent | React.TouchEvent, item: PartnerRow["items"][0], edge: "left" | "right") => {
+    if (item.type !== "schedule") return;
+    e.preventDefault();
+    e.stopPropagation();
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    dragStartX.current = clientX;
+    setDragState({
+      itemType: item.type,
+      itemId: item.id,
+      originalStart: item.startDate,
+      originalEnd: item.endDate,
+      dayOffset: 0,
+      resizeMode: edge,
+    });
+
+    const handleMove = (ev: MouseEvent | TouchEvent) => {
+      const cx = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
+      const ganttEl = ganttRef.current;
+      if (!ganttEl) return;
+      const ganttWidth = ganttEl.querySelector(".flex-1")?.clientWidth || ganttEl.clientWidth - 220;
+      const dayPx = ganttWidth / totalDays;
+      const dx = cx - dragStartX.current;
+      const dayOff = Math.round(dx / dayPx);
+      setDragState((prev) => {
+        if (!prev) return null;
+        // Ensure minimum 1 day duration
+        if (edge === "left") {
+          const origDuration = Math.round((new Date(prev.originalEnd).getTime() - new Date(prev.originalStart).getTime()) / 86400000);
+          const maxLeftShift = origDuration; // can't go past end date
+          const clampedOff = Math.min(dayOff, maxLeftShift);
+          return { ...prev, dayOffset: clampedOff };
+        } else {
+          const origDuration = Math.round((new Date(prev.originalEnd).getTime() - new Date(prev.originalStart).getTime()) / 86400000);
+          const minRightShift = -origDuration; // can't go before start date
+          const clampedOff = Math.max(dayOff, minRightShift);
+          return { ...prev, dayOffset: clampedOff };
+        }
+      });
+    };
+
+    const handleEnd = () => {
+      document.removeEventListener("mousemove", handleMove);
+      document.removeEventListener("mouseup", handleEnd);
+      document.removeEventListener("touchmove", handleMove);
+      document.removeEventListener("touchend", handleEnd);
+
+      setDragState((prev) => {
+        if (prev && prev.dayOffset !== 0 && prev.itemType === "schedule" && prev.resizeMode) {
+          let newStart = prev.originalStart;
+          let newEnd = prev.originalEnd;
+          if (prev.resizeMode === "left") {
+            newStart = fmtYmd(addDays(new Date(prev.originalStart), prev.dayOffset));
+          } else {
+            newEnd = fmtYmd(addDays(new Date(prev.originalEnd), prev.dayOffset));
+          }
+          updateSchedule.mutate({ id: prev.itemId, startDate: newStart, endDate: newEnd });
+        }
+        return null;
+      });
+    };
+
+    document.addEventListener("mousemove", handleMove);
+    document.addEventListener("mouseup", handleEnd);
+    document.addEventListener("touchmove", handleMove, { passive: false });
+    document.addEventListener("touchend", handleEnd);
+  }, [totalDays, updateSchedule]);
+
   // ─── Export Functions ─────────────────────────────────────
   const handleExportImage = useCallback(async () => {
     const el = ganttRef.current;
@@ -342,6 +413,16 @@ export default function CrossSchedule() {
     }
   }, []);
 
+  // Collect unique addresses for PDF header
+  const uniqueAddresses = useMemo(() => {
+    if (!data?.schedules) return [];
+    const addrSet = new Set<string>();
+    for (const s of data.schedules as ScheduleItem[]) {
+      if (s.address) addrSet.add(`${s.storeName}: ${s.address}`);
+    }
+    return Array.from(addrSet).slice(0, 5); // max 5 addresses in header
+  }, [data]);
+
   const handleExportPdf = useCallback(async () => {
     const el = ganttRef.current;
     if (!el) return;
@@ -355,20 +436,39 @@ export default function CrossSchedule() {
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
 
-      // Header
+      // Header - Company info (right side)
+      pdf.setFontSize(10);
+      pdf.text("三好\u3000慶", pageWidth - 50, 10);
+      pdf.setFontSize(8);
+      pdf.text("TEL: 090-9240-1656", pageWidth - 50, 15);
+
+      // Header - Title (left side)
       pdf.setFontSize(14);
       pdf.text("横断工程表", 10, 12);
       pdf.setFontSize(9);
       pdf.text(`期間: ${fmtYmd(rangeStart)} 〜 ${fmtYmd(rangeEnd)}`, 10, 18);
       pdf.text(`業者数: ${activePartners} / 工程数: ${totalSchedules + totalRoutes}件`, 10, 23);
-      pdf.text(`出力日: ${fmtYmd(new Date())}`, pageWidth - 50, 12);
+      pdf.text(`出力日: ${fmtYmd(new Date())}`, 10, 28);
+
+      // Header - Case addresses (below title)
+      let headerY = 33;
+      if (uniqueAddresses.length > 0) {
+        pdf.setFontSize(7);
+        pdf.setTextColor(80, 80, 80);
+        for (const addr of uniqueAddresses) {
+          pdf.text(addr, 10, headerY);
+          headerY += 3.5;
+        }
+        pdf.setTextColor(0, 0, 0);
+      }
 
       // Chart image
+      const chartTopY = headerY + 2;
       const imgWidth = pageWidth - 20;
       const imgHeight = (canvas.height / canvas.width) * imgWidth;
-      const maxImgHeight = pageHeight - 30;
+      const maxImgHeight = pageHeight - chartTopY - 5;
       const finalHeight = Math.min(imgHeight, maxImgHeight);
-      pdf.addImage(imgData, "PNG", 10, 27, imgWidth, finalHeight);
+      pdf.addImage(imgData, "PNG", 10, chartTopY, imgWidth, finalHeight);
 
       pdf.save(`横断工程表_${fmtYmd(new Date())}.pdf`);
       toast.success("PDFをダウンロードしました");
@@ -376,7 +476,7 @@ export default function CrossSchedule() {
       toast.error("PDF生成に失敗しました");
       console.error(err);
     }
-  }, [rangeStart, rangeEnd, activePartners, totalSchedules, totalRoutes]);
+  }, [rangeStart, rangeEnd, activePartners, totalSchedules, totalRoutes, uniqueAddresses]);
 
   // ─── Calendar Feed URL ────────────────────────────────────
   const feedUrl = useMemo(() => {
@@ -599,12 +699,19 @@ export default function CrossSchedule() {
 
                       {/* Schedule bars */}
                       {visibleItems.map((item, idx) => {
-                        // Apply drag offset if this item is being dragged
+                        // Apply drag/resize offset if this item is being dragged
                         let effectiveStart = item.startDate;
                         let effectiveEnd = item.endDate;
                         if (dragState && dragState.itemId === item.id && dragState.itemType === item.type) {
-                          effectiveStart = fmtYmd(addDays(new Date(item.startDate), dragState.dayOffset));
-                          effectiveEnd = fmtYmd(addDays(new Date(item.endDate), dragState.dayOffset));
+                          if (!dragState.resizeMode) {
+                            // Move entire bar
+                            effectiveStart = fmtYmd(addDays(new Date(item.startDate), dragState.dayOffset));
+                            effectiveEnd = fmtYmd(addDays(new Date(item.endDate), dragState.dayOffset));
+                          } else if (dragState.resizeMode === "left") {
+                            effectiveStart = fmtYmd(addDays(new Date(item.startDate), dragState.dayOffset));
+                          } else if (dragState.resizeMode === "right") {
+                            effectiveEnd = fmtYmd(addDays(new Date(item.endDate), dragState.dayOffset));
+                          }
                         }
 
                         const itemStart = new Date(effectiveStart);
@@ -633,7 +740,7 @@ export default function CrossSchedule() {
                               top: `${topPx}px`,
                               backgroundColor: `color-mix(in srgb, ${item.color} 35%, transparent)`,
                             }}
-                            title={`${item.storeName} - ${item.title}\n${effectiveStart} 〜 ${effectiveEnd}\nステータス: ${item.status}${item.progress > 0 ? ` (${item.progress}%)` : ""}${item.type === "schedule" ? "\n※ドラッグで日程変更" : ""}`}
+                            title={`${item.storeName} - ${item.title}\n${effectiveStart} 〜 ${effectiveEnd}\nステータス: ${item.status}${item.progress > 0 ? ` (${item.progress}%)` : ""}${item.type === "schedule" ? "\n※ドラッグで日程変更 / 端をドラッグで工期変更" : ""}`}
                             onMouseDown={(e) => handleDragStart(e, item)}
                             onTouchStart={(e) => handleDragStart(e, item)}
                             onClick={(e) => {
@@ -641,6 +748,30 @@ export default function CrossSchedule() {
                               e.stopPropagation();
                             }}
                           >
+                            {/* Left resize handle */}
+                            {item.type === "schedule" && (
+                              <div
+                                className="absolute left-0 top-0 bottom-0 w-[6px] cursor-col-resize z-10 hover:bg-black/20 transition-colors flex items-center justify-center"
+                                onMouseDown={(e) => handleResizeStart(e, item, "left")}
+                                onTouchStart={(e) => handleResizeStart(e, item, "left")}
+                                onClick={(e) => e.stopPropagation()}
+                                title="左端をドラッグして開始日を変更"
+                              >
+                                <div className="w-[2px] h-[10px] bg-black/30 rounded-full opacity-0 group-hover/bar:opacity-100 transition-opacity" />
+                              </div>
+                            )}
+                            {/* Right resize handle */}
+                            {item.type === "schedule" && (
+                              <div
+                                className="absolute right-0 top-0 bottom-0 w-[6px] cursor-col-resize z-10 hover:bg-black/20 transition-colors flex items-center justify-center"
+                                onMouseDown={(e) => handleResizeStart(e, item, "right")}
+                                onTouchStart={(e) => handleResizeStart(e, item, "right")}
+                                onClick={(e) => e.stopPropagation()}
+                                title="右端をドラッグして終了日を変更"
+                              >
+                                <div className="w-[2px] h-[10px] bg-black/30 rounded-full opacity-0 group-hover/bar:opacity-100 transition-opacity" />
+                              </div>
+                            )}
                             {/* Progress fill */}
                             <div
                               className="absolute inset-y-0 left-0 rounded-sm"
@@ -648,7 +779,7 @@ export default function CrossSchedule() {
                             />
                             {/* Label */}
                             <span
-                              className="absolute inset-0 flex items-center px-1 text-[9px] font-medium truncate z-[5] drop-shadow-sm"
+                              className="absolute inset-0 flex items-center px-2 text-[9px] font-medium truncate z-[5] drop-shadow-sm"
                               style={{ color: item.progress > 50 ? "#fff" : "#333" }}
                             >
                               {item.urgency && (

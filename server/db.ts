@@ -933,6 +933,13 @@ export async function listDocumentsByCase(caseId: number) {
   return db.select().from(documents).where(eq(documents.caseId, caseId)).orderBy(desc(documents.createdAt));
 }
 
+/** Partner-facing: only return unlocked documents */
+export async function listDocumentsByCaseForPartner(caseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(documents).where(and(eq(documents.caseId, caseId), eq(documents.isLocked, 0))).orderBy(desc(documents.createdAt));
+}
+
 export async function deleteDocument(id: number) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
@@ -1061,6 +1068,7 @@ export async function listCrossPartnerSchedules(rangeStart?: string, rangeEnd?: 
       contractorName: cases.contractorName,
       urgency: cases.urgency,
       progressStage: cases.progressStage,
+      address: cases.address,
     })
     .from(caseSchedules)
     .innerJoin(cases, and(...conditions))

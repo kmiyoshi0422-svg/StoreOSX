@@ -86,6 +86,7 @@ import {
   deleteDocument,
   updateDocumentMemo,
   toggleDocumentLock,
+  listDocumentsByCaseForPartner,
 } from "./db";
 import { makeRequest } from "./_core/map";
 import {
@@ -2030,6 +2031,24 @@ export const appRouter = router({
           surveyDate: c.surveyDate,
           constructionDate: c.constructionDate,
         };
+      }),
+    getDocuments: publicProcedure
+      .input(z.object({ token: z.string().min(8) }))
+      .query(async ({ input }) => {
+        const c = await getCaseByPartnerToken(input.token);
+        if (!c) throw new Error("リンクが無効です");
+        // ロック済みドキュメントは除外して返す
+        const docs = await listDocumentsByCaseForPartner(c.id);
+        return docs.map((d) => ({
+          id: d.id,
+          fileName: d.fileName,
+          fileUrl: d.fileUrl,
+          mimeType: d.mimeType,
+          fileSize: d.fileSize,
+          category: d.category,
+          memo: d.memo,
+          createdAt: d.createdAt,
+        }));
       }),
   }),
 
