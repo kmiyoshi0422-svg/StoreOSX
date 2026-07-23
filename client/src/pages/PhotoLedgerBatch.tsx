@@ -64,7 +64,7 @@ type CaseRow = {
 };
 
 export default function PhotoLedgerBatch() {
-  const { data: cases = [], isLoading } = trpc.cases.list.useQuery();
+  const { data: cases = [], isLoading } = trpc.cases.listMinimal.useQuery();
   const [keyword, setKeyword] = useState("");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [generating, setGenerating] = useState(false);

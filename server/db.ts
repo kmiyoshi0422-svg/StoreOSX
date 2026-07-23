@@ -200,6 +200,66 @@ export async function listCasesForMap() {
     .orderBy(desc(cases.createdAt));
 }
 
+/**
+ * インポート系ページ・セレクトボックス向けの最小限クエリ。
+ * id, requestNumber, storeName のみ返却する。
+ */
+export async function listCasesMinimal() {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: cases.id,
+      requestNumber: cases.requestNumber,
+      storeName: cases.storeName,
+      brand: cases.brand,
+      address: cases.address,
+    })
+    .from(cases)
+    .orderBy(desc(cases.createdAt));
+}
+
+/**
+ * 予実管理ページ向けの軽量クエリ。
+ * 金額関連フィールドとステータスのみ返却する。
+ */
+export async function listCasesForBudget() {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: cases.id,
+      requestNumber: cases.requestNumber,
+      storeName: cases.storeName,
+      brand: cases.brand,
+      status: cases.status,
+      progressStage: cases.progressStage,
+      urgency: cases.urgency,
+      estimatedCost: cases.estimatedCost,
+      plenusQuoteAmount: cases.plenusQuoteAmount,
+      estimatedMaterialCost: cases.estimatedMaterialCost,
+      estimatedLaborCost: cases.estimatedLaborCost,
+      actualCost: cases.actualCost,
+      actualMaterialCost: cases.actualMaterialCost,
+      actualLaborCost: cases.actualLaborCost,
+      managementFee: cases.managementFee,
+      siteExpense: cases.siteExpense,
+      ownSurveyCost: cases.ownSurveyCost,
+      partnerSurveyCost: cases.partnerSurveyCost,
+      transportCost: cases.transportCost,
+      laborCost: cases.laborCost,
+      is10mYen: cases.is10mYen,
+      categoryLarge: cases.categoryLarge,
+      requestDate: cases.requestDate,
+      constructionDate: cases.constructionDate,
+      completedAt: cases.completedAt,
+      createdAt: cases.createdAt,
+      invoiceNumber: cases.invoiceNumber,
+    })
+    .from(cases)
+    .orderBy(desc(cases.createdAt));
+}
+
 export async function getCaseById(id: number) {
   const db = await getDb();
   if (!db) return undefined;

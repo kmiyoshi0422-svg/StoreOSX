@@ -24,7 +24,9 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { Case } from "../../../drizzle/schema";
+import type { InferSelectModel } from "drizzle-orm";
+import { cases as casesTable } from "../../../drizzle/schema";
+type BudgetCase = Pick<InferSelectModel<typeof casesTable>, "id" | "requestNumber" | "storeName" | "brand" | "status" | "progressStage" | "urgency" | "estimatedCost" | "plenusQuoteAmount" | "estimatedMaterialCost" | "estimatedLaborCost" | "actualCost" | "actualMaterialCost" | "actualLaborCost" | "managementFee" | "siteExpense" | "ownSurveyCost" | "partnerSurveyCost" | "transportCost" | "laborCost" | "is10mYen" | "categoryLarge" | "requestDate" | "constructionDate" | "completedAt" | "createdAt" | "invoiceNumber">;
 
 function fmtYen(n: number | null | undefined): string {
   if (n == null) return "—";
@@ -43,15 +45,15 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function BudgetActual() {
   const [, setLocation] = useLocation();
-  const { data: cases = [], isLoading } = trpc.cases.list.useQuery();
+  const { data: cases = [], isLoading } = trpc.cases.listForBudget.useQuery();
   const { data: summary } = trpc.cases.summary.useQuery();
   const utils = trpc.useUtils();
-  const [editTarget, setEditTarget] = useState<Case | null>(null);
+  const [editTarget, setEditTarget] = useState<BudgetCase | null>(null);
 
   const updateMutation = trpc.cases.update.useMutation({
     onSuccess: () => {
       toast.success("予実を更新しました");
-      utils.cases.list.invalidate();
+      utils.cases.listForBudget.invalidate();
       utils.cases.summary.invalidate();
       setEditTarget(null);
     },
@@ -283,7 +285,7 @@ function EditDialog({
   onSave,
   saving,
 }: {
-  caseData: Case | null;
+  caseData: BudgetCase | null;
   onClose: () => void;
   onSave: (data: {
     estimatedCost: number | null;

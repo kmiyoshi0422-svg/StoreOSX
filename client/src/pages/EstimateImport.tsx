@@ -46,7 +46,7 @@ export default function EstimateImport() {
   const uploadMutation = trpc.estimates.uploadFile.useMutation();
   const matchMutation = trpc.estimates.extractAndMatch.useMutation();
   const bulkSaveMutation = trpc.estimates.bulkSave.useMutation();
-  const allCases = trpc.cases.list.useQuery();
+  const allCases = trpc.cases.listMinimal.useQuery();
 
   async function handleFiles(files: FileList) {
     const newRows: Row[] = [];
@@ -148,7 +148,7 @@ export default function EstimateImport() {
         })),
       });
       toast.success(`${res.count}件の見積書を登録しました`);
-      utils.cases.list.invalidate();
+      utils.cases.listMinimal.invalidate();
       // 保存済みは表示変更
       setRows((prev) => prev.map((r) => (readyRows.find((x) => x.localId === r.localId)
         ? { ...r, status: "saved" }

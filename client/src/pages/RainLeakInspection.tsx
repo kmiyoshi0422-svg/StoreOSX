@@ -46,7 +46,7 @@ export default function RainLeakInspection() {
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
 
   // 案件一覧取得
-  const { data: casesData } = trpc.cases.list.useQuery();
+  const { data: casesData } = trpc.cases.listMinimal.useQuery();
   const cases = casesData ?? [];
 
   // フィルタされた案件

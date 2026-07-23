@@ -25,6 +25,8 @@ import {
   listCases,
   listCasesSummary,
   listCasesForMap,
+  listCasesMinimal,
+  listCasesForBudget,
   listCasesByPartner,
   listEstimatesByCase,
   listPartners,
@@ -460,6 +462,8 @@ export const appRouter = router({
     list: protectedProcedure.query(() => listCases()),
     listSummary: protectedProcedure.query(() => listCasesSummary()),
     listForMap: protectedProcedure.query(() => listCasesForMap()),
+    listMinimal: protectedProcedure.query(() => listCasesMinimal()),
+    listForBudget: protectedProcedure.query(() => listCasesForBudget()),
 
     get: protectedProcedure.input(z.object({ id: z.number() })).query(({ input }) =>
       getCaseById(input.id)

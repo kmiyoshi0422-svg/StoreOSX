@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
@@ -5,103 +6,120 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import DashboardLayout from "./components/DashboardLayout";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import AdminOnly from "./components/AdminOnly";
+
+// ─── Eagerly loaded (critical path) ───────────────────────
 import Home from "./pages/Home";
 import CasesList from "./pages/CasesList";
-import CaseNew from "./pages/CaseNew";
-import CaseDetail from "./pages/CaseDetail";
-import PhotoLedger from "./pages/PhotoLedger";
-import PhotoLedgerBatch from "./pages/PhotoLedgerBatch";
-import CaseReport from "./pages/CaseReport";
-import CompletionReport from "./pages/CompletionReport";
-import CsvImport from "./pages/CsvImport";
-import CasePdfImport from "./pages/CasePdfImport";
-import CasesMap from "./pages/CasesMap";
-import PartnerImport from "./pages/PartnerImport";
-import EstimateImport from "./pages/EstimateImport";
-import EstimateOcrExcel from "./pages/EstimateOcrExcel";
-import ExpenseImport from "./pages/ExpenseImport";
-import ExpenseByUser from "./pages/ExpenseByUser";
-import Reports from "./pages/Reports";
-import BudgetActual from "./pages/BudgetActual";
-import MonthlyReport from "./pages/MonthlyReport";
-import Partners from "./pages/Partners";
-import AdminOnly from "./components/AdminOnly";
-import PartnerDetail from "./pages/PartnerDetail";
-import PartnerView from "./pages/PartnerView";
-import StoresList from "./pages/StoresList";
-import Workload from "./pages/Workload";
-import FullwidthExclusions from "./pages/FullwidthExclusions";
-import ImpressionSettings from "./pages/ImpressionSettings";
-import RainLeakInspection from "./pages/RainLeakInspection";
-import DocumentLibrary from "./pages/DocumentLibrary";
-import CrossSchedule from "./pages/CrossSchedule";
+
+// ─── Lazily loaded pages (code-split) ─────────────────────
+const CaseNew = lazy(() => import("./pages/CaseNew"));
+const CaseDetail = lazy(() => import("./pages/CaseDetail"));
+const PhotoLedger = lazy(() => import("./pages/PhotoLedger"));
+const PhotoLedgerBatch = lazy(() => import("./pages/PhotoLedgerBatch"));
+const CaseReport = lazy(() => import("./pages/CaseReport"));
+const CompletionReport = lazy(() => import("./pages/CompletionReport"));
+const CsvImport = lazy(() => import("./pages/CsvImport"));
+const CasePdfImport = lazy(() => import("./pages/CasePdfImport"));
+const CasesMap = lazy(() => import("./pages/CasesMap"));
+const PartnerImport = lazy(() => import("./pages/PartnerImport"));
+const EstimateImport = lazy(() => import("./pages/EstimateImport"));
+const EstimateOcrExcel = lazy(() => import("./pages/EstimateOcrExcel"));
+const ExpenseImport = lazy(() => import("./pages/ExpenseImport"));
+const ExpenseByUser = lazy(() => import("./pages/ExpenseByUser"));
+const Reports = lazy(() => import("./pages/Reports"));
+const BudgetActual = lazy(() => import("./pages/BudgetActual"));
+const MonthlyReport = lazy(() => import("./pages/MonthlyReport"));
+const Partners = lazy(() => import("./pages/Partners"));
+const PartnerDetail = lazy(() => import("./pages/PartnerDetail"));
+const PartnerView = lazy(() => import("./pages/PartnerView"));
+const StoresList = lazy(() => import("./pages/StoresList"));
+const Workload = lazy(() => import("./pages/Workload"));
+const FullwidthExclusions = lazy(() => import("./pages/FullwidthExclusions"));
+const ImpressionSettings = lazy(() => import("./pages/ImpressionSettings"));
+const RainLeakInspection = lazy(() => import("./pages/RainLeakInspection"));
+const DocumentLibrary = lazy(() => import("./pages/DocumentLibrary"));
+const CrossSchedule = lazy(() => import("./pages/CrossSchedule"));
+
+// ─── Loading fallback ─────────────────────────────────────
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center h-64">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+    </div>
+  );
+}
 
 function Router() {
   return (
-    <Switch>
-      {/* 協力業者向け公開ビュー（サイドバーなし、未ログインでも閲覧可） */}
-      <Route path={"/partner-view/:token"}>
-        {(params) => <PartnerView token={String(params.token)} />}
-      </Route>
+    <Suspense fallback={<PageLoader />}>
+      <Switch>
+        {/* 協力業者向け公開ビュー（サイドバーなし、未ログインでも閲覧可） */}
+        <Route path={"/partner-view/:token"}>
+          {(params) => <PartnerView token={String(params.token)} />}
+        </Route>
 
-      {/* 社内向けダッシュボード */}
-      <Route>
-        <DashboardLayout>
-          <Switch>
-        <Route path={"/"} component={Home} />
-        <Route path={"/cases"} component={CasesList} />
-        <Route path={"/cases/new"} component={CaseNew} />
-        <Route path={"/cases/import"} component={CsvImport} />
-        <Route path={"/cases/import-pdf"} component={CasePdfImport} />
-        <Route path={"/cases/map"} component={CasesMap} />
-        <Route path={"/partners/import"} component={PartnerImport} />
-        <Route path={"/estimates/import"} component={EstimateImport} />
-        <Route path={"/estimates/ocr-excel"} component={EstimateOcrExcel} />
-        <Route path={"/expenses/import"} component={ExpenseImport} />
-        <Route path={"/expenses/by-user"}>
-          <AdminOnly>
-            <ExpenseByUser />
-          </AdminOnly>
+        {/* 社内向けダッシュボード */}
+        <Route>
+          <DashboardLayout>
+            <Suspense fallback={<PageLoader />}>
+              <Switch>
+                <Route path={"/"} component={Home} />
+                <Route path={"/cases"} component={CasesList} />
+                <Route path={"/cases/new"} component={CaseNew} />
+                <Route path={"/cases/import"} component={CsvImport} />
+                <Route path={"/cases/import-pdf"} component={CasePdfImport} />
+                <Route path={"/cases/map"} component={CasesMap} />
+                <Route path={"/partners/import"} component={PartnerImport} />
+                <Route path={"/estimates/import"} component={EstimateImport} />
+                <Route path={"/estimates/ocr-excel"} component={EstimateOcrExcel} />
+                <Route path={"/expenses/import"} component={ExpenseImport} />
+                <Route path={"/expenses/by-user"}>
+                  <AdminOnly>
+                    <ExpenseByUser />
+                  </AdminOnly>
+                </Route>
+                <Route path={"/reports"}>
+                  <AdminOnly><Reports /></AdminOnly>
+                </Route>
+                <Route path={"/budget"}>
+                  <AdminOnly><BudgetActual /></AdminOnly>
+                </Route>
+                <Route path={"/reports/monthly"}>
+                  <AdminOnly><MonthlyReport /></AdminOnly>
+                </Route>
+                <Route path={"/stores"} component={StoresList} />
+                <Route path={"/workload"} component={Workload} />
+                <Route path={"/cross-schedule"} component={CrossSchedule} />
+                <Route path={"/settings/exclusions"} component={FullwidthExclusions} />
+                <Route path={"/settings/impression"} component={ImpressionSettings} />
+                <Route path={"/document-library"} component={DocumentLibrary} />
+                <Route path={"/rain-leak"} component={RainLeakInspection} />
+                <Route path={"/partners"} component={Partners} />
+                <Route path={"/partners/:id"}>
+                  {(params) => <PartnerDetail id={Number(params.id)} />}
+                </Route>
+                <Route path={"/photo-ledger/batch"} component={PhotoLedgerBatch} />
+                <Route path={"/cases/:id/ledger"}>
+                  {(params) => <PhotoLedger id={Number(params.id)} />}
+                </Route>
+                <Route path={"/cases/:id/survey-report"}>
+                  {(params) => <CaseReport id={Number(params.id)} reportType="survey" />}
+                </Route>
+                <Route path={"/cases/:id/completion-report"}>
+                  {(params) => <CompletionReport id={Number(params.id)} />}
+                </Route>
+                <Route path={"/cases/:id"}>
+                  {(params) => <CaseDetail id={Number(params.id)} />}
+                </Route>
+                <Route path={"/404"} component={NotFound} />
+                <Route component={NotFound} />
+              </Switch>
+            </Suspense>
+          </DashboardLayout>
         </Route>
-        <Route path={"/reports"}>
-          <AdminOnly><Reports /></AdminOnly>
-        </Route>
-        <Route path={"/budget"}>
-          <AdminOnly><BudgetActual /></AdminOnly>
-        </Route>
-        <Route path={"/reports/monthly"}>
-          <AdminOnly><MonthlyReport /></AdminOnly>
-        </Route>
-        <Route path={"/stores"} component={StoresList} />
-        <Route path={"/workload"} component={Workload} />
-        <Route path={"/cross-schedule"} component={CrossSchedule} />
-        <Route path={"/settings/exclusions"} component={FullwidthExclusions} />
-        <Route path={"/settings/impression"} component={ImpressionSettings} />
-        <Route path={"/document-library"} component={DocumentLibrary} />
-        <Route path={"/rain-leak"} component={RainLeakInspection} />
-        <Route path={"/partners"} component={Partners} />
-        <Route path={"/partners/:id"}>
-          {(params) => <PartnerDetail id={Number(params.id)} />}
-        </Route>
-        <Route path={"/photo-ledger/batch"} component={PhotoLedgerBatch} />
-        <Route path={"/cases/:id/ledger"}>
-          {(params) => <PhotoLedger id={Number(params.id)} />}
-        </Route>
-        <Route path={"/cases/:id/survey-report"}>
-          {(params) => <CaseReport id={Number(params.id)} reportType="survey" />}
-        </Route>
-        <Route path={"/cases/:id/completion-report"}>
-          {(params) => <CompletionReport id={Number(params.id)} />}
-        </Route>
-        <Route path={"/cases/:id"}>
-          {(params) => <CaseDetail id={Number(params.id)} />}
-        </Route>
-            <Route path={"/404"} component={NotFound} />
-            <Route component={NotFound} />
-          </Switch>
-        </DashboardLayout>
-      </Route>
-    </Switch>
+      </Switch>
+    </Suspense>
   );
 }
 

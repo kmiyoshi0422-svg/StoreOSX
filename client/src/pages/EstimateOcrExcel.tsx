@@ -82,7 +82,7 @@ export default function EstimateOcrExcel() {
   const extractMutation = trpc.estimates.extractLineItems.useMutation();
   const excelMutation = trpc.estimates.generateExcel.useMutation();
   const extractAndCreateMutation = trpc.estimates.extractAndCreate.useMutation();
-  const allCases = trpc.cases.list.useQuery();
+  const allCases = trpc.cases.listMinimal.useQuery();
   const utils = trpc.useUtils();
 
   async function handleFile(file: File) {
@@ -189,7 +189,7 @@ export default function EstimateOcrExcel() {
         mimeType: extracted.mimeType,
       });
       setSavedCaseId(caseId);
-      utils.cases.list.invalidate();
+      utils.cases.listMinimal.invalidate();
       toast.success("見積書を案件に保存し、予実管理に反映しました");
     } catch (e: any) {
       toast.error(e?.message || "保存に失敗しました");

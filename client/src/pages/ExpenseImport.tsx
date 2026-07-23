@@ -92,7 +92,7 @@ export default function ExpenseImport() {
   const extractMutation = trpc.expenses.extractAndMatch.useMutation();
   const bulkSaveMutation = trpc.expenses.bulkSave.useMutation();
   const saveGeneralMutation = trpc.expenses.saveGeneral.useMutation();
-  const allCases = trpc.cases.list.useQuery();
+  const allCases = trpc.cases.listMinimal.useQuery();
 
   async function handleFiles(files: FileList) {
     const newRows: Row[] = [];
@@ -252,7 +252,7 @@ export default function ExpenseImport() {
       }
       toast.success(`${saved}件の経費を登録しました。案件${caseRows.length}・全体${generalRows.length}`);
       utils.expenses.list.invalidate();
-      utils.cases.list.invalidate();
+      utils.cases.listMinimal.invalidate();
       setRows((prev) =>
         prev.map((r) =>
           readyRows.find((x) => x.localId === r.localId)

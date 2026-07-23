@@ -134,7 +134,7 @@ export default function ScheduleBoard() {
   const utils = trpc.useUtils();
   const suggest = trpc.routes.suggest.useQuery();
   const list = trpc.routes.list.useQuery({ start, end });
-  const cases = trpc.cases.list.useQuery();
+  const cases = trpc.cases.listMinimal.useQuery();
   const usersQ = trpc.users.list.useQuery();
   const teamSettingsQ = trpc.teamSettings.list.useQuery();
   const userById = useMemo(() => {
@@ -764,7 +764,7 @@ function TeamSuggestList({
 
 function AddAssignmentInline() {
   const utils = trpc.useUtils();
-  const cases = trpc.cases.list.useQuery();
+  const cases = trpc.cases.listMinimal.useQuery();
   const [open, setOpen] = useState(false);
   const [caseId, setCaseId] = useState<string>("");
   const [team, setTeam] = useState<Team>("A");
