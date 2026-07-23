@@ -167,6 +167,7 @@ export default function CaseReport({
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [generating, setGenerating] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [signerName, setSignerName] = useState("");
   const [editingSig, setEditingSig] = useState(false);
@@ -711,6 +712,7 @@ export default function CaseReport({
   const handleDownloadPDF = async () => {
     if (!containerRef.current || !caseData) return;
     setGenerating(true);
+    setPdfProgress("画像を準備中...");
     const restore = await inlineImages(containerRef.current).catch(() => () => {});
     try {
       // フォントの読み込みを待つ（日本語フォントが未ロードだと文字化けする）
@@ -723,20 +725,26 @@ export default function CaseReport({
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
       const pages = containerRef.current.querySelectorAll<HTMLElement>(".report-page");
-      for (let i = 0; i < pages.length; i++) {
+      const totalPages = pages.length;
+      // 写真が多い場合はscaleを下げて高速化（10ページ以上で1.5、5ページ以上で1.8）
+      const renderScale = totalPages > 10 ? 1.5 : totalPages > 5 ? 1.8 : 2;
+      for (let i = 0; i < totalPages; i++) {
+        setPdfProgress(`ページ ${i + 1} / ${totalPages} を処理中...`);
+        // UIを更新するためにイベントループに制御を戻す
+        await new Promise((r) => setTimeout(r, 0));
         const canvas = await html2canvas(pages[i], {
-          scale: 2,
+          scale: renderScale,
           useCORS: true,
           allowTaint: false,
           backgroundColor: "#ffffff",
           logging: false,
           windowWidth: 800,
         });
-        const imgData = canvas.toDataURL("image/jpeg", 0.92);
+        const imgData = canvas.toDataURL("image/jpeg", 0.85);
         if (i > 0) pdf.addPage();
-        // 各ページはA4縦に正確固定（210x297mm）。ページ要素自体がA4比率なので全面に貼り付ける。
         pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
       }
+      setPdfProgress("PDFを保存中...");
       const safe = `${caseData.requestNumber}_${caseData.storeName}`.replace(
         /[\\/:*?"<>|]/g,
         "_",
@@ -748,6 +756,7 @@ export default function CaseReport({
     } finally {
       restore();
       setGenerating(false);
+      setPdfProgress("");
     }
   };
 
@@ -785,7 +794,7 @@ export default function CaseReport({
             </Button>
             <Button onClick={handleDownloadPDF} disabled={generating}>
               {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-              {generating ? "PDF生成中..." : "PDFダウンロード"}
+              {generating ? (pdfProgress || "PDF生成中...") : "PDFダウンロード"}
             </Button>
           </div>
         </div>

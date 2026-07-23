@@ -76,16 +76,19 @@ export function PdfPreviewModal({
       const targets = pageElements.length > 0 ? Array.from(pageElements) : [containerRef.current];
 
       const previews: string[] = [];
+      // プレビューは低解像度で高速化
+      const previewScale = targets.length > 10 ? 1 : targets.length > 5 ? 1.2 : 1.5;
       for (const el of targets) {
+        await new Promise((r) => setTimeout(r, 0));
         const canvas = await html2canvas(el, {
-          scale: 2,
+          scale: previewScale,
           useCORS: true,
           allowTaint: false,
           backgroundColor: "#ffffff",
           logging: false,
           windowWidth: 800,
         });
-        previews.push(canvas.toDataURL("image/jpeg", 0.9));
+        previews.push(canvas.toDataURL("image/jpeg", 0.8));
       }
       setPages(previews);
     } catch (e) {
@@ -242,16 +245,18 @@ export function PdfPreviewModal({
       const pageElements = containerRef.current.querySelectorAll<HTMLElement>(pageSelector);
       const targets = pageElements.length > 0 ? Array.from(pageElements) : [containerRef.current];
 
+      const renderScale = targets.length > 10 ? 1.5 : targets.length > 5 ? 1.8 : 2;
       for (let i = 0; i < targets.length; i++) {
+        await new Promise((r) => setTimeout(r, 0));
         const canvas = await html2canvas(targets[i], {
-          scale: 2,
+          scale: renderScale,
           useCORS: true,
           allowTaint: false,
           backgroundColor: "#ffffff",
           logging: false,
           windowWidth: 800,
         });
-        const imgData = canvas.toDataURL("image/jpeg", 0.92);
+        const imgData = canvas.toDataURL("image/jpeg", 0.85);
         if (i > 0) pdf.addPage();
         pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
       }
