@@ -945,6 +945,12 @@ export async function updateDocumentMemo(id: number, memo: string | null) {
   await db.update(documents).set({ memo }).where(eq(documents.id, id));
 }
 
+export async function toggleDocumentLock(id: number, isLocked: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.update(documents).set({ isLocked }).where(eq(documents.id, id));
+}
+
 export async function listAllDocuments(opts: { category?: string; search?: string; limit?: number; offset?: number }) {
   const db = await getDb();
   if (!db) return { items: [], total: 0 };
@@ -972,6 +978,7 @@ export async function listAllDocuments(opts: { category?: string; search?: strin
       fileSize: documents.fileSize,
       category: documents.category,
       memo: documents.memo,
+      isLocked: documents.isLocked,
       createdAt: documents.createdAt,
       storeName: cases.storeName,
       requestNumber: cases.requestNumber,

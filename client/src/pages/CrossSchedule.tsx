@@ -1,10 +1,13 @@
-import { useMemo, useState, useRef } from "react";
+import { useMemo, useState, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
 import {
   CalendarDays,
   Building2,
@@ -13,6 +16,12 @@ import {
   Filter,
   Layers,
   RefreshCw,
+  Download,
+  Image as ImageIcon,
+  FileDown,
+  Link2,
+  Copy,
+  Check,
 } from "lucide-react";
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -85,7 +94,7 @@ type RouteItem = {
 };
 
 type PartnerRow = {
-  id: number | null; // null = 未割当
+  id: number | null;
   name: string;
   items: Array<{
     type: "schedule" | "route";
@@ -113,8 +122,38 @@ export default function CrossSchedule() {
 
   // View range: default 4 weeks
   const [rangeWeeks, setRangeWeeks] = useState(4);
-  const [offset, setOffset] = useState(0); // week offset from today
+  const [offset, setOffset] = useState(0);
   const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [showCalendarDialog, setShowCalendarDialog] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // Drag state
+  const [dragState, setDragState] = useState<{
+    itemType: "schedule" | "route";
+    itemId: number;
+    originalStart: string;
+    originalEnd: string;
+    dayOffset: number;
+  } | null>(null);
+  const dragStartX = useRef(0);
+  const dragItemRef = useRef<HTMLDivElement | null>(null);
+
+  const updateSchedule = trpc.schedules.update.useMutation({
+    onSuccess: () => {
+      utils.crossSchedule.list.invalidate();
+      toast.success("日程を更新しました");
+    },
+    onError: () => toast.error("日程の更新に失敗しました"),
+  });
+
+  // Calendar feed
+  const { data: feedTokenData } = trpc.schedules.getCalendarFeedToken.useQuery();
+  const generateFeedToken = trpc.schedules.generateCalendarFeedToken.useMutation({
+    onSuccess: () => {
+      utils.schedules.getCalendarFeedToken.invalidate();
+      toast.success("カレンダーフィードURLを生成しました");
+    },
+  });
 
   const rangeStart = useMemo(() => {
     const today = startOfWeek(new Date());
@@ -123,7 +162,6 @@ export default function CrossSchedule() {
 
   const rangeEnd = useMemo(() => addDays(rangeStart, rangeWeeks * 7 - 1), [rangeStart, rangeWeeks]);
 
-  // 前後1週間の余裕を持たせてデータを取得（スクロール時の体感速度向上）
   const queryRangeStart = useMemo(() => fmtYmd(addDays(rangeStart, -7)), [rangeStart]);
   const queryRangeEnd = useMemo(() => fmtYmd(addDays(rangeEnd, 7)), [rangeEnd]);
   const { data, isLoading } = trpc.crossSchedule.list.useQuery({ rangeStart: queryRangeStart, rangeEnd: queryRangeEnd });
@@ -141,19 +179,13 @@ export default function CrossSchedule() {
   // Group schedules and routes by partner
   const partnerRows = useMemo(() => {
     if (!data) return [];
+    const rowMap = new Map<string, PartnerRow>();
 
-    const rowMap = new Map<string, PartnerRow>(); // key: partnerId or "unassigned"
-
-    // Process case_schedules
     for (const s of data.schedules as ScheduleItem[]) {
       const key = s.partnerId ? String(s.partnerId) : "unassigned";
       if (!rowMap.has(key)) {
         const partner = s.partnerId ? partnerMap.get(s.partnerId) : null;
-        rowMap.set(key, {
-          id: s.partnerId,
-          name: partner?.name || s.contractorName || "未割当",
-          items: [],
-        });
+        rowMap.set(key, { id: s.partnerId, name: partner?.name || s.contractorName || "未割当", items: [] });
       }
       rowMap.get(key)!.items.push({
         type: "schedule",
@@ -171,16 +203,11 @@ export default function CrossSchedule() {
       });
     }
 
-    // Process route_assignments (convert single-day to schedule-like)
     for (const r of data.routes as RouteItem[]) {
       const key = r.partnerId ? String(r.partnerId) : "unassigned";
       if (!rowMap.has(key)) {
         const partner = r.partnerId ? partnerMap.get(r.partnerId) : null;
-        rowMap.set(key, {
-          id: r.partnerId,
-          name: partner?.name || r.contractorName || "未割当",
-          items: [],
-        });
+        rowMap.set(key, { id: r.partnerId, name: partner?.name || r.contractorName || "未割当", items: [] });
       }
       rowMap.get(key)!.items.push({
         type: "route",
@@ -199,14 +226,12 @@ export default function CrossSchedule() {
       });
     }
 
-    // Sort rows: "unassigned" last, then alphabetical
     const rows = Array.from(rowMap.values());
     rows.sort((a, b) => {
       if (a.id === null) return 1;
       if (b.id === null) return -1;
       return a.name.localeCompare(b.name, "ja");
     });
-
     return rows;
   }, [data, partnerMap]);
 
@@ -220,12 +245,9 @@ export default function CrossSchedule() {
     });
   }, [partnerRows, filterCategory, partnerMap]);
 
-  // Get unique categories
   const categories = useMemo(() => {
     const cats = new Set<string>();
-    for (const p of partnersData ?? []) {
-      cats.add(p.category);
-    }
+    for (const p of partnersData ?? []) cats.add(p.category);
     return Array.from(cats).sort();
   }, [partnersData]);
 
@@ -242,23 +264,133 @@ export default function CrossSchedule() {
       const month = d.getMonth();
       const monthLabel = month !== lastMonth ? `${d.getFullYear()}/${month + 1}` : undefined;
       lastMonth = month;
-      headers.push({
-        date: dateStr,
-        label: `${d.getDate()}`,
-        isWeekend,
-        isToday,
-        monthLabel,
-      });
+      headers.push({ date: dateStr, label: `${d.getDate()}`, isWeekend, isToday, monthLabel });
     }
     return headers;
   }, [rangeStart, totalDays]);
 
-  // Stats
   const totalSchedules = data?.schedules?.length ?? 0;
   const totalRoutes = data?.routes?.length ?? 0;
   const activePartners = filteredRows.filter((r) => r.items.length > 0).length;
 
   const ganttRef = useRef<HTMLDivElement>(null);
+
+  // ─── Drag & Drop ──────────────────────────────────────────
+  const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent, item: PartnerRow["items"][0]) => {
+    if (item.type !== "schedule") return; // Only schedules can be dragged
+    e.preventDefault();
+    e.stopPropagation();
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    dragStartX.current = clientX;
+    setDragState({
+      itemType: item.type,
+      itemId: item.id,
+      originalStart: item.startDate,
+      originalEnd: item.endDate,
+      dayOffset: 0,
+    });
+
+    const handleMove = (ev: MouseEvent | TouchEvent) => {
+      const cx = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
+      const ganttEl = ganttRef.current;
+      if (!ganttEl) return;
+      const ganttWidth = ganttEl.querySelector(".flex-1")?.clientWidth || ganttEl.clientWidth - 220;
+      const dayPx = ganttWidth / totalDays;
+      const dx = cx - dragStartX.current;
+      const dayOff = Math.round(dx / dayPx);
+      setDragState((prev) => prev ? { ...prev, dayOffset: dayOff } : null);
+    };
+
+    const handleEnd = () => {
+      document.removeEventListener("mousemove", handleMove);
+      document.removeEventListener("mouseup", handleEnd);
+      document.removeEventListener("touchmove", handleMove);
+      document.removeEventListener("touchend", handleEnd);
+
+      setDragState((prev) => {
+        if (prev && prev.dayOffset !== 0 && prev.itemType === "schedule") {
+          const newStart = fmtYmd(addDays(new Date(prev.originalStart), prev.dayOffset));
+          const newEnd = fmtYmd(addDays(new Date(prev.originalEnd), prev.dayOffset));
+          updateSchedule.mutate({ id: prev.itemId, startDate: newStart, endDate: newEnd });
+        }
+        return null;
+      });
+    };
+
+    document.addEventListener("mousemove", handleMove);
+    document.addEventListener("mouseup", handleEnd);
+    document.addEventListener("touchmove", handleMove, { passive: false });
+    document.addEventListener("touchend", handleEnd);
+  }, [totalDays, updateSchedule]);
+
+  // ─── Export Functions ─────────────────────────────────────
+  const handleExportImage = useCallback(async () => {
+    const el = ganttRef.current;
+    if (!el) return;
+    toast.info("画像を生成中...");
+    try {
+      const { default: html2canvas } = await import("html2canvas-pro");
+      const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+      const link = document.createElement("a");
+      link.download = `横断工程表_${fmtYmd(new Date())}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+      toast.success("画像をダウンロードしました");
+    } catch (err) {
+      toast.error("画像生成に失敗しました");
+      console.error(err);
+    }
+  }, []);
+
+  const handleExportPdf = useCallback(async () => {
+    const el = ganttRef.current;
+    if (!el) return;
+    toast.info("PDFを生成中...");
+    try {
+      const { default: html2canvas } = await import("html2canvas-pro");
+      const { jsPDF } = await import("jspdf");
+      const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      // Header
+      pdf.setFontSize(14);
+      pdf.text("横断工程表", 10, 12);
+      pdf.setFontSize(9);
+      pdf.text(`期間: ${fmtYmd(rangeStart)} 〜 ${fmtYmd(rangeEnd)}`, 10, 18);
+      pdf.text(`業者数: ${activePartners} / 工程数: ${totalSchedules + totalRoutes}件`, 10, 23);
+      pdf.text(`出力日: ${fmtYmd(new Date())}`, pageWidth - 50, 12);
+
+      // Chart image
+      const imgWidth = pageWidth - 20;
+      const imgHeight = (canvas.height / canvas.width) * imgWidth;
+      const maxImgHeight = pageHeight - 30;
+      const finalHeight = Math.min(imgHeight, maxImgHeight);
+      pdf.addImage(imgData, "PNG", 10, 27, imgWidth, finalHeight);
+
+      pdf.save(`横断工程表_${fmtYmd(new Date())}.pdf`);
+      toast.success("PDFをダウンロードしました");
+    } catch (err) {
+      toast.error("PDF生成に失敗しました");
+      console.error(err);
+    }
+  }, [rangeStart, rangeEnd, activePartners, totalSchedules, totalRoutes]);
+
+  // ─── Calendar Feed URL ────────────────────────────────────
+  const feedUrl = useMemo(() => {
+    if (!feedTokenData?.token) return null;
+    return `${window.location.origin}/api/calendar/feed/${feedTokenData.token}.ics`;
+  }, [feedTokenData]);
+
+  const handleCopyFeedUrl = useCallback(() => {
+    if (!feedUrl) return;
+    navigator.clipboard.writeText(feedUrl);
+    setCopied(true);
+    toast.success("URLをコピーしました");
+    setTimeout(() => setCopied(false), 2000);
+  }, [feedUrl]);
 
   if (isLoading) {
     return (
@@ -281,7 +413,7 @@ export default function CrossSchedule() {
               </div>
               <h1 className="text-lg sm:text-xl font-bold">横断工程表</h1>
               <p className="text-xs text-muted-foreground mt-0.5">
-                各業者のスケジュールを横断的に可視化。工程・現調・工事を一覧で確認できます。
+                各業者のスケジュールを横断的に可視化。バーをドラッグして日程変更も可能です。
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -293,11 +425,7 @@ export default function CrossSchedule() {
                 <CalendarDays className="h-3 w-3 mr-1" />
                 {totalSchedules + totalRoutes} 件
               </Badge>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => utils.crossSchedule.list.invalidate()}
-              >
+              <Button size="sm" variant="outline" onClick={() => utils.crossSchedule.list.invalidate()}>
                 <RefreshCw className="h-3.5 w-3.5 mr-1" />
                 更新
               </Button>
@@ -349,7 +477,23 @@ export default function CrossSchedule() {
               </Select>
             </div>
 
-            <span className="text-[10px] text-muted-foreground ml-auto">
+            {/* Export & Calendar buttons */}
+            <div className="flex items-center gap-1 ml-auto">
+              <Button size="sm" variant="outline" onClick={handleExportPdf} title="PDF出力">
+                <FileDown className="h-3.5 w-3.5 mr-1" />
+                <span className="hidden sm:inline">PDF</span>
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleExportImage} title="画像出力">
+                <ImageIcon className="h-3.5 w-3.5 mr-1" />
+                <span className="hidden sm:inline">PNG</span>
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setShowCalendarDialog(true)} title="Googleカレンダー連携">
+                <Link2 className="h-3.5 w-3.5 mr-1" />
+                <span className="hidden sm:inline">カレンダー</span>
+              </Button>
+            </div>
+
+            <span className="text-[10px] text-muted-foreground w-full sm:w-auto text-right">
               {fmtYmd(rangeStart)} 〜 {fmtYmd(rangeEnd)}
             </span>
           </div>
@@ -371,24 +515,6 @@ export default function CrossSchedule() {
         <Card className="overflow-hidden">
           <div className="overflow-x-auto" ref={ganttRef} style={{ WebkitOverflowScrolling: "touch" }}>
             <div className="min-w-[800px]">
-              {/* Month row */}
-              <div className="flex border-b bg-muted/20">
-                <div className="w-[180px] sm:w-[220px] flex-shrink-0 border-r" />
-                <div className="flex-1 flex">
-                  {dateHeaders.map((h, i) => (
-                    h.monthLabel ? (
-                      <div
-                        key={`month-${i}`}
-                        className="text-[9px] font-bold text-muted-foreground px-1 py-0.5 border-l border-border/60"
-                        style={{ position: "absolute", marginLeft: `calc(${(i / totalDays) * 100}%)` }}
-                      >
-                        {h.monthLabel}
-                      </div>
-                    ) : null
-                  ))}
-                </div>
-              </div>
-
               {/* Date header */}
               <div className="flex border-b bg-muted/30 sticky top-0 z-10">
                 <div className="w-[180px] sm:w-[220px] flex-shrink-0 px-3 py-2 text-[10px] font-semibold text-muted-foreground border-r bg-muted/30">
@@ -413,7 +539,6 @@ export default function CrossSchedule() {
 
               {/* Partner rows */}
               {filteredRows.map((row) => {
-                // Filter items within the visible range
                 const rangeStartStr = fmtYmd(rangeStart);
                 const rangeEndStr = fmtYmd(rangeEnd);
                 const visibleItems = row.items.filter(
@@ -425,11 +550,7 @@ export default function CrossSchedule() {
                     {/* Partner name column */}
                     <div className="w-[180px] sm:w-[220px] flex-shrink-0 px-2 sm:px-3 py-2 border-r bg-white/50">
                       <div className="flex items-center gap-2">
-                        <div
-                          className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                            row.id ? "bg-indigo-500" : "bg-gray-300"
-                          }`}
-                        />
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${row.id ? "bg-indigo-500" : "bg-gray-300"}`} />
                         <div className="min-w-0 flex-1">
                           <p
                             className="text-[11px] sm:text-xs font-medium truncate cursor-pointer hover:text-primary transition-colors"
@@ -439,13 +560,9 @@ export default function CrossSchedule() {
                             {row.name}
                           </p>
                           {row.id && partnerMap.get(row.id) && (
-                            <p className="text-[9px] text-muted-foreground">
-                              {partnerMap.get(row.id)!.category}
-                            </p>
+                            <p className="text-[9px] text-muted-foreground">{partnerMap.get(row.id)!.category}</p>
                           )}
-                          <p className="text-[9px] text-muted-foreground">
-                            {visibleItems.length} 件
-                          </p>
+                          <p className="text-[9px] text-muted-foreground">{visibleItems.length} 件</p>
                         </div>
                       </div>
                     </div>
@@ -475,27 +592,25 @@ export default function CrossSchedule() {
                           <div
                             key={`bg-${i}`}
                             className="absolute top-0 bottom-0 bg-rose-50/40"
-                            style={{
-                              left: `${(i / totalDays) * 100}%`,
-                              width: `${(1 / totalDays) * 100}%`,
-                            }}
+                            style={{ left: `${(i / totalDays) * 100}%`, width: `${(1 / totalDays) * 100}%` }}
                           />
                         ) : null
                       )}
 
                       {/* Schedule bars */}
                       {visibleItems.map((item, idx) => {
-                        const itemStart = new Date(item.startDate);
-                        const itemEnd = new Date(item.endDate);
-                        const offsetDays = Math.max(
-                          0,
-                          Math.round((itemStart.getTime() - rangeStart.getTime()) / 86400000)
-                        );
-                        const durationDays = Math.max(
-                          1,
-                          Math.round((itemEnd.getTime() - itemStart.getTime()) / 86400000) + 1
-                        );
-                        // Clamp to visible range
+                        // Apply drag offset if this item is being dragged
+                        let effectiveStart = item.startDate;
+                        let effectiveEnd = item.endDate;
+                        if (dragState && dragState.itemId === item.id && dragState.itemType === item.type) {
+                          effectiveStart = fmtYmd(addDays(new Date(item.startDate), dragState.dayOffset));
+                          effectiveEnd = fmtYmd(addDays(new Date(item.endDate), dragState.dayOffset));
+                        }
+
+                        const itemStart = new Date(effectiveStart);
+                        const itemEnd = new Date(effectiveEnd);
+                        const offsetDays = Math.round((itemStart.getTime() - rangeStart.getTime()) / 86400000);
+                        const durationDays = Math.max(1, Math.round((itemEnd.getTime() - itemStart.getTime()) / 86400000) + 1);
                         const clampedOffset = Math.max(0, offsetDays);
                         const clampedEnd = Math.min(totalDays, offsetDays + durationDays);
                         const clampedDuration = clampedEnd - clampedOffset;
@@ -503,30 +618,37 @@ export default function CrossSchedule() {
                         const leftPct = (clampedOffset / totalDays) * 100;
                         const widthPct = (clampedDuration / totalDays) * 100;
                         const topPx = idx * 22 + 4;
+                        const isDragging = dragState?.itemId === item.id && dragState?.itemType === item.type;
 
                         return (
                           <div
                             key={`${item.type}-${item.id}`}
-                            className="absolute h-[18px] rounded-sm shadow-sm overflow-hidden cursor-pointer hover:brightness-110 transition-all group/bar"
+                            ref={isDragging ? dragItemRef : undefined}
+                            className={`absolute h-[18px] rounded-sm shadow-sm overflow-hidden transition-all group/bar ${
+                              item.type === "schedule" ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
+                            } ${isDragging ? "opacity-80 ring-2 ring-primary z-20 scale-[1.02]" : "hover:brightness-110"}`}
                             style={{
                               left: `${leftPct}%`,
                               width: `${Math.max(widthPct, 1.5)}%`,
                               top: `${topPx}px`,
                               backgroundColor: `color-mix(in srgb, ${item.color} 35%, transparent)`,
                             }}
-                            title={`${item.storeName} - ${item.title}\n${item.startDate} 〜 ${item.endDate}\nステータス: ${item.status}${item.progress > 0 ? ` (${item.progress}%)` : ""}`}
-                            onClick={() => setLocation(`/cases/${item.caseId}`)}
+                            title={`${item.storeName} - ${item.title}\n${effectiveStart} 〜 ${effectiveEnd}\nステータス: ${item.status}${item.progress > 0 ? ` (${item.progress}%)` : ""}${item.type === "schedule" ? "\n※ドラッグで日程変更" : ""}`}
+                            onMouseDown={(e) => handleDragStart(e, item)}
+                            onTouchStart={(e) => handleDragStart(e, item)}
+                            onClick={(e) => {
+                              if (!dragState) setLocation(`/cases/${item.caseId}`);
+                              e.stopPropagation();
+                            }}
                           >
                             {/* Progress fill */}
                             <div
                               className="absolute inset-y-0 left-0 rounded-sm"
-                              style={{
-                                width: `${item.progress}%`,
-                                backgroundColor: item.color,
-                              }}
+                              style={{ width: `${item.progress}%`, backgroundColor: item.color }}
                             />
                             {/* Label */}
-                            <span className="absolute inset-0 flex items-center px-1 text-[9px] font-medium truncate z-[5] drop-shadow-sm"
+                            <span
+                              className="absolute inset-0 flex items-center px-1 text-[9px] font-medium truncate z-[5] drop-shadow-sm"
                               style={{ color: item.progress > 50 ? "#fff" : "#333" }}
                             >
                               {item.urgency && (
@@ -561,7 +683,7 @@ export default function CrossSchedule() {
             <span className="font-medium text-foreground">凡例:</span>
             <span className="flex items-center gap-1">
               <span className="w-3 h-3 rounded-sm bg-blue-500/35 border border-blue-500/50" />
-              工程スケジュール
+              工程スケジュール（ドラッグ可）
             </span>
             <span className="flex items-center gap-1">
               <span className="w-3 h-3 rounded-sm bg-amber-500/35 border border-amber-500/50" />
@@ -582,6 +704,57 @@ export default function CrossSchedule() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Google Calendar Dialog */}
+      <Dialog open={showCalendarDialog} onOpenChange={setShowCalendarDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarDays className="h-5 w-5" />
+              Googleカレンダー連携
+            </DialogTitle>
+            <DialogDescription>
+              以下のURLをGoogleカレンダーに登録すると、工程スケジュールが自動同期されます。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            {feedUrl ? (
+              <>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">ICSフィードURL</label>
+                  <div className="flex gap-2">
+                    <Input value={feedUrl} readOnly className="text-xs font-mono" />
+                    <Button size="sm" variant="outline" onClick={handleCopyFeedUrl}>
+                      {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-3 space-y-2 text-xs">
+                  <p className="font-medium">Googleカレンダーへの追加方法:</p>
+                  <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                    <li>上のURLをコピー</li>
+                    <li>Googleカレンダーを開く</li>
+                    <li>左サイドバー「他のカレンダー」の「+」→「URLで追加」</li>
+                    <li>コピーしたURLを貼り付けて「カレンダーを追加」</li>
+                  </ol>
+                  <p className="text-muted-foreground mt-2">
+                    ※ 同期間隔はGoogleカレンダー側で約12〜24時間です。Apple/Outlookカレンダーでも同様に購読可能です。
+                  </p>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-4 space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  カレンダーフィードURLがまだ生成されていません。
+                </p>
+                <Button onClick={() => generateFeedToken.mutate()} disabled={generateFeedToken.isPending}>
+                  {generateFeedToken.isPending ? "生成中..." : "フィードURLを生成"}
+                </Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

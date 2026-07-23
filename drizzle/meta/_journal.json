@@ -183,6 +183,13 @@
       "when": 1784536000000,
       "tag": "0025_neat_tag",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1784829140113,
+      "tag": "0026_perpetual_night_thrasher",
+      "breakpoints": true
     }
   ]
 }

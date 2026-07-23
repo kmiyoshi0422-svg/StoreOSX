@@ -1,8 +1,8 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "164a140a-8265-41ce-abef-a38fcc4b5631",
-  "prevId": "072885cd-0937-451b-a808-d0d3b66c12ee",
+  "id": "f1aa7daf-ea20-43a4-b996-30a78c62d6f2",
+  "prevId": "164a140a-8265-41ce-abef-a38fcc4b5631",
   "tables": {
     "app_settings": {
       "name": "app_settings",
@@ -182,11 +182,11 @@
         },
         "status": {
           "name": "status",
-          "type": "enum('予定','進行中','完了')",
+          "type": "enum('\u4e88\u5b9a','\u9032\u884c\u4e2d','\u5b8c\u4e86')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'予定'"
+          "default": "'\u4e88\u5b9a'"
         },
         "color": {
           "name": "color",
@@ -375,11 +375,11 @@
         },
         "brand": {
           "name": "brand",
-          "type": "enum('ほっともっと','やよい軒','その他')",
+          "type": "enum('\u307b\u3063\u3068\u3082\u3063\u3068','\u3084\u3088\u3044\u8ed2','\u305d\u306e\u4ed6')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'ほっともっと'"
+          "default": "'\u307b\u3063\u3068\u3082\u3063\u3068'"
         },
         "storeName": {
           "name": "storeName",
@@ -474,19 +474,19 @@
         },
         "workType": {
           "name": "workType",
-          "type": "enum('入替','修理','納品','見積り','新規')",
+          "type": "enum('\u5165\u66ff','\u4fee\u7406','\u7d0d\u54c1','\u898b\u7a4d\u308a','\u65b0\u898f')",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false,
-          "default": "'修理'"
+          "default": "'\u4fee\u7406'"
         },
         "costBearer": {
           "name": "costBearer",
-          "type": "enum('店舗','営業部','その他')",
+          "type": "enum('\u5e97\u8217','\u55b6\u696d\u90e8','\u305d\u306e\u4ed6')",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false,
-          "default": "'店舗'"
+          "default": "'\u5e97\u8217'"
         },
         "categoryLarge": {
           "name": "categoryLarge",
@@ -539,11 +539,11 @@
         },
         "progressStage": {
           "name": "progressStage",
-          "type": "enum('未対応','現調済','見積提出済','承認済')",
+          "type": "enum('\u672a\u5bfe\u5fdc','\u73fe\u8abf\u6e08','\u898b\u7a4d\u63d0\u51fa\u6e08','\u627f\u8a8d\u6e08')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'未対応'"
+          "default": "'\u672a\u5bfe\u5fdc'"
         },
         "partnerToken": {
           "name": "partnerToken",
@@ -554,11 +554,11 @@
         },
         "status": {
           "name": "status",
-          "type": "enum('受付','現調中','見積中','施工待ち','施工中','完了','クローズ')",
+          "type": "enum('\u53d7\u4ed8','\u73fe\u8abf\u4e2d','\u898b\u7a4d\u4e2d','\u65bd\u5de5\u5f85\u3061','\u65bd\u5de5\u4e2d','\u5b8c\u4e86','\u30af\u30ed\u30fc\u30ba')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'受付'"
+          "default": "'\u53d7\u4ed8'"
         },
         "urgency": {
           "name": "urgency",
@@ -794,7 +794,7 @@
         },
         "phase": {
           "name": "phase",
-          "type": "enum('受付','現調','施工','完了')",
+          "type": "enum('\u53d7\u4ed8','\u73fe\u8abf','\u65bd\u5de5','\u5b8c\u4e86')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -1024,11 +1024,11 @@
         },
         "scope": {
           "name": "scope",
-          "type": "enum('案件','全体')",
+          "type": "enum('\u6848\u4ef6','\u5168\u4f53')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'案件'"
+          "default": "'\u6848\u4ef6'"
         },
         "fileKey": {
           "name": "fileKey",
@@ -1088,11 +1088,11 @@
         },
         "category": {
           "name": "category",
-          "type": "enum('材料費','外注費','交通費','消耗品','車両費','宿泊費','接待交際費','人件費','現調費','その他')",
+          "type": "enum('\u6750\u6599\u8cbb','\u5916\u6ce8\u8cbb','\u4ea4\u901a\u8cbb','\u6d88\u8017\u54c1','\u8eca\u4e21\u8cbb','\u5bbf\u6cca\u8cbb','\u63a5\u5f85\u4ea4\u969b\u8cbb','\u4eba\u4ef6\u8cbb','\u73fe\u8abf\u8cbb','\u305d\u306e\u4ed6')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'その他'"
+          "default": "'\u305d\u306e\u4ed6'"
         },
         "note": {
           "name": "note",
@@ -1227,11 +1227,11 @@
         },
         "category": {
           "name": "category",
-          "type": "enum('電気','給排水','空調','厨房設備','排気・換気','内装','床','看板','外壁','建具','防水','その他')",
+          "type": "enum('\u96fb\u6c17','\u7d66\u6392\u6c34','\u7a7a\u8abf','\u53a8\u623f\u8a2d\u5099','\u6392\u6c17\u30fb\u63db\u6c17','\u5185\u88c5','\u5e8a','\u770b\u677f','\u5916\u58c1','\u5efa\u5177','\u9632\u6c34','\u305d\u306e\u4ed6')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'その他'"
+          "default": "'\u305d\u306e\u4ed6'"
         },
         "phone": {
           "name": "phone",
@@ -1354,11 +1354,11 @@
         },
         "photoType": {
           "name": "photoType",
-          "type": "enum('施工前A','施工前B','施工中','施工後A','施工後B','設置状況','メーカー型番','現調','その他')",
+          "type": "enum('\u65bd\u5de5\u524dA','\u65bd\u5de5\u524dB','\u65bd\u5de5\u4e2d','\u65bd\u5de5\u5f8cA','\u65bd\u5de5\u5f8cB','\u8a2d\u7f6e\u72b6\u6cc1','\u30e1\u30fc\u30ab\u30fc\u578b\u756a','\u73fe\u8abf','\u305d\u306e\u4ed6')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'現調'"
+          "default": "'\u73fe\u8abf'"
         },
         "workCategory": {
           "name": "workCategory",
@@ -1461,7 +1461,7 @@
         },
         "section": {
           "name": "section",
-          "type": "enum('室内','天井裏','外部')",
+          "type": "enum('\u5ba4\u5185','\u5929\u4e95\u88cf','\u5916\u90e8')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -1489,11 +1489,11 @@
         },
         "status": {
           "name": "status",
-          "type": "enum('未確認','有','無','不明')",
+          "type": "enum('\u672a\u78ba\u8a8d','\u6709','\u7121','\u4e0d\u660e')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'未確認'"
+          "default": "'\u672a\u78ba\u8a8d'"
         },
         "urgency": {
           "name": "urgency",

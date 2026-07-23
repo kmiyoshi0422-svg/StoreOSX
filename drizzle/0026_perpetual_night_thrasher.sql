@@ -1,0 +1,1 @@
+ALTER TABLE `documents` ADD `isLocked` int DEFAULT 0 NOT NULL;

@@ -502,6 +502,7 @@ export const documents = mysqlTable("documents", {
   category: mysqlEnum("category", ["図面", "仕様書", "見積書", "報告書", "写真", "その他"]).default("その他").notNull(),
   memo: text("memo"),
   uploadedBy: int("uploadedBy"),
+  isLocked: int("isLocked").default(0).notNull(), // 1 = locked (restricted access)
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type Document = typeof documents.$inferSelect;

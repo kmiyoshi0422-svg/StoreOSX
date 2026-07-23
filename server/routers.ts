@@ -85,6 +85,7 @@ import {
   listAllDocuments,
   deleteDocument,
   updateDocumentMemo,
+  toggleDocumentLock,
 } from "./db";
 import { makeRequest } from "./_core/map";
 import {
@@ -3409,6 +3410,12 @@ JSONスキーマに従って回答してください。`,
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         await deleteDocument(input.id);
+        return { success: true };
+      }),
+    toggleLock: protectedProcedure
+      .input(z.object({ id: z.number(), isLocked: z.number().min(0).max(1) }))
+      .mutation(async ({ input }) => {
+        await toggleDocumentLock(input.id, input.isLocked);
         return { success: true };
       }),
   }),
