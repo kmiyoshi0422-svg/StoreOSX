@@ -1173,6 +1173,7 @@ export async function listCrossPartnerSchedules(rangeStart?: string, rangeEnd?: 
       urgency: cases.urgency,
       progressStage: cases.progressStage,
       address: cases.address,
+      assigneeId: cases.assigneeId,
     })
     .from(caseSchedules)
     .innerJoin(cases, and(...conditions))

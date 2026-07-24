@@ -1,4 +1,5 @@
-import { useMemo, useState, useRef, useCallback, useEffect } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import { Users } from "lucide-react";
 import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -80,6 +81,7 @@ type ScheduleItem = {
   urgency: string;
   progressStage: string;
   address: string | null;
+  assigneeId: number | null;
 };
 
 type RouteItem = {
@@ -96,6 +98,30 @@ type RouteItem = {
   partnerId: number | null;
   contractorName: string | null;
   urgency: string;
+};
+
+type CaseRow = {
+  caseId: number;
+  storeName: string;
+  requestNumber: string;
+  brand: string;
+  assigneeName: string | null;
+  urgency: string;
+  items: Array<{
+    type: "schedule" | "route";
+    id: number;
+    caseId: number;
+    storeName: string;
+    requestNumber: string;
+    title: string;
+    startDate: string;
+    endDate: string;
+    color: string;
+    status: string;
+    progress: number;
+    urgency: string;
+    taskType?: string;
+  }>;
 };
 
 type PartnerRow = {
@@ -123,7 +149,11 @@ type PartnerRow = {
 export default function CrossSchedule() {
   const [, setLocation] = useLocation();
   const { data: partnersData } = trpc.partners.list.useQuery();
+  const { data: usersData } = trpc.users.list.useQuery();
   const utils = trpc.useUtils();
+
+  // View mode: "partner" (業者ベース) or "case" (案件ベース)
+  const [viewMode, setViewMode] = useState<"partner" | "case">("partner");
 
   // View range: default 4 weeks
   const [rangeWeeks, setRangeWeeks] = useState(4);
@@ -322,6 +352,85 @@ export default function CrossSchedule() {
       return partner?.category === filterCategory;
     });
   }, [partnerRows, filterCategory, partnerMap]);
+
+  // Case-based view: group by case
+  const userMap = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const u of usersData ?? []) m.set(u.id, u.name ?? `ID:${u.id}`);
+    return m;
+  }, [usersData]);
+
+  const caseRows = useMemo((): CaseRow[] => {
+    if (!data) return [];
+    const rowMap = new Map<number, CaseRow>();
+
+    for (const s of data.schedules ?? []) {
+      if (!rowMap.has(s.caseId)) {
+        rowMap.set(s.caseId, {
+          caseId: s.caseId,
+          storeName: s.storeName,
+          requestNumber: s.requestNumber ?? "",
+          brand: s.brand ?? "",
+          assigneeName: s.assigneeId ? (userMap.get(s.assigneeId) ?? null) : null,
+          urgency: s.urgency ?? "",
+          items: [],
+        });
+      }
+      rowMap.get(s.caseId)!.items.push({
+        type: "schedule",
+        id: s.id,
+        caseId: s.caseId,
+        storeName: s.storeName,
+        requestNumber: s.requestNumber ?? "",
+        title: s.title,
+        startDate: s.startDate,
+        endDate: s.endDate,
+        color: s.color ?? STATUS_COLORS[s.status] ?? "#6366f1",
+        status: s.status,
+        progress: s.progress ?? 0,
+        urgency: s.urgency ?? "",
+      });
+    }
+
+    for (const r of data.routes ?? []) {
+      if (!rowMap.has(r.caseId)) {
+        rowMap.set(r.caseId, {
+          caseId: r.caseId,
+          storeName: r.storeName,
+          requestNumber: r.requestNumber ?? "",
+          brand: r.brand ?? "",
+          assigneeName: null,
+          urgency: r.urgency ?? "",
+          items: [],
+        });
+      }
+      const dateStr = r.scheduledDate;
+      rowMap.get(r.caseId)!.items.push({
+        type: "route",
+        id: r.id,
+        caseId: r.caseId,
+        storeName: r.storeName,
+        requestNumber: r.requestNumber ?? "",
+        title: r.taskType === "survey" ? "現調" : "工事",
+        startDate: dateStr,
+        endDate: dateStr,
+        color: r.taskType === "survey" ? "#f59e0b" : "#10b981",
+        status: "active",
+        progress: 0,
+        urgency: r.urgency ?? "",
+        taskType: r.taskType,
+      });
+    }
+
+    const rows = Array.from(rowMap.values());
+    rows.sort((a, b) => a.storeName.localeCompare(b.storeName, "ja"));
+    return rows;
+  }, [data, userMap]);
+
+  // Filtered case rows
+  const filteredCaseRows = useMemo(() => {
+    return caseRows;
+  }, [caseRows]);
 
   const categories = useMemo(() => {
     const cats = new Set<string>();
@@ -623,8 +732,29 @@ export default function CrossSchedule() {
               </div>
               <h1 className="text-lg sm:text-xl font-bold">横断工程表</h1>
               <p className="text-xs text-muted-foreground mt-0.5">
-                各業者のスケジュールを横断的に可視化。バーをドラッグして日程変更も可能です。
+                {viewMode === "partner" ? "各業者のスケジュールを横断的に可視化" : "各案件のスケジュールを担当者付きで可視化"}。バーをドラッグして日程変更も可能です。
               </p>
+              {/* View mode toggle */}
+              <div className="flex items-center gap-0.5 mt-2 border rounded-md p-0.5 w-fit">
+                <Button
+                  size="sm"
+                  variant={viewMode === "partner" ? "default" : "ghost"}
+                  className="h-7 px-3 text-xs"
+                  onClick={() => setViewMode("partner")}
+                >
+                  <Building2 className="h-3.5 w-3.5 mr-1" />
+                  業者ベース
+                </Button>
+                <Button
+                  size="sm"
+                  variant={viewMode === "case" ? "default" : "ghost"}
+                  className="h-7 px-3 text-xs"
+                  onClick={() => setViewMode("case")}
+                >
+                  <Users className="h-3.5 w-3.5 mr-1" />
+                  案件ベース
+                </Button>
+              </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <Badge variant="outline" className="bg-white">
@@ -766,7 +896,7 @@ export default function CrossSchedule() {
       </Card>
 
       {/* Gantt Chart */}
-      {filteredRows.length === 0 ? (
+      {(viewMode === "partner" ? filteredRows.length : filteredCaseRows.length) === 0 ? (
         <Card className="py-12">
           <CardContent className="flex flex-col items-center text-center">
             <CalendarDays className="h-10 w-10 text-muted-foreground/40 mb-3" />
@@ -783,7 +913,7 @@ export default function CrossSchedule() {
               {/* Date header */}
               <div className="flex border-b bg-muted/30 sticky top-0 z-10">
                 <div className="w-[180px] sm:w-[220px] flex-shrink-0 px-3 py-2 text-[10px] font-semibold text-muted-foreground border-r bg-muted/30">
-                  業者名
+                  {viewMode === "partner" ? "業者名" : "案件名"}
                 </div>
                 <div className="flex-1 flex">
                   {dateHeaders.map((h, i) => (
@@ -802,7 +932,9 @@ export default function CrossSchedule() {
                 </div>
               </div>
 
-              {/* Partner rows */}
+              {/* Rows - partner or case based */}
+              {viewMode === "partner" ? (
+                <>
               {filteredRows.map((row) => {
                 const rangeStartStr = fmtYmd(rangeStart);
                 const rangeEndStr = fmtYmd(rangeEnd);
@@ -994,6 +1126,201 @@ export default function CrossSchedule() {
                   </div>
                 );
               })}
+                </>
+              ) : (
+                <>
+              {filteredCaseRows.map((row) => {
+                const rangeStartStr = fmtYmd(rangeStart);
+                const rangeEndStr = fmtYmd(rangeEnd);
+                const visibleItems = row.items.filter(
+                  (item) => item.endDate >= rangeStartStr && item.startDate <= rangeEndStr
+                );
+
+                return (
+                  <div key={row.caseId} className="flex border-b last:border-b-0 hover:bg-muted/10 transition-colors">
+                    {/* Case name column */}
+                    <div className="w-[180px] sm:w-[220px] flex-shrink-0 px-2 sm:px-3 py-2 border-r bg-white/50">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0 bg-emerald-500" />
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className="text-[11px] sm:text-xs font-medium truncate cursor-pointer hover:text-primary transition-colors"
+                            onClick={() => setLocation(`/cases/${row.caseId}`)}
+                            title={row.storeName}
+                          >
+                            {row.storeName}
+                          </p>
+                          {row.assigneeName && (
+                            <p className="text-[9px] text-muted-foreground flex items-center gap-0.5">
+                              <Users className="h-2.5 w-2.5" />
+                              {row.assigneeName}
+                            </p>
+                          )}
+                          <p className="text-[9px] text-muted-foreground">
+                            {row.brand && <span className="mr-1">{row.brand}</span>}
+                            {visibleItems.length} 件
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Gantt area */}
+                    <div className="flex-1 relative py-1" style={{ minHeight: `${Math.max(32, visibleItems.length * 22 + 8)}px` }}>
+                      {/* Today line */}
+                      {(() => {
+                        const todayStr = fmtYmd(new Date());
+                        const todayOffset = Math.round(
+                          (new Date(todayStr).getTime() - rangeStart.getTime()) / 86400000
+                        );
+                        if (todayOffset >= 0 && todayOffset < totalDays) {
+                          return (
+                            <>
+                              <div
+                                className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-20"
+                                style={{ left: `${(todayOffset / totalDays) * 100}%` }}
+                              />
+                              <div
+                                className="absolute top-0 z-20 -translate-x-1/2"
+                                style={{ left: `${(todayOffset / totalDays) * 100}%` }}
+                              >
+                                <div className="bg-red-500 text-white text-[8px] px-1 py-0.5 rounded-b font-bold whitespace-nowrap">
+                                  TODAY
+                                </div>
+                              </div>
+                            </>
+                          );
+                        }
+                        return null;
+                      })()}
+
+                      {/* Weekend background stripes */}
+                      {dateHeaders.map((h, i) =>
+                        h.isWeekend ? (
+                          <div
+                            key={`bg-${i}`}
+                            className="absolute top-0 bottom-0 bg-rose-50/40"
+                            style={{ left: `${(i / totalDays) * 100}%`, width: `${(1 / totalDays) * 100}%` }}
+                          />
+                        ) : null
+                      )}
+
+                      {/* Schedule bars */}
+                      {visibleItems.map((item, idx) => {
+                        let effectiveStart = item.startDate;
+                        let effectiveEnd = item.endDate;
+                        if (dragState && dragState.itemId === item.id && dragState.itemType === item.type) {
+                          if (!dragState.resizeMode) {
+                            effectiveStart = fmtYmd(addDays(new Date(item.startDate), dragState.dayOffset));
+                            effectiveEnd = fmtYmd(addDays(new Date(item.endDate), dragState.dayOffset));
+                          } else if (dragState.resizeMode === "left") {
+                            effectiveStart = fmtYmd(addDays(new Date(item.startDate), dragState.dayOffset));
+                          } else if (dragState.resizeMode === "right") {
+                            effectiveEnd = fmtYmd(addDays(new Date(item.endDate), dragState.dayOffset));
+                          }
+                        }
+
+                        const itemStart = new Date(effectiveStart);
+                        const itemEnd = new Date(effectiveEnd);
+                        const offsetDays = Math.round((itemStart.getTime() - rangeStart.getTime()) / 86400000);
+                        const durationDays = Math.max(1, Math.round((itemEnd.getTime() - itemStart.getTime()) / 86400000) + 1);
+                        const clampedOffset = Math.max(0, offsetDays);
+                        const clampedEnd = Math.min(totalDays, offsetDays + durationDays);
+                        const clampedDuration = clampedEnd - clampedOffset;
+
+                        const leftPct = (clampedOffset / totalDays) * 100;
+                        const widthPct = (clampedDuration / totalDays) * 100;
+                        const topPx = idx * 22 + 4;
+                        const isDragging = dragState?.itemId === item.id && dragState?.itemType === item.type;
+
+                        return (
+                          <div
+                            key={`${item.type}-${item.id}`}
+                            ref={isDragging ? dragItemRef : undefined}
+                            className={`absolute h-[18px] rounded-sm shadow-sm overflow-hidden transition-all group/bar ${
+                              item.type === "schedule" ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
+                            } ${isDragging ? "opacity-80 ring-2 ring-primary z-20 scale-[1.02]" : "hover:brightness-110"}`}
+                            style={{
+                              left: `${leftPct}%`,
+                              width: `${Math.max(widthPct, 1.5)}%`,
+                              top: `${topPx}px`,
+                              backgroundColor: `color-mix(in srgb, ${item.color} 35%, transparent)`,
+                            }}
+                            title={isDragging ? undefined : `${item.storeName} - ${item.title}\n${effectiveStart} 〜 ${effectiveEnd}\nステータス: ${item.status}${item.progress > 0 ? ` (${item.progress}%)` : ""}${item.type === "schedule" ? "\n※ドラッグで日程変更 / 端をドラッグで工期変更" : ""}`}
+                            onMouseDown={(e) => handleDragStart(e, item)}
+                            onTouchStart={(e) => handleDragStart(e, item)}
+                            onClick={(e) => {
+                              if (!dragState) setLocation(`/cases/${item.caseId}`);
+                              e.stopPropagation();
+                            }}
+                          >
+                            {/* Realtime date tooltip during drag/resize */}
+                            {isDragging && (
+                              <div
+                                className="absolute -top-7 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[9px] px-2 py-0.5 rounded shadow-lg whitespace-nowrap z-50 pointer-events-none"
+                                style={{ minWidth: "max-content" }}
+                              >
+                                {dragState?.resizeMode === "left" && (
+                                  <span>開始: <strong>{effectiveStart}</strong></span>
+                                )}
+                                {dragState?.resizeMode === "right" && (
+                                  <span>終了: <strong>{effectiveEnd}</strong></span>
+                                )}
+                                {!dragState?.resizeMode && (
+                                  <span>{effectiveStart} 〜 {effectiveEnd}</span>
+                                )}
+                              </div>
+                            )}
+                            {/* Left resize handle */}
+                            {item.type === "schedule" && (
+                              <div
+                                className="absolute left-0 top-0 bottom-0 w-[6px] cursor-col-resize z-10 hover:bg-black/20 transition-colors flex items-center justify-center"
+                                onMouseDown={(e) => handleResizeStart(e, item, "left")}
+                                onTouchStart={(e) => handleResizeStart(e, item, "left")}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="w-[2px] h-[10px] bg-black/30 rounded-full opacity-0 group-hover/bar:opacity-100 transition-opacity" />
+                              </div>
+                            )}
+                            {/* Right resize handle */}
+                            {item.type === "schedule" && (
+                              <div
+                                className="absolute right-0 top-0 bottom-0 w-[6px] cursor-col-resize z-10 hover:bg-black/20 transition-colors flex items-center justify-center"
+                                onMouseDown={(e) => handleResizeStart(e, item, "right")}
+                                onTouchStart={(e) => handleResizeStart(e, item, "right")}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="w-[2px] h-[10px] bg-black/30 rounded-full opacity-0 group-hover/bar:opacity-100 transition-opacity" />
+                              </div>
+                            )}
+                            {/* Progress fill */}
+                            <div
+                              className="absolute inset-y-0 left-0 rounded-sm"
+                              style={{ width: `${item.progress}%`, backgroundColor: item.color }}
+                            />
+                            {/* Label */}
+                            <span
+                              className="absolute inset-0 flex items-center px-2 text-[9px] font-medium truncate z-[5] drop-shadow-sm"
+                              style={{ color: item.progress > 50 ? "#fff" : "#333" }}
+                            >
+                              {item.urgency && (
+                                <span className={`inline-flex h-3 min-w-3 px-0.5 items-center justify-center rounded text-[7px] font-bold mr-0.5 ${URGENCY_COLORS[item.urgency] || ""}`}>
+                                  {item.urgency}
+                                </span>
+                              )}
+                              {item.type === "route" && (
+                                <span className="mr-0.5">{item.taskType === "survey" ? "🔍" : "🔨"}</span>
+                              )}
+                              <span className="truncate">{item.title}</span>
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+                </>
+              )}
             </div>
           </div>
         </Card>
