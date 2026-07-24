@@ -7,7 +7,6 @@ import {
   TrendingUp,
   TrendingDown,
   Clock,
-  DollarSign,
   Users,
   BarChart3,
   Target,
@@ -124,11 +123,6 @@ export default function Effectiveness() {
   const [months, setMonths] = useState(12);
   const { data, isLoading } = trpc.reports.effectiveness.useQuery({ months });
 
-  const formatYen = (v: number) => {
-    if (v >= 10000000) return `${(v / 10000000).toFixed(1)}千万`;
-    if (v >= 10000) return `${Math.round(v / 10000)}万`;
-    return `¥${v.toLocaleString()}`;
-  };
 
   // Radar chart data for overall score
   const radarData = useMemo(() => {
@@ -138,7 +132,7 @@ export default function Effectiveness() {
       { subject: "コスト精度", value: Math.min(100, Math.max(0, data.costOptimization.filter(c => c.count > 0).reduce((s, c) => s + c.accuracyRate, 0) / Math.max(1, data.costOptimization.filter(c => c.count > 0).length))), fullMark: 100 },
       { subject: "稼働バランス", value: data.summary.balanceScore, fullMark: 100 },
       { subject: "デジタル化", value: data.summary.digitalRate, fullMark: 100 },
-      { subject: "粗利率", value: Math.min(100, Math.max(0, data.summary.profitMargin * 2)), fullMark: 100 },
+      { subject: "協力会社活用", value: Math.min(100, data.summary.activePartners * 10), fullMark: 100 },
       { subject: "完了率", value: data.summary.totalCases > 0 ? Math.round(data.summary.completedCases / data.summary.totalCases * 100) : 0, fullMark: 100 },
     ];
   }, [data]);
@@ -194,7 +188,7 @@ export default function Effectiveness() {
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Target className="h-5 w-5 text-primary" />
-            ROI サマリー — 導入効果の概要
+導入効果サマリー
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -218,20 +212,18 @@ export default function Effectiveness() {
               trendLabel="短縮傾向"
             />
             <KpiCard
-              title="累計粗利"
-              value={formatYen(summary.totalProfit)}
-              icon={DollarSign}
-              color="emerald"
-              trend="up"
-              trendLabel={`粗利率 ${summary.profitMargin}%`}
+              title="デジタル化率"
+              value={summary.digitalRate}
+              unit="%"
+              icon={TrendingUp}
+              color="amber"
             />
             <KpiCard
-              title="年間推定削減額"
-              value={formatYen(summary.estimatedAnnualSavings)}
-              icon={Zap}
-              color="purple"
-              trend="up"
-              trendLabel="人件費削減効果"
+              title="完了率"
+              value={summary.totalCases > 0 ? Math.round(summary.completedCases / summary.totalCases * 100) : 0}
+              unit="%"
+              icon={CheckCircle2}
+              color="emerald"
             />
           </div>
 
@@ -337,9 +329,9 @@ export default function Effectiveness() {
       <Card>
         <CardHeader className="pb-2">
           <SectionHeader
-            icon={DollarSign}
+            icon={Target}
             title="コスト最適化 — 見積精度の向上"
-            description="見積金額と実績の乖離率。100%に近いほど精度が高い"
+            description="見積と実績の乖離率。100%に近いほど精度が高い"
           />
         </CardHeader>
         <CardContent>
@@ -498,7 +490,7 @@ export default function Effectiveness() {
                     <th className="text-right p-2 font-medium">案件数</th>
                     <th className="text-right p-2 font-medium">完了数</th>
                     <th className="text-right p-2 font-medium">完了率</th>
-                    <th className="text-right p-2 font-medium">平均単価</th>
+
                   </tr>
                 </thead>
                 <tbody>
@@ -515,7 +507,7 @@ export default function Effectiveness() {
                           {p.caseCount > 0 ? Math.round(p.completedCount / p.caseCount * 100) : 0}%
                         </span>
                       </td>
-                      <td className="p-2 text-right">{formatYen(p.avgCost)}</td>
+
                     </tr>
                   ))}
                 </tbody>
@@ -545,12 +537,12 @@ export default function Effectiveness() {
               </ul>
             </div>
             <div className="p-4 rounded-lg bg-white/80 border border-emerald-200">
-              <h4 className="font-semibold text-sm text-emerald-700 mb-2">コスト削減</h4>
+              <h4 className="font-semibold text-sm text-emerald-700 mb-2">コスト管理</h4>
               <ul className="text-xs space-y-1 text-emerald-900">
                 <li>・見積精度向上で予算超過を防止</li>
-                <li>・年間推定{formatYen(summary.estimatedAnnualSavings)}の人件費削減</li>
                 <li>・協力会社の比較で最適発注</li>
                 <li>・予実管理の自動化</li>
+                <li>・発注プロセスの透明化</li>
               </ul>
             </div>
             <div className="p-4 rounded-lg bg-white/80 border border-emerald-200">
