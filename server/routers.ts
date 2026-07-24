@@ -89,6 +89,8 @@ import {
   updateDocumentMemo,
   toggleDocumentLock,
   listDocumentsByCaseForPartner,
+  listSharedDocumentsByTag,
+  updateDocumentTags,
 } from "./db";
 import { makeRequest } from "./_core/map";
 import {
@@ -3385,31 +3387,40 @@ JSONスキーマに従って回答してください。`,
         search: z.string().optional(),
         limit: z.number().optional(),
         offset: z.number().optional(),
+        scope: z.enum(["case", "shared", "all"]).optional(),
       }).optional())
       .query(async ({ input }) => {
         return listAllDocuments(input || {});
       }),
 
+    listSharedByTag: protectedProcedure
+      .input(z.object({ tag: z.string() }))
+      .query(async ({ input }) => {
+        return listSharedDocumentsByTag(input.tag);
+      }),
+
     upload: protectedProcedure
       .input(z.object({
-        caseId: z.number(),
+        caseId: z.number().nullable().optional(),
         fileName: z.string(),
         fileData: z.string(), // base64
         mimeType: z.string().optional(),
         fileSize: z.number().optional(),
-        category: z.enum(["図面", "仕様書", "見積書", "報告書", "写真", "その他"]).default("その他"),
+        category: z.enum(["図面", "仕様書", "見積書", "報告書", "写真", "担当者一覧", "施工対象一覧", "マニュアル", "その他"]).default("その他"),
         memo: z.string().optional(),
+        tags: z.string().optional(), // JSON array string
       }))
       .mutation(async ({ ctx, input }) => {
         // Upload to S3
         const ext = input.fileName.split(".").pop() || "bin";
-        const key = `documents/${input.caseId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        const folder = input.caseId ? `documents/${input.caseId}` : "documents/shared";
+        const key = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
         const buf = Buffer.from(input.fileData, "base64");
         const { url } = await storagePut(key, buf, input.mimeType || "application/octet-stream");
 
         // Save to DB
         const id = await createDocument({
-          caseId: input.caseId,
+          caseId: input.caseId || null,
           fileName: input.fileName,
           fileKey: key,
           fileUrl: url,
@@ -3419,7 +3430,18 @@ JSONスキーマに従って回答してください。`,
           memo: input.memo || null,
           uploadedBy: ctx.user.id,
         });
+        // Update tags if provided
+        if (input.tags) {
+          await updateDocumentTags(id, input.tags);
+        }
         return { id, fileUrl: url };
+      }),
+
+    updateTags: protectedProcedure
+      .input(z.object({ id: z.number(), tags: z.string() }))
+      .mutation(async ({ input }) => {
+        await updateDocumentTags(input.id, input.tags);
+        return { success: true };
       }),
 
     updateMemo: protectedProcedure

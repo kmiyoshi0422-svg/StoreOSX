@@ -493,13 +493,14 @@ export type InsertRainLeakCheckItem = typeof rainLeakCheckItems.$inferInsert;
  */
 export const documents = mysqlTable("documents", {
   id: int("id").autoincrement().primaryKey(),
-  caseId: int("caseId").notNull(),
+  caseId: int("caseId"), // NULL = shared/common document (not tied to a specific case)
   fileName: varchar("fileName", { length: 500 }).notNull(),
   fileKey: varchar("fileKey", { length: 500 }).notNull(),
   fileUrl: varchar("fileUrl", { length: 1000 }).notNull(),
   mimeType: varchar("mimeType", { length: 100 }),
   fileSize: int("fileSize"), // bytes
-  category: mysqlEnum("category", ["図面", "仕様書", "見積書", "報告書", "写真", "その他"]).default("その他").notNull(),
+  category: mysqlEnum("category", ["図面", "仕様書", "見積書", "報告書", "写真", "担当者一覧", "施工対象一覧", "マニュアル", "その他"]).default("その他").notNull(),
+  tags: text("tags"), // JSON array of tags for flexible categorization
   memo: text("memo"),
   uploadedBy: int("uploadedBy"),
   isLocked: int("isLocked").default(0).notNull(), // 1 = locked (restricted access)

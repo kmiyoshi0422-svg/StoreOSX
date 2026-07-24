@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNotNull, lte, like } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   cases,
@@ -1018,7 +1018,7 @@ export async function toggleDocumentLock(id: number, isLocked: number) {
   await db.update(documents).set({ isLocked }).where(eq(documents.id, id));
 }
 
-export async function listAllDocuments(opts: { category?: string; search?: string; limit?: number; offset?: number }) {
+export async function listAllDocuments(opts: { category?: string; search?: string; limit?: number; offset?: number; scope?: "case" | "shared" | "all" }) {
   const db = await getDb();
   if (!db) return { items: [], total: 0 };
 
@@ -1028,6 +1028,12 @@ export async function listAllDocuments(opts: { category?: string; search?: strin
   }
   if (opts.search) {
     conditions.push(like(documents.fileName, `%${opts.search}%`));
+  }
+  // Scope filter: case-linked vs shared (common) documents
+  if (opts.scope === "case") {
+    conditions.push(isNotNull(documents.caseId));
+  } else if (opts.scope === "shared") {
+    conditions.push(isNull(documents.caseId));
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
@@ -1044,6 +1050,7 @@ export async function listAllDocuments(opts: { category?: string; search?: strin
       mimeType: documents.mimeType,
       fileSize: documents.fileSize,
       category: documents.category,
+      tags: documents.tags,
       memo: documents.memo,
       isLocked: documents.isLocked,
       createdAt: documents.createdAt,
@@ -1065,6 +1072,37 @@ export async function listAllDocuments(opts: { category?: string; search?: strin
   const total = countResult.length;
 
   return { items, total };
+}
+
+// List shared (common) documents by tag
+export async function listSharedDocumentsByTag(tag: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const items = await db
+    .select({
+      id: documents.id,
+      fileName: documents.fileName,
+      fileKey: documents.fileKey,
+      fileUrl: documents.fileUrl,
+      mimeType: documents.mimeType,
+      fileSize: documents.fileSize,
+      category: documents.category,
+      tags: documents.tags,
+      memo: documents.memo,
+      isLocked: documents.isLocked,
+      createdAt: documents.createdAt,
+    })
+    .from(documents)
+    .where(and(isNull(documents.caseId), like(documents.tags, `%${tag}%`)))
+    .orderBy(desc(documents.createdAt));
+  return items;
+}
+
+// Update tags for a document
+export async function updateDocumentTags(id: number, tags: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(documents).set({ tags }).where(eq(documents.id, id));
 }
 
 // ============================================================

@@ -73,6 +73,8 @@ import {
   Folder,
   FileUp,
   Eye,
+  Globe,
+  Tag,
 } from "lucide-react";
 import { generateQuotePDF, generateCompletionReportPDF } from "@/lib/documentPdf";
 import { PdfPreviewModal } from "@/components/PdfPreviewModal";
@@ -306,7 +308,7 @@ export default function CaseDetail({ id }: { id: number }) {
         </TabsContent>
 
         <TabsContent value="documents">
-          <DocumentsTab caseId={id} />
+          <DocumentsTab caseId={id} caseData={caseData} />
         </TabsContent>
       </Tabs>
     </div>
@@ -3415,9 +3417,11 @@ function ScheduleTab({ caseId, caseData }: { caseId: number; caseData: any }) {
 // ============================================================
 const DOCUMENT_CATEGORIES = ["図面", "仕様書", "見積書", "報告書", "写真", "その他"] as const;
 
-function DocumentsTab({ caseId }: { caseId: number }) {
+function DocumentsTab({ caseId, caseData }: { caseId: number; caseData: any }) {
   const utils = trpc.useUtils();
   const { data: docs = [], isLoading } = trpc.documents.list.useQuery({ caseId });
+  // Fetch shared documents that may be relevant to this case
+  const { data: sharedDocs } = trpc.documents.listAll.useQuery({ scope: "shared", limit: 50 });
   const uploadMutation = trpc.documents.upload.useMutation({
     onSuccess: () => {
       utils.documents.list.invalidate({ caseId });
@@ -3623,6 +3627,68 @@ function DocumentsTab({ caseId }: { caseId: number }) {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {/* Shared Documents Section */}
+      {sharedDocs && sharedDocs.items && sharedDocs.items.length > 0 && (
+        <div className="mt-6 pt-4 border-t">
+          <div className="flex items-center gap-2 mb-3">
+            <Globe className="h-4 w-4 text-blue-500" />
+            <h3 className="text-sm font-semibold">共通資料</h3>
+            <span className="text-xs text-muted-foreground">（全案件共通で参照可能）</span>
+          </div>
+          <div className="space-y-2">
+            {sharedDocs.items.map((doc: any) => {
+              const tags: string[] = doc.tags ? (() => { try { return JSON.parse(doc.tags); } catch { return []; } })() : [];
+              return (
+                <Card key={doc.id} className="hover:shadow-sm transition-shadow border-l-4 border-l-blue-400">
+                  <CardContent className="p-3 flex items-center gap-3">
+                    <div className="flex-shrink-0">
+                      <Globe className="h-7 w-7 text-blue-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                        <span className="text-sm font-medium truncate">{doc.fileName}</span>
+                        <Badge className={`text-[10px] px-1.5 py-0 ${getCategoryColor(doc.category)}`}>
+                          {doc.category}
+                        </Badge>
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-blue-300 text-blue-700 bg-blue-50">
+                          共通
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        <span>{formatFileSize(doc.fileSize)}</span>
+                        <span>{new Date(doc.createdAt).toLocaleDateString("ja-JP")}</span>
+                        {doc.memo && <span className="truncate max-w-[200px]">📝 {doc.memo}</span>}
+                      </div>
+                      {tags.length > 0 && (
+                        <div className="flex items-center gap-1 mt-1 flex-wrap">
+                          <Tag className="h-3 w-3 text-muted-foreground" />
+                          {tags.map((t: string, i: number) => (
+                            <Badge key={i} variant="secondary" className="text-[9px] px-1.5 py-0">
+                              {t}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0"
+                        onClick={() => window.open(doc.fileUrl, "_blank")}
+                        title="プレビュー / ダウンロード"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
