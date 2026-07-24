@@ -119,10 +119,12 @@ const PHOTO_TYPES = [
 export default function CaseDetail({ id }: { id: number }) {
   const [, setLocation] = useLocation();
   const utils = trpc.useUtils();
+  const [activeTab, setActiveTab] = useState("info");
   const { data: caseData, isLoading } = trpc.cases.get.useQuery({ id });
+  // タブ別遅延取得: チェックリストと写真はタブヘッダーのバッジ表示に使うため常時取得
   const { data: checklist = [] } = trpc.checklist.listByCase.useQuery({ caseId: id });
   const { data: photos = [] } = trpc.photos.listByCase.useQuery({ caseId: id });
-  const { data: exclusionRows = [] } = trpc.fullwidthExclusions.list.useQuery();
+  const { data: exclusionRows = [] } = trpc.fullwidthExclusions.list.useQuery(undefined, { enabled: activeTab === "info" });
   const exclusionTerms = exclusionRows.map((r) => r.term);
 
   if (isLoading) {
@@ -225,7 +227,7 @@ export default function CaseDetail({ id }: { id: number }) {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="info" className="space-y-4">
+      <Tabs defaultValue="info" value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <div className="relative w-full">
           {/* スクロールヒント（右側フェード） */}
           <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none z-10 md:hidden" />
@@ -292,23 +294,23 @@ export default function CaseDetail({ id }: { id: number }) {
         </TabsContent>
 
         <TabsContent value="estimates">
-          <EstimatesTab caseId={id} partnerToken={caseData.partnerToken} />
+          {activeTab === "estimates" && <EstimatesTab caseId={id} partnerToken={caseData.partnerToken} />}
         </TabsContent>
 
         <TabsContent value="profit">
-          <ProfitTab caseData={caseData} onUpdated={() => utils.cases.get.invalidate({ id })} />
+          {activeTab === "profit" && <ProfitTab caseData={caseData} onUpdated={() => utils.cases.get.invalidate({ id })} />}
         </TabsContent>
 
         <TabsContent value="expenses">
-          <ExpensesTab caseId={id} />
+          {activeTab === "expenses" && <ExpensesTab caseId={id} />}
         </TabsContent>
 
         <TabsContent value="schedule">
-          <ScheduleTab caseId={id} caseData={caseData} />
+          {activeTab === "schedule" && <ScheduleTab caseId={id} caseData={caseData} />}
         </TabsContent>
 
         <TabsContent value="documents">
-          <DocumentsTab caseId={id} caseData={caseData} />
+          {activeTab === "documents" && <DocumentsTab caseId={id} caseData={caseData} />}
         </TabsContent>
       </Tabs>
     </div>

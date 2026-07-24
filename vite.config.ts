@@ -167,6 +167,20 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'wouter'],
+          'vendor-ui': ['lucide-react', 'class-variance-authority', 'clsx', 'tailwind-merge'],
+          'vendor-pdf': ['html2canvas-pro', 'jspdf'],
+          'vendor-xlsx': ['xlsx'],
+          'vendor-charts': ['recharts'],
+          'vendor-motion': ['framer-motion'],
+          'vendor-query': ['@tanstack/react-query', '@trpc/client', '@trpc/react-query'],
+          'vendor-date': ['date-fns'],
+        },
+      },
+    },
   },
   server: {
     host: true,
