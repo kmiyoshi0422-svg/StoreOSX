@@ -22,6 +22,7 @@ import {
   Link2,
   Copy,
   Check,
+  Undo2,
 } from "lucide-react";
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -140,6 +141,13 @@ export default function CrossSchedule() {
   const dragStartX = useRef(0);
   const dragItemRef = useRef<HTMLDivElement | null>(null);
 
+  // Undo history stack
+  const [undoStack, setUndoStack] = useState<Array<{
+    scheduleId: number;
+    previousStart: string;
+    previousEnd: string;
+  }>>([]);
+
   const updateSchedule = trpc.schedules.update.useMutation({
     onSuccess: () => {
       utils.crossSchedule.list.invalidate();
@@ -147,6 +155,21 @@ export default function CrossSchedule() {
     },
     onError: () => toast.error("日程の更新に失敗しました"),
   });
+
+  const undoSchedule = trpc.schedules.update.useMutation({
+    onSuccess: () => {
+      utils.crossSchedule.list.invalidate();
+      toast.success("操作を元に戻しました");
+    },
+    onError: () => toast.error("元に戻す操作に失敗しました"),
+  });
+
+  const handleUndo = useCallback(() => {
+    if (undoStack.length === 0) return;
+    const last = undoStack[undoStack.length - 1];
+    setUndoStack((prev) => prev.slice(0, -1));
+    undoSchedule.mutate({ id: last.scheduleId, startDate: last.previousStart, endDate: last.previousEnd });
+  }, [undoStack, undoSchedule]);
 
   // Calendar feed
   const { data: feedTokenData } = trpc.schedules.getCalendarFeedToken.useQuery();
@@ -314,6 +337,8 @@ export default function CrossSchedule() {
         if (prev && prev.dayOffset !== 0 && prev.itemType === "schedule") {
           const newStart = fmtYmd(addDays(new Date(prev.originalStart), prev.dayOffset));
           const newEnd = fmtYmd(addDays(new Date(prev.originalEnd), prev.dayOffset));
+          // Push to undo stack before mutating
+          setUndoStack((stack) => [...stack.slice(-9), { scheduleId: prev.itemId, previousStart: prev.originalStart, previousEnd: prev.originalEnd }]);
           updateSchedule.mutate({ id: prev.itemId, startDate: newStart, endDate: newEnd });
         }
         return null;
@@ -382,6 +407,8 @@ export default function CrossSchedule() {
           } else {
             newEnd = fmtYmd(addDays(new Date(prev.originalEnd), prev.dayOffset));
           }
+          // Push to undo stack before mutating
+          setUndoStack((stack) => [...stack.slice(-9), { scheduleId: prev.itemId, previousStart: prev.originalStart, previousEnd: prev.originalEnd }]);
           updateSchedule.mutate({ id: prev.itemId, startDate: newStart, endDate: newEnd });
         }
         return null;
@@ -547,6 +574,17 @@ export default function CrossSchedule() {
               <Button size="sm" variant="outline" onClick={() => utils.crossSchedule.list.invalidate()}>
                 <RefreshCw className="h-3.5 w-3.5 mr-1" />
                 更新
+              </Button>
+              <Button
+                size="sm"
+                variant={undoStack.length > 0 ? "default" : "outline"}
+                onClick={handleUndo}
+                disabled={undoStack.length === 0 || undoSchedule.isPending}
+                title={undoStack.length > 0 ? `元に戻す (${undoStack.length}件)` : "元に戻す操作なし"}
+                className={undoStack.length > 0 ? "bg-amber-500 hover:bg-amber-600 text-white" : ""}
+              >
+                <Undo2 className="h-3.5 w-3.5 mr-1" />
+                戻す{undoStack.length > 0 && ` (${undoStack.length})`}
               </Button>
             </div>
           </div>
