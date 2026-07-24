@@ -2927,6 +2927,154 @@ export const appRouter = router({
         .sort((a, b) => b.profit - a.profit);
             return { rows };
     }),
+    // 効果測定ダッシュボード用集計
+    effectiveness: protectedProcedure
+      .input(z.object({ months: z.number().int().min(1).max(24).default(12) }).optional())
+      .query(async ({ input }) => {
+        const months = input?.months ?? 12;
+        const allCases = await listCases();
+        const allExpenses = await listAllExpenses();
+        const users = await getAllUsers();
+        const allPartners = await listPartners();
+
+        const now = new Date();
+        const buckets: { key: string; year: number; month: number }[] = [];
+        for (let i = months - 1; i >= 0; i--) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          buckets.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, year: d.getFullYear(), month: d.getMonth() + 1 });
+        }
+
+        // --- 1. 案件処理速度（受付→完了の平均日数推移） ---
+        type SpeedBucket = { key: string; totalDays: number; count: number; avgDays: number };
+        const speedByMonth = new Map<string, SpeedBucket>(buckets.map(b => [b.key, { key: b.key, totalDays: 0, count: 0, avgDays: 0 }]));
+        for (const c of allCases) {
+          if (!c.completedAt) continue;
+          const start = c.requestDate ? new Date(c.requestDate as any) : new Date(c.createdAt as any);
+          const end = new Date(c.completedAt as any);
+          const days = Math.max(0, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+          const k = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}`;
+          const b = speedByMonth.get(k);
+          if (b) { b.totalDays += days; b.count += 1; }
+        }
+        const processingSpeed = buckets.map(b => {
+          const s = speedByMonth.get(b.key)!;
+          s.avgDays = s.count > 0 ? Math.round(s.totalDays / s.count * 10) / 10 : 0;
+          return s;
+        });
+
+        // --- 2. コスト最適化（予実差異の改善率・見積精度） ---
+        const expByCase = new Map<number, number>();
+        for (const e of allExpenses) { if (e.caseId) expByCase.set(e.caseId, (expByCase.get(e.caseId) ?? 0) + (e.amount ?? 0)); }
+        type CostBucket = { key: string; totalVariance: number; totalBudget: number; count: number; accuracyRate: number };
+        const costByMonth = new Map<string, CostBucket>(buckets.map(b => [b.key, { key: b.key, totalVariance: 0, totalBudget: 0, count: 0, accuracyRate: 0 }]));
+        for (const c of allCases) {
+          if (!c.estimatedCost) continue;
+          const refDate = c.completedAt ? new Date(c.completedAt as any) : (c.requestDate ? new Date(c.requestDate as any) : new Date(c.createdAt as any));
+          const k = `${refDate.getFullYear()}-${String(refDate.getMonth() + 1).padStart(2, "0")}`;
+          const b = costByMonth.get(k);
+          if (!b) continue;
+          const actual = (c.actualCost ?? 0) + (expByCase.get(c.id) ?? 0);
+          const estimated = c.estimatedCost;
+          const variance = Math.abs(actual - estimated);
+          b.totalVariance += variance;
+          b.totalBudget += estimated;
+          b.count += 1;
+        }
+        const costOptimization = buckets.map(b => {
+          const s = costByMonth.get(b.key)!;
+          s.accuracyRate = s.totalBudget > 0 ? Math.round((1 - s.totalVariance / s.totalBudget) * 1000) / 10 : 0;
+          return s;
+        });
+
+        // --- 3. 担当者稼働率（偏り解消率） ---
+        const workloadByUser = new Map<number, { userId: number; name: string; caseCount: number; completedCount: number }>();
+        for (const u of users) workloadByUser.set(u.id, { userId: u.id, name: u.name ?? `User ${u.id}`, caseCount: 0, completedCount: 0 });
+        for (const c of allCases) {
+          if (!c.assigneeId || !workloadByUser.has(c.assigneeId)) continue;
+          const w = workloadByUser.get(c.assigneeId)!;
+          w.caseCount += 1;
+          if (c.completedAt || c.status === "完了") w.completedCount += 1;
+        }
+        const workloadRows = Array.from(workloadByUser.values()).filter(w => w.caseCount > 0);
+        const avgCases = workloadRows.length > 0 ? workloadRows.reduce((s, w) => s + w.caseCount, 0) / workloadRows.length : 0;
+        const maxDeviation = workloadRows.length > 0 ? Math.max(...workloadRows.map(w => Math.abs(w.caseCount - avgCases))) : 0;
+        const balanceScore = avgCases > 0 ? Math.max(0, Math.min(100, Math.round((1 - maxDeviation / avgCases) * 100))) : 100;
+
+        // --- 4. デジタル化進捗 ---
+        // 写真台帳生成数 = 写真がある案件数、PDF取込数 = estimatesテーブルのレコード数
+        const casesWithPhotos = allCases.filter(c => c.status !== "受付").length; // 進行中以降はデジタル化済みとみなす
+        const totalCasesCount = allCases.length;
+        const digitalRate = totalCasesCount > 0 ? Math.round(casesWithPhotos / totalCasesCount * 1000) / 10 : 0;
+        // 月別デジタル化件数
+        type DigitalBucket = { key: string; newCases: number; completedCases: number };
+        const digitalByMonth = new Map<string, DigitalBucket>(buckets.map(b => [b.key, { key: b.key, newCases: 0, completedCases: 0 }]));
+        for (const c of allCases) {
+          const refDate = c.requestDate ? new Date(c.requestDate as any) : new Date(c.createdAt as any);
+          const k = `${refDate.getFullYear()}-${String(refDate.getMonth() + 1).padStart(2, "0")}`;
+          const b = digitalByMonth.get(k);
+          if (b) { b.newCases += 1; if (c.completedAt || c.status === "完了") b.completedCases += 1; }
+        }
+        const digitalization = buckets.map(b => digitalByMonth.get(b.key)!);
+
+        // --- 5. 協力会社パフォーマンス ---
+        const partnerStats = new Map<number, { id: number; name: string; category: string; caseCount: number; completedCount: number; totalCost: number; avgCost: number }>(); 
+        for (const p of allPartners) partnerStats.set(p.id, { id: p.id, name: p.name, category: p.category, caseCount: 0, completedCount: 0, totalCost: 0, avgCost: 0 });
+        for (const c of allCases) {
+          if (!c.partnerId || !partnerStats.has(c.partnerId)) continue;
+          const ps = partnerStats.get(c.partnerId)!;
+          ps.caseCount += 1;
+          if (c.completedAt || c.status === "完了") ps.completedCount += 1;
+          ps.totalCost += c.estimatedCost ?? 0;
+        }
+        const partnerPerformance = Array.from(partnerStats.values())
+          .filter(p => p.caseCount > 0)
+          .map(p => ({ ...p, avgCost: p.caseCount > 0 ? Math.round(p.totalCost / p.caseCount) : 0 }))
+          .sort((a, b) => b.caseCount - a.caseCount);
+
+        // --- 6. ROI試算 ---
+        const totalRevenue = allCases.reduce((s, c) => {
+          const p = calcCaseProfit({ plenusQuoteAmount: c.plenusQuoteAmount, estimatedCost: c.estimatedCost, expensesTotal: expByCase.get(c.id) ?? 0 });
+          return s + p.sales;
+        }, 0);
+        const totalCost = allCases.reduce((s, c) => {
+          const p = calcCaseProfit({ plenusQuoteAmount: c.plenusQuoteAmount, estimatedCost: c.estimatedCost, expensesTotal: expByCase.get(c.id) ?? 0 });
+          return s + p.cost;
+        }, 0);
+        const totalProfit = totalRevenue - totalCost;
+        const completedCases = allCases.filter(c => c.completedAt || c.status === "完了").length;
+        const avgProcessingDays = completedCases > 0
+          ? Math.round(allCases.filter(c => c.completedAt).reduce((s, c) => {
+              const start = c.requestDate ? new Date(c.requestDate as any) : new Date(c.createdAt as any);
+              const end = new Date(c.completedAt as any);
+              return s + Math.max(0, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+            }, 0) / completedCases * 10) / 10
+          : 0;
+
+        // 年間推定削減額（平均処理日数が1日短縮ごとに約X万円の機会損失削減と仮定）
+        const estimatedAnnualSavings = Math.round(completedCases * 0.5 * 10000); // 案件あたり0.5万円の人件費削減と仮定
+
+        return {
+          summary: {
+            totalCases: allCases.length,
+            completedCases,
+            avgProcessingDays,
+            totalRevenue,
+            totalCost,
+            totalProfit,
+            profitMargin: totalRevenue > 0 ? Math.round(totalProfit / totalRevenue * 1000) / 10 : 0,
+            partnerCount: allPartners.length,
+            activePartners: partnerPerformance.length,
+            digitalRate,
+            balanceScore,
+            estimatedAnnualSavings,
+          },
+          processingSpeed,
+          costOptimization,
+          workload: workloadRows,
+          digitalization,
+          partnerPerformance,
+        };
+      }),
   }),
 
   // アプリ設定（AI生成トーン・記入者プリセット等）

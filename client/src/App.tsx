@@ -40,6 +40,7 @@ const ImpressionSettings = lazy(() => import("./pages/ImpressionSettings"));
 const RainLeakInspection = lazy(() => import("./pages/RainLeakInspection"));
 const DocumentLibrary = lazy(() => import("./pages/DocumentLibrary"));
 const CrossSchedule = lazy(() => import("./pages/CrossSchedule"));
+const Effectiveness = lazy(() => import("./pages/Effectiveness"));
 
 // ─── Loading fallback ─────────────────────────────────────
 function PageLoader() {
@@ -91,6 +92,9 @@ function Router() {
                 <Route path={"/stores"} component={StoresList} />
                 <Route path={"/workload"} component={Workload} />
                 <Route path={"/cross-schedule"} component={CrossSchedule} />
+                <Route path={"/effectiveness"}>
+                  <AdminOnly><Effectiveness /></AdminOnly>
+                </Route>
                 <Route path={"/settings/exclusions"} component={FullwidthExclusions} />
                 <Route path={"/settings/impression"} component={ImpressionSettings} />
                 <Route path={"/document-library"} component={DocumentLibrary} />

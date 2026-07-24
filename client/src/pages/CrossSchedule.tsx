@@ -159,6 +159,8 @@ export default function CrossSchedule() {
   const [rangeWeeks, setRangeWeeks] = useState(4);
   const [offset, setOffset] = useState(0);
   const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
+  const [brandFilter, setBrandFilter] = useState<string>("all");
   const [showCalendarDialog, setShowCalendarDialog] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -427,10 +429,38 @@ export default function CrossSchedule() {
     return rows;
   }, [data, userMap]);
 
+  // Unique assignee names and brands for filter options
+  const assigneeOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const row of caseRows) {
+      if (row.assigneeName) names.add(row.assigneeName);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b, "ja"));
+  }, [caseRows]);
+
+  const brandOptions = useMemo(() => {
+    const brands = new Set<string>();
+    for (const row of caseRows) {
+      if (row.brand) brands.add(row.brand);
+    }
+    return Array.from(brands).sort((a, b) => a.localeCompare(b, "ja"));
+  }, [caseRows]);
+
   // Filtered case rows
   const filteredCaseRows = useMemo(() => {
-    return caseRows;
-  }, [caseRows]);
+    let rows = caseRows;
+    if (assigneeFilter !== "all") {
+      if (assigneeFilter === "__unassigned__") {
+        rows = rows.filter((r) => !r.assigneeName);
+      } else {
+        rows = rows.filter((r) => r.assigneeName === assigneeFilter);
+      }
+    }
+    if (brandFilter !== "all") {
+      rows = rows.filter((r) => r.brand === brandFilter);
+    }
+    return rows;
+  }, [caseRows, assigneeFilter, brandFilter]);
 
   const categories = useMemo(() => {
     const cats = new Set<string>();
@@ -855,22 +885,54 @@ export default function CrossSchedule() {
               </Button>
             </div>
 
-            {/* Category filter */}
-            <div className="flex items-center gap-1">
-              <Filter className="h-3.5 w-3.5 text-muted-foreground" />
-              <Select value={filterCategory} onValueChange={setFilterCategory}>
-                <SelectTrigger className="w-[120px] h-8 text-xs">
-                  <SelectValue placeholder="業種" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全業種</SelectItem>
-                  {categories.map((cat) => (
-                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                  ))}
-                  <SelectItem value="未割当">未割当</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Category filter (partner view) */}
+            {viewMode === "partner" && (
+              <div className="flex items-center gap-1">
+                <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+                <Select value={filterCategory} onValueChange={setFilterCategory}>
+                  <SelectTrigger className="w-[120px] h-8 text-xs">
+                    <SelectValue placeholder="業種" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全業種</SelectItem>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    ))}
+                    <SelectItem value="未割当">未割当</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Assignee & Brand filter (case view) */}
+            {viewMode === "case" && (
+              <div className="flex items-center gap-1">
+                <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+                <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+                  <SelectTrigger className="w-[130px] h-8 text-xs">
+                    <SelectValue placeholder="担当者" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全担当者</SelectItem>
+                    {assigneeOptions.map((name) => (
+                      <SelectItem key={name} value={name}>{name}</SelectItem>
+                    ))}
+                    <SelectItem value="__unassigned__">未割当</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={brandFilter} onValueChange={setBrandFilter}>
+                  <SelectTrigger className="w-[130px] h-8 text-xs">
+                    <SelectValue placeholder="ブランド" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全ブランド</SelectItem>
+                    {brandOptions.map((brand) => (
+                      <SelectItem key={brand} value={brand}>{brand}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Export & Calendar buttons */}
             <div className="flex items-center gap-1 ml-auto">
