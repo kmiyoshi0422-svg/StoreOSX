@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useCallback } from "react";
+import { useMemo, useState, useRef, useCallback, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,9 @@ import {
   Copy,
   Check,
   Undo2,
+  Redo2,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -141,12 +144,24 @@ export default function CrossSchedule() {
   const dragStartX = useRef(0);
   const dragItemRef = useRef<HTMLDivElement | null>(null);
 
-  // Undo history stack
+  // Undo/Redo history stacks
   const [undoStack, setUndoStack] = useState<Array<{
     scheduleId: number;
     previousStart: string;
     previousEnd: string;
+    newStart: string;
+    newEnd: string;
   }>>([]);
+  const [redoStack, setRedoStack] = useState<Array<{
+    scheduleId: number;
+    previousStart: string;
+    previousEnd: string;
+    newStart: string;
+    newEnd: string;
+  }>>([]);
+
+  // Zoom level: "day" | "week" | "month"
+  const [zoomLevel, setZoomLevel] = useState<"day" | "week" | "month">("week");
 
   const updateSchedule = trpc.schedules.update.useMutation({
     onSuccess: () => {
@@ -168,8 +183,33 @@ export default function CrossSchedule() {
     if (undoStack.length === 0) return;
     const last = undoStack[undoStack.length - 1];
     setUndoStack((prev) => prev.slice(0, -1));
+    setRedoStack((prev) => [...prev, last]);
     undoSchedule.mutate({ id: last.scheduleId, startDate: last.previousStart, endDate: last.previousEnd });
   }, [undoStack, undoSchedule]);
+
+  const handleRedo = useCallback(() => {
+    if (redoStack.length === 0) return;
+    const last = redoStack[redoStack.length - 1];
+    setRedoStack((prev) => prev.slice(0, -1));
+    setUndoStack((prev) => [...prev.slice(-9), last]);
+    undoSchedule.mutate({ id: last.scheduleId, startDate: last.newStart, endDate: last.newEnd });
+  }, [redoStack, undoSchedule]);
+
+  // Keyboard shortcuts: Ctrl+Z (Undo), Ctrl+Y (Redo)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleUndo, handleRedo]);
 
   // Calendar feed
   const { data: feedTokenData } = trpc.schedules.getCalendarFeedToken.useQuery();
@@ -180,17 +220,30 @@ export default function CrossSchedule() {
     },
   });
 
-  const rangeStart = useMemo(() => {
-    const today = startOfWeek(new Date());
-    return addDays(today, offset * 7);
-  }, [offset]);
-
-  const rangeEnd = useMemo(() => addDays(rangeStart, rangeWeeks * 7 - 1), [rangeStart, rangeWeeks]);
+  // Compute display range based on zoom level
+  const { rangeStart, rangeEnd, totalDays } = useMemo(() => {
+    const today = new Date();
+    if (zoomLevel === "day") {
+      // Show rangeWeeks * 7 days but each column = 1 day
+      const start = addDays(startOfWeek(today), offset * 7);
+      const days = rangeWeeks * 7;
+      return { rangeStart: start, rangeEnd: addDays(start, days - 1), totalDays: days };
+    } else if (zoomLevel === "month") {
+      // Show rangeWeeks weeks but grouped by month columns
+      const start = addDays(startOfWeek(today), offset * 28);
+      const days = rangeWeeks * 28; // 4x wider view
+      return { rangeStart: start, rangeEnd: addDays(start, days - 1), totalDays: days };
+    } else {
+      // week (default)
+      const start = addDays(startOfWeek(today), offset * 7);
+      const days = rangeWeeks * 7;
+      return { rangeStart: start, rangeEnd: addDays(start, days - 1), totalDays: days };
+    }
+  }, [offset, rangeWeeks, zoomLevel]);
 
   const queryRangeStart = useMemo(() => fmtYmd(addDays(rangeStart, -7)), [rangeStart]);
   const queryRangeEnd = useMemo(() => fmtYmd(addDays(rangeEnd, 7)), [rangeEnd]);
   const { data, isLoading } = trpc.crossSchedule.list.useQuery({ rangeStart: queryRangeStart, rangeEnd: queryRangeEnd });
-  const totalDays = rangeWeeks * 7;
 
   // Build partner map
   const partnerMap = useMemo(() => {
@@ -276,7 +329,7 @@ export default function CrossSchedule() {
     return Array.from(cats).sort();
   }, [partnersData]);
 
-  // Date header generation
+  // Date header generation (adapts to zoom level)
   const dateHeaders = useMemo(() => {
     const headers: Array<{ date: string; label: string; isWeekend: boolean; isToday: boolean; monthLabel?: string }> = [];
     const todayStr = fmtYmd(new Date());
@@ -289,10 +342,19 @@ export default function CrossSchedule() {
       const month = d.getMonth();
       const monthLabel = month !== lastMonth ? `${d.getFullYear()}/${month + 1}` : undefined;
       lastMonth = month;
-      headers.push({ date: dateStr, label: `${d.getDate()}`, isWeekend, isToday, monthLabel });
+
+      let label = `${d.getDate()}`;
+      if (zoomLevel === "day") {
+        const weekday = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
+        label = `${d.getDate()}(${weekday})`;
+      } else if (zoomLevel === "month") {
+        // Show label only every 7 days (week start)
+        label = i % 7 === 0 ? `${d.getMonth() + 1}/${d.getDate()}` : "";
+      }
+      headers.push({ date: dateStr, label, isWeekend, isToday, monthLabel: zoomLevel === "month" ? (i % 7 === 0 ? monthLabel : undefined) : monthLabel });
     }
     return headers;
-  }, [rangeStart, totalDays]);
+  }, [rangeStart, totalDays, zoomLevel]);
 
   const totalSchedules = data?.schedules?.length ?? 0;
   const totalRoutes = data?.routes?.length ?? 0;
@@ -337,8 +399,9 @@ export default function CrossSchedule() {
         if (prev && prev.dayOffset !== 0 && prev.itemType === "schedule") {
           const newStart = fmtYmd(addDays(new Date(prev.originalStart), prev.dayOffset));
           const newEnd = fmtYmd(addDays(new Date(prev.originalEnd), prev.dayOffset));
-          // Push to undo stack before mutating
-          setUndoStack((stack) => [...stack.slice(-9), { scheduleId: prev.itemId, previousStart: prev.originalStart, previousEnd: prev.originalEnd }]);
+          // Push to undo stack before mutating, clear redo
+          setUndoStack((stack) => [...stack.slice(-9), { scheduleId: prev.itemId, previousStart: prev.originalStart, previousEnd: prev.originalEnd, newStart, newEnd }]);
+          setRedoStack([]);
           updateSchedule.mutate({ id: prev.itemId, startDate: newStart, endDate: newEnd });
         }
         return null;
@@ -407,8 +470,9 @@ export default function CrossSchedule() {
           } else {
             newEnd = fmtYmd(addDays(new Date(prev.originalEnd), prev.dayOffset));
           }
-          // Push to undo stack before mutating
-          setUndoStack((stack) => [...stack.slice(-9), { scheduleId: prev.itemId, previousStart: prev.originalStart, previousEnd: prev.originalEnd }]);
+          // Push to undo stack before mutating, clear redo
+          setUndoStack((stack) => [...stack.slice(-9), { scheduleId: prev.itemId, previousStart: prev.originalStart, previousEnd: prev.originalEnd, newStart, newEnd }]);
+          setRedoStack([]);
           updateSchedule.mutate({ id: prev.itemId, startDate: newStart, endDate: newEnd });
         }
         return null;
@@ -580,11 +644,22 @@ export default function CrossSchedule() {
                 variant={undoStack.length > 0 ? "default" : "outline"}
                 onClick={handleUndo}
                 disabled={undoStack.length === 0 || undoSchedule.isPending}
-                title={undoStack.length > 0 ? `元に戻す (${undoStack.length}件)` : "元に戻す操作なし"}
+                title={`元に戻す (Ctrl+Z)${undoStack.length > 0 ? ` ${undoStack.length}件` : ""}`}
                 className={undoStack.length > 0 ? "bg-amber-500 hover:bg-amber-600 text-white" : ""}
               >
                 <Undo2 className="h-3.5 w-3.5 mr-1" />
                 戻す{undoStack.length > 0 && ` (${undoStack.length})`}
+              </Button>
+              <Button
+                size="sm"
+                variant={redoStack.length > 0 ? "default" : "outline"}
+                onClick={handleRedo}
+                disabled={redoStack.length === 0 || undoSchedule.isPending}
+                title={`やり直す (Ctrl+Y)${redoStack.length > 0 ? ` ${redoStack.length}件` : ""}`}
+                className={redoStack.length > 0 ? "bg-sky-500 hover:bg-sky-600 text-white" : ""}
+              >
+                <Redo2 className="h-3.5 w-3.5 mr-1" />
+                やり直す{redoStack.length > 0 && ` (${redoStack.length})`}
               </Button>
             </div>
           </div>
@@ -616,6 +691,39 @@ export default function CrossSchedule() {
                 <SelectItem value="12">12週間</SelectItem>
               </SelectContent>
             </Select>
+
+            {/* Zoom level */}
+            <div className="flex items-center gap-0.5 border rounded-md p-0.5">
+              <Button
+                size="sm"
+                variant={zoomLevel === "day" ? "default" : "ghost"}
+                className="h-6 px-2 text-[10px]"
+                onClick={() => setZoomLevel("day")}
+                title="日単位表示"
+              >
+                <ZoomIn className="h-3 w-3 mr-0.5" />
+                日
+              </Button>
+              <Button
+                size="sm"
+                variant={zoomLevel === "week" ? "default" : "ghost"}
+                className="h-6 px-2 text-[10px]"
+                onClick={() => setZoomLevel("week")}
+                title="週単位表示"
+              >
+                週
+              </Button>
+              <Button
+                size="sm"
+                variant={zoomLevel === "month" ? "default" : "ghost"}
+                className="h-6 px-2 text-[10px]"
+                onClick={() => setZoomLevel("month")}
+                title="月単位表示"
+              >
+                <ZoomOut className="h-3 w-3 mr-0.5" />
+                月
+              </Button>
+            </div>
 
             {/* Category filter */}
             <div className="flex items-center gap-1">
@@ -681,14 +789,14 @@ export default function CrossSchedule() {
                   {dateHeaders.map((h, i) => (
                     <div
                       key={i}
-                      className={`flex-1 min-w-[28px] text-center py-1.5 text-[9px] border-r border-border/30 ${
+                      className={`flex-1 ${zoomLevel === "day" ? "min-w-[48px]" : zoomLevel === "month" ? "min-w-[4px]" : "min-w-[28px]"} text-center py-1.5 text-[9px] border-r border-border/30 ${
                         h.isWeekend ? "bg-rose-50/60" : ""
-                      } ${h.isToday ? "bg-primary/10 font-bold" : ""}`}
+                      } ${h.isToday ? "bg-red-50 font-bold border-l-2 border-l-red-500" : ""}`}
                     >
                       {h.monthLabel && (
                         <div className="text-[8px] text-muted-foreground font-medium">{h.monthLabel}</div>
                       )}
-                      <div className={h.isToday ? "text-primary" : "text-muted-foreground"}>{h.label}</div>
+                      {h.label && <div className={h.isToday ? "text-red-600 font-bold" : "text-muted-foreground"}>{h.label}</div>}
                     </div>
                   ))}
                 </div>
@@ -726,7 +834,7 @@ export default function CrossSchedule() {
 
                     {/* Gantt area */}
                     <div className="flex-1 relative py-1" style={{ minHeight: `${Math.max(32, visibleItems.length * 22 + 8)}px` }}>
-                      {/* Today line */}
+                      {/* Today line - prominent red indicator */}
                       {(() => {
                         const todayStr = fmtYmd(new Date());
                         const todayOffset = Math.round(
@@ -734,10 +842,20 @@ export default function CrossSchedule() {
                         );
                         if (todayOffset >= 0 && todayOffset < totalDays) {
                           return (
-                            <div
-                              className="absolute top-0 bottom-0 w-px bg-red-400/60 z-10"
-                              style={{ left: `${(todayOffset / totalDays) * 100}%` }}
-                            />
+                            <>
+                              <div
+                                className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-20"
+                                style={{ left: `${(todayOffset / totalDays) * 100}%` }}
+                              />
+                              <div
+                                className="absolute top-0 z-20 -translate-x-1/2"
+                                style={{ left: `${(todayOffset / totalDays) * 100}%` }}
+                              >
+                                <div className="bg-red-500 text-white text-[8px] px-1 py-0.5 rounded-b font-bold whitespace-nowrap">
+                                  TODAY
+                                </div>
+                              </div>
+                            </>
                           );
                         }
                         return null;
