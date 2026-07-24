@@ -91,6 +91,23 @@ import {
   listDocumentsByCaseForPartner,
   listSharedDocumentsByTag,
   updateDocumentTags,
+  listProjectFolders,
+  getProjectFolder,
+  createProjectFolder,
+  updateProjectFolder,
+  deleteProjectFolder,
+  listFolderCases,
+  listFolderDocuments,
+  addCaseToFolder,
+  removeCaseFromFolder,
+  addDocumentToFolder,
+  removeDocumentFromFolder,
+  listFoldersByCaseId,
+  listDocumentsByFolderIds,
+  createDocumentVersion,
+  listDocumentVersions,
+  getLatestVersionNumber,
+  searchDocuments,
 } from "./db";
 import { makeRequest } from "./_core/map";
 import {
@@ -3465,6 +3482,109 @@ JSONスキーマに従って回答してください。`,
       }),
   }),
 
+  // プロジェクトフォルダ
+  projectFolders: router({
+    list: protectedProcedure.query(async () => {
+      return listProjectFolders();
+    }),
+    get: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        const folder = await getProjectFolder(input.id);
+        if (!folder) throw new TRPCError({ code: "NOT_FOUND" });
+        const [folderCases, folderDocs] = await Promise.all([
+          listFolderCases(input.id),
+          listFolderDocuments(input.id),
+        ]);
+        return { ...folder, cases: folderCases, documents: folderDocs };
+      }),
+    create: protectedProcedure
+      .input(z.object({ name: z.string().min(1), description: z.string().nullable().optional() }))
+      .mutation(async ({ input }) => {
+        return createProjectFolder({ name: input.name, description: input.description || null });
+      }),
+    update: protectedProcedure
+      .input(z.object({ id: z.number(), name: z.string().optional(), description: z.string().nullable().optional() }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        await updateProjectFolder(id, data);
+        return { success: true };
+      }),
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteProjectFolder(input.id);
+        return { success: true };
+      }),
+    addCase: protectedProcedure
+      .input(z.object({ folderId: z.number(), caseId: z.number() }))
+      .mutation(async ({ input }) => {
+        await addCaseToFolder(input.folderId, input.caseId);
+        return { success: true };
+      }),
+    removeCase: protectedProcedure
+      .input(z.object({ folderId: z.number(), caseId: z.number() }))
+      .mutation(async ({ input }) => {
+        await removeCaseFromFolder(input.folderId, input.caseId);
+        return { success: true };
+      }),
+    addDocument: protectedProcedure
+      .input(z.object({ folderId: z.number(), documentId: z.number() }))
+      .mutation(async ({ input }) => {
+        await addDocumentToFolder(input.folderId, input.documentId);
+        return { success: true };
+      }),
+    removeDocument: protectedProcedure
+      .input(z.object({ folderId: z.number(), documentId: z.number() }))
+      .mutation(async ({ input }) => {
+        await removeDocumentFromFolder(input.folderId, input.documentId);
+        return { success: true };
+      }),
+    listByCaseId: protectedProcedure
+      .input(z.object({ caseId: z.number() }))
+      .query(async ({ input }) => {
+        return listFoldersByCaseId(input.caseId);
+      }),
+    listDocumentsByFolders: protectedProcedure
+      .input(z.object({ folderIds: z.array(z.number()) }))
+      .query(async ({ input }) => {
+        return listDocumentsByFolderIds(input.folderIds);
+      }),
+  }),
+  // ドキュメントバージョン管理
+  documentVersions: router({
+    list: protectedProcedure
+      .input(z.object({ documentId: z.number() }))
+      .query(async ({ input }) => {
+        return listDocumentVersions(input.documentId);
+      }),
+    create: protectedProcedure
+      .input(z.object({
+        documentId: z.number(),
+        fileKey: z.string(),
+        fileUrl: z.string(),
+        fileSize: z.number().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const latestVersion = await getLatestVersionNumber(input.documentId);
+        return createDocumentVersion({
+          documentId: input.documentId,
+          version: latestVersion + 1,
+          fileKey: input.fileKey,
+          fileUrl: input.fileUrl,
+          fileSize: input.fileSize || null,
+          uploadedBy: ctx.user.id,
+        });
+      }),
+  }),
+  // 全文検索
+  documentSearch: router({
+    search: protectedProcedure
+      .input(z.object({ query: z.string().min(1), scope: z.enum(["case", "shared", "all"]).optional(), limit: z.number().optional() }))
+      .query(async ({ input }) => {
+        return searchDocuments(input.query, { scope: input.scope || "all", limit: input.limit });
+      }),
+  }),
   // 横断工程表（各業者のスケジュール横断可視化）
   crossSchedule: router({
     list: protectedProcedure

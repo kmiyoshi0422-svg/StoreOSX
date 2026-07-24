@@ -833,3 +833,21 @@
 - [x] 共通資料アップロード時にカテゴリ選択（担当者一覧/仕様書/施工対象一覧/その他）
 - [x] 案件詳細ページに「関連共通資料」セクションを追加
 - [x] 共通資料にタグを付けて案件詳細から関連タグで絞り込み表示
+
+## プロジェクトフォルダ機能（ユーザー指示）
+- [x] project_foldersテーブル追加（id, name, description, createdAt, updatedAt）
+- [x] project_folder_casesテーブル追加（folderId, caseId）- 案件グループ紐づけ
+- [x] project_folder_documentsテーブル追加（folderId, documentId）- 共通資料紐づけ
+- [x] サーバーAPI: フォルダCRUD・案件/資料の紐づけ管理
+- [x] 資料DB庫UIにプロジェクトフォルダ一覧・作成・編集機能を追加
+- [x] 案件詳細ページで所属プロジェクトフォルダの共通資料のみ表示
+
+## バージョン管理機能（ユーザー指示）
+- [x] document_versionsテーブル追加（id, documentId, version, fileKey, fileUrl, fileSize, uploadedBy, createdAt）
+- [x] 同名ファイル更新時に旧版をversionsに保存してから新版で上書き
+- [x] バージョン履歴表示UI（各ドキュメントの履歴一覧・旧版ダウンロード）
+
+## 全文検索機能（ユーザー指示）
+- [x] サーバーAPI: ファイル名・メモ・タグを横断検索するプロシージャ
+- [x] 資料DB庫UIに検索バーを追加（リアルタイム絞り込み）
+- [x] 検索結果にハイライト表示

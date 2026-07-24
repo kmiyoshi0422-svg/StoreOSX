@@ -3422,6 +3422,13 @@ function DocumentsTab({ caseId, caseData }: { caseId: number; caseData: any }) {
   const { data: docs = [], isLoading } = trpc.documents.list.useQuery({ caseId });
   // Fetch shared documents that may be relevant to this case
   const { data: sharedDocs } = trpc.documents.listAll.useQuery({ scope: "shared", limit: 50 });
+  // Fetch project folders linked to this case
+  const { data: caseFolders } = trpc.projectFolders.listByCaseId.useQuery({ caseId });
+  const folderIds = useMemo(() => (caseFolders || []).map((f: any) => f.id), [caseFolders]);
+  const { data: folderDocs } = trpc.projectFolders.listDocumentsByFolders.useQuery(
+    { folderIds },
+    { enabled: folderIds.length > 0 }
+  );
   const uploadMutation = trpc.documents.upload.useMutation({
     onSuccess: () => {
       utils.documents.list.invalidate({ caseId });
@@ -3626,6 +3633,43 @@ function DocumentsTab({ caseId, caseData }: { caseId: number; caseData: any }) {
                 </div>
               </CardContent>
             </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Project Folder Documents */}
+      {caseFolders && caseFolders.length > 0 && (
+        <div className="mt-6 pt-4 border-t">
+          <div className="flex items-center gap-2 mb-3">
+            <FolderOpen className="h-4 w-4 text-amber-600" />
+            <h3 className="text-sm font-semibold">プロジェクトフォルダ資料</h3>
+            <span className="text-xs text-muted-foreground">（この案件が属するフォルダの共通資料）</span>
+          </div>
+          {caseFolders.map((folder: any) => (
+            <div key={folder.id} className="mb-3">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <FolderOpen className="h-3.5 w-3.5 text-amber-500" />
+                <span className="text-xs font-medium">{folder.name}</span>
+              </div>
+              {folderDocs && folderDocs.filter((d: any) => d.folderId === folder.id).length > 0 ? (
+                <div className="space-y-1.5 ml-5">
+                  {folderDocs.filter((d: any) => d.folderId === folder.id).map((doc: any) => (
+                    <div key={doc.id} className="flex items-center gap-2 p-2 rounded-lg border bg-amber-50/50 hover:bg-amber-50">
+                      <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      <span className="text-xs flex-1 truncate">{doc.fileName}</span>
+                      <Badge className={`text-[9px] px-1 py-0 ${getCategoryColor(doc.category)}`}>
+                        {doc.category}
+                      </Badge>
+                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => window.open(doc.fileUrl, "_blank")}>
+                        <Eye className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground ml-5">資料なし</p>
+              )}
+            </div>
           ))}
         </div>
       )}

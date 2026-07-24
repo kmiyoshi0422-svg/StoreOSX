@@ -508,3 +508,46 @@ export const documents = mysqlTable("documents", {
 });
 export type Document = typeof documents.$inferSelect;
 export type InsertDocument = typeof documents.$inferInsert;
+
+// ============================================================
+// Project Folders (共通資料を案件グループに紐づけ)
+// ============================================================
+export const projectFolders = mysqlTable("project_folders", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 200 }).notNull(),
+  description: text("description"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type ProjectFolder = typeof projectFolders.$inferSelect;
+export type InsertProjectFolder = typeof projectFolders.$inferInsert;
+
+export const projectFolderCases = mysqlTable("project_folder_cases", {
+  id: int("id").autoincrement().primaryKey(),
+  folderId: int("folderId").notNull(),
+  caseId: int("caseId").notNull(),
+});
+export type ProjectFolderCase = typeof projectFolderCases.$inferSelect;
+
+export const projectFolderDocuments = mysqlTable("project_folder_documents", {
+  id: int("id").autoincrement().primaryKey(),
+  folderId: int("folderId").notNull(),
+  documentId: int("documentId").notNull(),
+});
+export type ProjectFolderDocument = typeof projectFolderDocuments.$inferSelect;
+
+// ============================================================
+// Document Versions (バージョン管理)
+// ============================================================
+export const documentVersions = mysqlTable("document_versions", {
+  id: int("id").autoincrement().primaryKey(),
+  documentId: int("documentId").notNull(),
+  version: int("version").notNull(), // 1, 2, 3...
+  fileKey: varchar("fileKey", { length: 500 }).notNull(),
+  fileUrl: varchar("fileUrl", { length: 1000 }).notNull(),
+  fileSize: int("fileSize"),
+  uploadedBy: int("uploadedBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type DocumentVersion = typeof documentVersions.$inferSelect;
+export type InsertDocumentVersion = typeof documentVersions.$inferInsert;

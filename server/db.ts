@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, like } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, like, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   cases,
@@ -37,6 +37,12 @@ import {
   InsertRainLeakCheckItem,
   documents,
   InsertDocument,
+  projectFolders,
+  InsertProjectFolder,
+  projectFolderCases,
+  projectFolderDocuments,
+  documentVersions,
+  InsertDocumentVersion,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -1204,4 +1210,184 @@ export async function listCrossPartnerRoutes(rangeStart?: string, rangeEnd?: str
     .from(routeAssignments)
     .innerJoin(cases, and(...conditions))
     .orderBy(routeAssignments.scheduledDate, cases.storeName);
+}
+
+// ============================================================
+// Project Folders (プロジェクトフォルダ)
+// ============================================================
+export async function listProjectFolders() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(projectFolders).orderBy(desc(projectFolders.createdAt));
+}
+
+export async function getProjectFolder(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(projectFolders).where(eq(projectFolders.id, id));
+  return rows[0] || null;
+}
+
+export async function createProjectFolder(data: InsertProjectFolder) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.insert(projectFolders).values(data);
+  return { id: result[0].insertId };
+}
+
+export async function updateProjectFolder(id: number, data: { name?: string; description?: string | null }) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(projectFolders).set({ ...data, updatedAt: new Date() }).where(eq(projectFolders.id, id));
+}
+
+export async function deleteProjectFolder(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(projectFolderCases).where(eq(projectFolderCases.folderId, id));
+  await db.delete(projectFolderDocuments).where(eq(projectFolderDocuments.folderId, id));
+  await db.delete(projectFolders).where(eq(projectFolders.id, id));
+}
+
+export async function listFolderCases(folderId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ id: cases.id, storeName: cases.storeName, requestNumber: cases.requestNumber, brand: cases.brand, status: cases.status })
+    .from(projectFolderCases)
+    .innerJoin(cases, eq(projectFolderCases.caseId, cases.id))
+    .where(eq(projectFolderCases.folderId, folderId));
+}
+
+export async function listFolderDocuments(folderId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: documents.id,
+      fileName: documents.fileName,
+      fileUrl: documents.fileUrl,
+      fileSize: documents.fileSize,
+      category: documents.category,
+      tags: documents.tags,
+      memo: documents.memo,
+      createdAt: documents.createdAt,
+    })
+    .from(projectFolderDocuments)
+    .innerJoin(documents, eq(projectFolderDocuments.documentId, documents.id))
+    .where(eq(projectFolderDocuments.folderId, folderId));
+}
+
+export async function addCaseToFolder(folderId: number, caseId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(projectFolderCases).values({ folderId, caseId }).onDuplicateKeyUpdate({ set: { folderId } });
+}
+
+export async function removeCaseFromFolder(folderId: number, caseId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(projectFolderCases).where(and(eq(projectFolderCases.folderId, folderId), eq(projectFolderCases.caseId, caseId)));
+}
+
+export async function addDocumentToFolder(folderId: number, documentId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(projectFolderDocuments).values({ folderId, documentId }).onDuplicateKeyUpdate({ set: { folderId } });
+}
+
+export async function removeDocumentFromFolder(folderId: number, documentId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(projectFolderDocuments).where(and(eq(projectFolderDocuments.folderId, folderId), eq(projectFolderDocuments.documentId, documentId)));
+}
+
+export async function listFoldersByCaseId(caseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ id: projectFolders.id, name: projectFolders.name, description: projectFolders.description })
+    .from(projectFolderCases)
+    .innerJoin(projectFolders, eq(projectFolderCases.folderId, projectFolders.id))
+    .where(eq(projectFolderCases.caseId, caseId));
+}
+
+export async function listDocumentsByFolderIds(folderIds: number[]) {
+  const db = await getDb();
+  if (!db || folderIds.length === 0) return [];
+  return db
+    .select({
+      id: documents.id,
+      fileName: documents.fileName,
+      fileUrl: documents.fileUrl,
+      fileSize: documents.fileSize,
+      category: documents.category,
+      tags: documents.tags,
+      memo: documents.memo,
+      createdAt: documents.createdAt,
+      folderId: projectFolderDocuments.folderId,
+    })
+    .from(projectFolderDocuments)
+    .innerJoin(documents, eq(projectFolderDocuments.documentId, documents.id))
+    .where(inArray(projectFolderDocuments.folderId, folderIds));
+}
+
+// ============================================================
+// Document Versions (バージョン管理)
+// ============================================================
+export async function createDocumentVersion(data: InsertDocumentVersion) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.insert(documentVersions).values(data);
+  return { id: result[0].insertId };
+}
+
+export async function listDocumentVersions(documentId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(documentVersions).where(eq(documentVersions.documentId, documentId)).orderBy(desc(documentVersions.version));
+}
+
+export async function getLatestVersionNumber(documentId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const rows = await db.select({ version: documentVersions.version }).from(documentVersions).where(eq(documentVersions.documentId, documentId)).orderBy(desc(documentVersions.version)).limit(1);
+  return rows[0]?.version || 0;
+}
+
+// ============================================================
+// Full-text Search (全文検索)
+// ============================================================
+export async function searchDocuments(query: string, opts?: { scope?: "case" | "shared" | "all"; limit?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const searchPattern = `%${query}%`;
+  const conditions = [
+    or(
+      like(documents.fileName, searchPattern),
+      like(documents.memo, searchPattern),
+      like(documents.tags, searchPattern),
+      like(documents.category, searchPattern),
+    ),
+  ];
+  if (opts?.scope === "case") conditions.push(isNotNull(documents.caseId));
+  if (opts?.scope === "shared") conditions.push(isNull(documents.caseId));
+  
+  return db
+    .select({
+      id: documents.id,
+      caseId: documents.caseId,
+      fileName: documents.fileName,
+      fileUrl: documents.fileUrl,
+      fileSize: documents.fileSize,
+      category: documents.category,
+      tags: documents.tags,
+      memo: documents.memo,
+      isLocked: documents.isLocked,
+      createdAt: documents.createdAt,
+    })
+    .from(documents)
+    .where(and(...conditions))
+    .orderBy(desc(documents.createdAt))
+    .limit(opts?.limit || 50);
 }

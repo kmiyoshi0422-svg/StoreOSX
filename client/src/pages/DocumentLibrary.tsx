@@ -21,7 +21,10 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, FileText, Search, Eye, Library, ExternalLink, Upload, Lock, Unlock, Plus, Tag, Globe } from "lucide-react";
+import {
+  Loader2, FileText, Search, Eye, Library, ExternalLink, Upload, Lock, Unlock,
+  Plus, Tag, Globe, FolderOpen, History, X, ChevronDown, ChevronRight, Download,
+} from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 
@@ -66,6 +69,8 @@ function parseTags(tagsStr: string | null | undefined): string[] {
   try { return JSON.parse(tagsStr); } catch { return []; }
 }
 
+type ViewMode = "documents" | "folders";
+
 export default function DocumentLibrary() {
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
@@ -73,6 +78,11 @@ export default function DocumentLibrary() {
   const [scope, setScope] = useState<"all" | "case" | "shared">("all");
   const [page, setPage] = useState(0);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [showFolderDialog, setShowFolderDialog] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("documents");
+  const [selectedDocForHistory, setSelectedDocForHistory] = useState<number | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const limit = 30;
 
   const queryInput = useMemo(() => ({
@@ -85,6 +95,11 @@ export default function DocumentLibrary() {
 
   const { data, isLoading } = trpc.documents.listAll.useQuery(queryInput);
   const { data: casesData } = trpc.cases.listSummary.useQuery();
+  const { data: foldersData, isLoading: foldersLoading } = trpc.projectFolders.list.useQuery();
+  const { data: searchResults, isLoading: searchLoading } = trpc.documentSearch.search.useQuery(
+    { query: searchQuery, scope: scope === "all" ? undefined : scope },
+    { enabled: isSearching && searchQuery.length > 0 }
+  );
   const utils = trpc.useUtils();
   const items = data?.items || [];
   const total = data?.total || 0;
@@ -107,12 +122,19 @@ export default function DocumentLibrary() {
     onError: () => toast.error("ロック変更に失敗しました"),
   });
 
-  const updateTagsMutation = trpc.documents.updateTags.useMutation({
-    onSuccess: () => {
-      utils.documents.listAll.invalidate();
-      toast.success("タグを更新しました");
-    },
-  });
+  const handleSearchSubmit = () => {
+    if (search.trim()) {
+      setSearchQuery(search.trim());
+      setIsSearching(true);
+    }
+  };
+
+  const clearSearch = () => {
+    setIsSearching(false);
+    setSearchQuery("");
+  };
+
+  const displayItems = isSearching ? (searchResults || []) : items;
 
   return (
     <div className="space-y-4">
@@ -120,171 +142,230 @@ export default function DocumentLibrary() {
         <div className="flex items-center gap-2">
           <Library className="h-5 w-5 text-primary" />
           <h1 className="text-xl font-bold">資料DB庫</h1>
-          <span className="text-sm text-muted-foreground ml-2">{total}件</span>
+          <span className="text-sm text-muted-foreground ml-2">{isSearching ? `${displayItems.length}件` : `${total}件`}</span>
         </div>
-        <Button size="sm" onClick={() => setShowUploadDialog(true)}>
-          <Plus className="h-4 w-4 mr-1" />
-          アップロード
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setShowFolderDialog(true)}>
+            <FolderOpen className="h-4 w-4 mr-1" />
+            フォルダ管理
+          </Button>
+          <Button size="sm" onClick={() => setShowUploadDialog(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            アップロード
+          </Button>
+        </div>
       </div>
 
-      {/* Scope Tabs */}
-      <Tabs value={scope} onValueChange={(v) => { setScope(v as any); setPage(0); }}>
-        <TabsList className="grid w-full grid-cols-3 max-w-sm">
-          <TabsTrigger value="all">すべて</TabsTrigger>
-          <TabsTrigger value="case">
+      {/* View Mode Tabs */}
+      <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
+        <TabsList className="grid w-full grid-cols-2 max-w-xs">
+          <TabsTrigger value="documents">
             <FileText className="h-3.5 w-3.5 mr-1" />
-            案件紐づき
+            ドキュメント
           </TabsTrigger>
-          <TabsTrigger value="shared">
-            <Globe className="h-3.5 w-3.5 mr-1" />
-            共通資料
+          <TabsTrigger value="folders">
+            <FolderOpen className="h-3.5 w-3.5 mr-1" />
+            プロジェクト
           </TabsTrigger>
         </TabsList>
       </Tabs>
 
-      {/* Search & Filter */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="ファイル名で検索..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-            className="pl-9 h-9"
-          />
-        </div>
-        <Select value={category} onValueChange={(v) => { setCategory(v); setPage(0); }}>
-          <SelectTrigger className="w-[160px] h-9">
-            <SelectValue placeholder="カテゴリ" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">すべて</SelectItem>
-            {CATEGORIES.map((c) => (
-              <SelectItem key={c} value={c}>{c}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {viewMode === "documents" ? (
+        <>
+          {/* Scope Tabs */}
+          <Tabs value={scope} onValueChange={(v) => { setScope(v as any); setPage(0); clearSearch(); }}>
+            <TabsList className="grid w-full grid-cols-3 max-w-sm">
+              <TabsTrigger value="all">すべて</TabsTrigger>
+              <TabsTrigger value="case">
+                <FileText className="h-3.5 w-3.5 mr-1" />
+                案件紐づき
+              </TabsTrigger>
+              <TabsTrigger value="shared">
+                <Globe className="h-3.5 w-3.5 mr-1" />
+                共通資料
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
 
-      {/* Info banner for shared scope */}
-      {scope === "shared" && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-          <Globe className="h-4 w-4 inline mr-1.5" />
-          <strong>共通資料</strong>は案件に紐づかず、全案件から参照できる資料です。担当者一覧、仕様書、施工対象店舗一覧などを登録できます。
-        </div>
-      )}
+          {/* Search & Filter */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="全文検索（ファイル名・メモ・タグ）..."
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); if (!e.target.value) clearSearch(); }}
+                onKeyDown={(e) => { if (e.key === "Enter") handleSearchSubmit(); }}
+                className="pl-9 h-9 pr-20"
+              />
+              <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {isSearching && (
+                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={clearSearch}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+                <Button size="sm" variant="secondary" className="h-6 px-2 text-xs" onClick={handleSearchSubmit}>
+                  検索
+                </Button>
+              </div>
+            </div>
+            <Select value={category} onValueChange={(v) => { setCategory(v); setPage(0); }}>
+              <SelectTrigger className="w-[160px] h-9">
+                <SelectValue placeholder="カテゴリ" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">すべて</SelectItem>
+                {CATEGORIES.map((c) => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-      {/* Results */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
-      ) : items.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <Library className="h-10 w-10 mx-auto mb-3 opacity-40" />
-            <p>ドキュメントが見つかりません</p>
-            <p className="text-xs mt-1">上の「アップロード」ボタンから直接追加できます</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-2">
-          {items.map((doc: any) => {
-            const tags = parseTags(doc.tags);
-            return (
-              <Card key={doc.id} className={`hover:shadow-sm transition-shadow ${doc.isLocked ? "border-l-4 border-l-amber-500" : ""} ${!doc.caseId ? "border-l-4 border-l-blue-400" : ""}`}>
-                <CardContent className="p-3 flex items-center gap-3">
-                  <div className="flex-shrink-0">
-                    {doc.caseId ? (
-                      <FileText className="h-8 w-8 text-muted-foreground" />
-                    ) : (
-                      <Globe className="h-8 w-8 text-blue-500" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                      <span className="text-sm font-medium truncate">{doc.fileName}</span>
-                      <Badge className={`text-[10px] px-1.5 py-0 ${getCategoryColor(doc.category)}`}>
-                        {doc.category}
-                      </Badge>
-                      {!doc.caseId && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-blue-300 text-blue-700 bg-blue-50">
-                          共通
-                        </Badge>
-                      )}
-                      {doc.isLocked === 1 && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-400 text-amber-700 bg-amber-50">
-                          <Lock className="h-2.5 w-2.5 mr-0.5" />
-                          制限付き
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-                      {doc.storeName && (
-                        <button
-                          className="text-primary hover:underline flex items-center gap-0.5"
-                          onClick={() => navigate(`/cases/${doc.caseId}`)}
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                          {doc.storeName}
-                        </button>
-                      )}
-                      {doc.requestNumber && <span>#{doc.requestNumber}</span>}
-                      <span>{formatFileSize(doc.fileSize)}</span>
-                      <span>{new Date(doc.createdAt).toLocaleDateString("ja-JP")}</span>
-                      {doc.memo && <span className="truncate max-w-[200px]">📝 {doc.memo}</span>}
-                    </div>
-                    {/* Tags */}
-                    {tags.length > 0 && (
-                      <div className="flex items-center gap-1 mt-1 flex-wrap">
-                        <Tag className="h-3 w-3 text-muted-foreground" />
-                        {tags.map((t, i) => (
-                          <Badge key={i} variant="secondary" className="text-[9px] px-1.5 py-0">
-                            {t}
-                          </Badge>
-                        ))}
+          {/* Search mode indicator */}
+          {isSearching && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-sm text-amber-800 flex items-center justify-between">
+              <span>
+                <Search className="h-3.5 w-3.5 inline mr-1.5" />
+                「<strong>{searchQuery}</strong>」の検索結果: {searchLoading ? "検索中..." : `${displayItems.length}件`}
+              </span>
+              <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={clearSearch}>
+                クリア
+              </Button>
+            </div>
+          )}
+
+          {/* Info banner for shared scope */}
+          {scope === "shared" && !isSearching && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+              <Globe className="h-4 w-4 inline mr-1.5" />
+              <strong>共通資料</strong>は案件に紐づかず、全案件から参照できる資料です。担当者一覧、仕様書、施工対象店舗一覧などを登録できます。
+            </div>
+          )}
+
+          {/* Results */}
+          {(isLoading || searchLoading) ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : displayItems.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center text-muted-foreground">
+                <Library className="h-10 w-10 mx-auto mb-3 opacity-40" />
+                <p>{isSearching ? "検索結果が見つかりません" : "ドキュメントが見つかりません"}</p>
+                <p className="text-xs mt-1">上の「アップロード」ボタンから直接追加できます</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-2">
+              {displayItems.map((doc: any) => {
+                const tags = parseTags(doc.tags);
+                return (
+                  <Card key={doc.id} className={`hover:shadow-sm transition-shadow ${doc.isLocked ? "border-l-4 border-l-amber-500" : ""} ${!doc.caseId ? "border-l-4 border-l-blue-400" : ""}`}>
+                    <CardContent className="p-3 flex items-center gap-3">
+                      <div className="flex-shrink-0">
+                        {doc.caseId ? (
+                          <FileText className="h-8 w-8 text-muted-foreground" />
+                        ) : (
+                          <Globe className="h-8 w-8 text-blue-500" />
+                        )}
                       </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 w-7 p-0"
-                      onClick={() => toggleLockMutation.mutate({ id: doc.id, isLocked: doc.isLocked === 1 ? 0 : 1 })}
-                      title={doc.isLocked === 1 ? "ロック解除" : "ロックする（アクセス制限）"}
-                    >
-                      {doc.isLocked === 1 ? <Lock className="h-3.5 w-3.5 text-amber-600" /> : <Unlock className="h-3.5 w-3.5 text-muted-foreground" />}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 w-7 p-0"
-                      onClick={() => window.open(doc.fileUrl, "_blank")}
-                      title="プレビュー / ダウンロード"
-                    >
-                      <Eye className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                          <span className="text-sm font-medium truncate">{doc.fileName}</span>
+                          <Badge className={`text-[10px] px-1.5 py-0 ${getCategoryColor(doc.category)}`}>
+                            {doc.category}
+                          </Badge>
+                          {!doc.caseId && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-blue-300 text-blue-700 bg-blue-50">
+                              共通
+                            </Badge>
+                          )}
+                          {doc.isLocked === 1 && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-400 text-amber-700 bg-amber-50">
+                              <Lock className="h-2.5 w-2.5 mr-0.5" />
+                              制限付き
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+                          {doc.storeName && (
+                            <button
+                              className="text-primary hover:underline flex items-center gap-0.5"
+                              onClick={() => navigate(`/cases/${doc.caseId}`)}
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                              {doc.storeName}
+                            </button>
+                          )}
+                          {doc.requestNumber && <span>#{doc.requestNumber}</span>}
+                          <span>{formatFileSize(doc.fileSize)}</span>
+                          <span>{new Date(doc.createdAt).toLocaleDateString("ja-JP")}</span>
+                          {doc.memo && <span className="truncate max-w-[200px]">📝 {doc.memo}</span>}
+                        </div>
+                        {tags.length > 0 && (
+                          <div className="flex items-center gap-1 mt-1 flex-wrap">
+                            <Tag className="h-3 w-3 text-muted-foreground" />
+                            {tags.map((t, i) => (
+                              <Badge key={i} variant="secondary" className="text-[9px] px-1.5 py-0">
+                                {t}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0"
+                          onClick={() => setSelectedDocForHistory(doc.id)}
+                          title="バージョン履歴"
+                        >
+                          <History className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0"
+                          onClick={() => toggleLockMutation.mutate({ id: doc.id, isLocked: doc.isLocked === 1 ? 0 : 1 })}
+                          title={doc.isLocked === 1 ? "ロック解除" : "ロックする"}
+                        >
+                          {doc.isLocked === 1 ? <Lock className="h-3.5 w-3.5 text-amber-600" /> : <Unlock className="h-3.5 w-3.5 text-muted-foreground" />}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0"
+                          onClick={() => window.open(doc.fileUrl, "_blank")}
+                          title="プレビュー / ダウンロード"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 pt-2">
-          <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(page - 1)}>
-            前へ
-          </Button>
-          <span className="text-sm text-muted-foreground">{page + 1} / {totalPages}</span>
-          <Button size="sm" variant="outline" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)}>
-            次へ
-          </Button>
-        </div>
+          {/* Pagination (only in non-search mode) */}
+          {!isSearching && totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 pt-2">
+              <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(page - 1)}>
+                前へ
+              </Button>
+              <span className="text-sm text-muted-foreground">{page + 1} / {totalPages}</span>
+              <Button size="sm" variant="outline" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)}>
+                次へ
+              </Button>
+            </div>
+          )}
+        </>
+      ) : (
+        /* Project Folders View */
+        <ProjectFoldersView folders={foldersData || []} isLoading={foldersLoading} />
       )}
 
       {/* Upload Dialog */}
@@ -296,12 +377,332 @@ export default function DocumentLibrary() {
         isUploading={uploadMutation.isPending}
         defaultScope={scope}
       />
+
+      {/* Folder Management Dialog */}
+      <FolderManagementDialog
+        open={showFolderDialog}
+        onOpenChange={setShowFolderDialog}
+      />
+
+      {/* Version History Dialog */}
+      {selectedDocForHistory !== null && (
+        <VersionHistoryDialog
+          documentId={selectedDocForHistory}
+          open={true}
+          onOpenChange={(v) => { if (!v) setSelectedDocForHistory(null); }}
+        />
+      )}
     </div>
   );
 }
 
-// ─── Upload Dialog Component ─────────────────────────────
+// ─── Project Folders View ─────────────────────────────
+function ProjectFoldersView({ folders, isLoading }: { folders: any[]; isLoading: boolean }) {
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const { data: folderDetail } = trpc.projectFolders.get.useQuery(
+    { id: expandedId! },
+    { enabled: expandedId !== null }
+  );
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (folders.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center text-muted-foreground">
+          <FolderOpen className="h-10 w-10 mx-auto mb-3 opacity-40" />
+          <p>プロジェクトフォルダがありません</p>
+          <p className="text-xs mt-1">「フォルダ管理」から新しいフォルダを作成できます</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {folders.map((folder: any) => (
+        <Card key={folder.id} className="hover:shadow-sm transition-shadow">
+          <CardContent className="p-0">
+            <button
+              className="w-full p-3 flex items-center gap-3 text-left"
+              onClick={() => setExpandedId(expandedId === folder.id ? null : folder.id)}
+            >
+              {expandedId === folder.id ? (
+                <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              ) : (
+                <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              )}
+              <FolderOpen className="h-5 w-5 text-amber-600 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">{folder.name}</p>
+                {folder.description && (
+                  <p className="text-xs text-muted-foreground truncate">{folder.description}</p>
+                )}
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {new Date(folder.createdAt).toLocaleDateString("ja-JP")}
+              </span>
+            </button>
+
+            {expandedId === folder.id && folderDetail && (
+              <div className="border-t px-3 pb-3 pt-2 space-y-3">
+                {/* Linked Cases */}
+                {folderDetail.cases.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5">紐づき案件 ({folderDetail.cases.length}件)</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {folderDetail.cases.map((c: any) => (
+                        <Badge key={c.id} variant="outline" className="text-xs cursor-pointer hover:bg-accent">
+                          {c.storeName}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* Linked Documents */}
+                {folderDetail.documents.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5">共通資料 ({folderDetail.documents.length}件)</p>
+                    <div className="space-y-1">
+                      {folderDetail.documents.map((doc: any) => (
+                        <div key={doc.id} className="flex items-center gap-2 text-xs p-1.5 rounded bg-muted/50">
+                          <FileText className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                          <span className="flex-1 truncate">{doc.fileName}</span>
+                          <Badge className={`text-[9px] px-1 py-0 ${getCategoryColor(doc.category)}`}>
+                            {doc.category}
+                          </Badge>
+                          <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => window.open(doc.fileUrl, "_blank")}>
+                            <Download className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {folderDetail.cases.length === 0 && folderDetail.documents.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-2">
+                    まだ案件や資料が紐づけられていません。「フォルダ管理」から追加できます。
+                  </p>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// ─── Version History Dialog ─────────────────────────────
+function VersionHistoryDialog({ documentId, open, onOpenChange }: { documentId: number; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const { data: versions, isLoading } = trpc.documentVersions.list.useQuery({ documentId }, { enabled: open });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <History className="h-5 w-5" />
+            バージョン履歴
+          </DialogTitle>
+          <DialogDescription>
+            このドキュメントの過去のバージョンを確認・ダウンロードできます。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2 mt-2 max-h-[300px] overflow-y-auto">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : !versions || versions.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              <History className="h-8 w-8 mx-auto mb-2 opacity-40" />
+              <p>バージョン履歴はまだありません</p>
+              <p className="text-xs mt-1">ファイルを更新すると旧版が自動保存されます</p>
+            </div>
+          ) : (
+            versions.map((v: any) => (
+              <div key={v.id} className="flex items-center gap-3 p-2.5 rounded-lg border bg-muted/30">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                  <span className="text-xs font-bold text-primary">v{v.version}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(v.createdAt).toLocaleString("ja-JP")}
+                  </p>
+                  {v.fileSize && (
+                    <p className="text-[10px] text-muted-foreground">{formatFileSize(v.fileSize)}</p>
+                  )}
+                </div>
+                <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => window.open(v.fileUrl, "_blank")}>
+                  <Download className="h-3 w-3 mr-1" />
+                  DL
+                </Button>
+              </div>
+            ))
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Folder Management Dialog ─────────────────────────────
+function FolderManagementDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
+  const [addCaseId, setAddCaseId] = useState("");
+  const [addDocId, setAddDocId] = useState("");
+
+  const { data: folders } = trpc.projectFolders.list.useQuery(undefined, { enabled: open });
+  const { data: casesData } = trpc.cases.listSummary.useQuery(undefined, { enabled: open });
+  const { data: docsData } = trpc.documents.listAll.useQuery({ scope: "shared", limit: 100 }, { enabled: open });
+  const utils = trpc.useUtils();
+
+  const createMutation = trpc.projectFolders.create.useMutation({
+    onSuccess: () => {
+      utils.projectFolders.list.invalidate();
+      setNewName("");
+      setNewDesc("");
+      toast.success("フォルダを作成しました");
+    },
+  });
+
+  const deleteMutation = trpc.projectFolders.delete.useMutation({
+    onSuccess: () => {
+      utils.projectFolders.list.invalidate();
+      setSelectedFolderId(null);
+      toast.success("フォルダを削除しました");
+    },
+  });
+
+  const addCaseMutation = trpc.projectFolders.addCase.useMutation({
+    onSuccess: () => {
+      utils.projectFolders.list.invalidate();
+      utils.projectFolders.get.invalidate();
+      setAddCaseId("");
+      toast.success("案件を追加しました");
+    },
+  });
+
+  const addDocMutation = trpc.projectFolders.addDocument.useMutation({
+    onSuccess: () => {
+      utils.projectFolders.list.invalidate();
+      utils.projectFolders.get.invalidate();
+      setAddDocId("");
+      toast.success("資料を追加しました");
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FolderOpen className="h-5 w-5" />
+            プロジェクトフォルダ管理
+          </DialogTitle>
+          <DialogDescription>
+            案件グループを作成し、共通資料を紐づけて管理します。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 mt-2">
+          {/* Create new folder */}
+          <div className="border rounded-lg p-3 space-y-2">
+            <p className="text-xs font-medium">新規フォルダ作成</p>
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="フォルダ名（例: 厨房LED化）"
+              className="h-8 text-sm"
+            />
+            <Input
+              value={newDesc}
+              onChange={(e) => setNewDesc(e.target.value)}
+              placeholder="説明（任意）"
+              className="h-8 text-sm"
+            />
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={!newName.trim() || createMutation.isPending}
+              onClick={() => createMutation.mutate({ name: newName.trim(), description: newDesc.trim() || null })}
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              作成
+            </Button>
+          </div>
+
+          {/* Existing folders */}
+          {folders && folders.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">既存フォルダ</p>
+              {folders.map((f: any) => (
+                <div key={f.id} className={`border rounded-lg p-3 space-y-2 ${selectedFolderId === f.id ? "border-primary" : ""}`}>
+                  <div className="flex items-center justify-between">
+                    <button className="flex items-center gap-2 text-left" onClick={() => setSelectedFolderId(selectedFolderId === f.id ? null : f.id)}>
+                      <FolderOpen className="h-4 w-4 text-amber-600" />
+                      <span className="text-sm font-medium">{f.name}</span>
+                    </button>
+                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-destructive" onClick={() => deleteMutation.mutate({ id: f.id })}>
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+
+                  {selectedFolderId === f.id && (
+                    <div className="space-y-2 pt-2 border-t">
+                      {/* Add case */}
+                      <div className="flex items-center gap-2">
+                        <Select value={addCaseId} onValueChange={setAddCaseId}>
+                          <SelectTrigger className="h-7 text-xs flex-1">
+                            <SelectValue placeholder="案件を追加..." />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-[150px]">
+                            {(casesData || []).map((c: any) => (
+                              <SelectItem key={c.id} value={String(c.id)}>{c.storeName}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button size="sm" className="h-7 px-2 text-xs" disabled={!addCaseId} onClick={() => addCaseMutation.mutate({ folderId: f.id, caseId: Number(addCaseId) })}>
+                          追加
+                        </Button>
+                      </div>
+                      {/* Add document */}
+                      <div className="flex items-center gap-2">
+                        <Select value={addDocId} onValueChange={setAddDocId}>
+                          <SelectTrigger className="h-7 text-xs flex-1">
+                            <SelectValue placeholder="共通資料を追加..." />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-[150px]">
+                            {(docsData?.items || []).map((d: any) => (
+                              <SelectItem key={d.id} value={String(d.id)}>{d.fileName}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button size="sm" className="h-7 px-2 text-xs" disabled={!addDocId} onClick={() => addDocMutation.mutate({ folderId: f.id, documentId: Number(addDocId) })}>
+                          追加
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Upload Dialog Component ─────────────────────────────
 function UploadDialog({
   open,
   onOpenChange,
@@ -345,7 +746,6 @@ function UploadDialog({
       toast.error("ファイルを選択してください");
       return;
     }
-    // Parse tags
     const tags = tagsInput.trim()
       ? JSON.stringify(tagsInput.split(/[,、\s]+/).filter(Boolean))
       : undefined;
@@ -384,7 +784,6 @@ function UploadDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 mt-2">
-          {/* Upload type toggle */}
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">種別</Label>
             <Tabs value={uploadType} onValueChange={(v) => setUploadType(v as any)}>
@@ -401,7 +800,6 @@ function UploadDialog({
             </Tabs>
           </div>
 
-          {/* Case selection (only for case-linked) */}
           {uploadType === "case" && (
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">案件 *</Label>
@@ -420,7 +818,6 @@ function UploadDialog({
             </div>
           )}
 
-          {/* Shared info */}
           {uploadType === "shared" && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
               <Globe className="h-3.5 w-3.5 inline mr-1" />
@@ -428,7 +825,6 @@ function UploadDialog({
             </div>
           )}
 
-          {/* Category */}
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">カテゴリ</Label>
             <Select value={selectedCategory} onValueChange={setSelectedCategory}>
@@ -443,7 +839,6 @@ function UploadDialog({
             </Select>
           </div>
 
-          {/* Tags */}
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">タグ（カンマ区切り）</Label>
             <Input
@@ -457,7 +852,6 @@ function UploadDialog({
             </p>
           </div>
 
-          {/* File input */}
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">ファイル *</Label>
             <div
@@ -485,7 +879,6 @@ function UploadDialog({
             />
           </div>
 
-          {/* Memo */}
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">メモ（任意）</Label>
             <Input
