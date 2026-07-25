@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean, unique, index } from "drizzle-orm/mysql-core";
+import { int, bigint, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean, unique, index } from "drizzle-orm/mysql-core";
 
 /**
  * ユーザーテーブル（OAuth認証）
@@ -576,3 +576,17 @@ export const documentVersions = mysqlTable("document_versions", {
 });
 export type DocumentVersion = typeof documentVersions.$inferSelect;
 export type InsertDocumentVersion = typeof documentVersions.$inferInsert;
+
+// ============================================================
+// Revisit Logs (再訪記録)
+// ============================================================
+export const revisitLogs = mysqlTable("revisit_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("case_id").notNull(),
+  reason: varchar("reason", { length: 50 }).notNull(),
+  note: text("note"),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  createdBy: varchar("created_by", { length: 255 }),
+});
+export type RevisitLog = typeof revisitLogs.$inferSelect;
+export type InsertRevisitLog = typeof revisitLogs.$inferInsert;

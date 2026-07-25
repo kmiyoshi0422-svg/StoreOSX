@@ -548,6 +548,39 @@ export const appRouter = router({
         await db.update(casesTable).set({ revisitCount: input.revisitCount }).where(eq(casesTable.id, input.id));
         return { success: true };
       }),
+    addRevisit: protectedProcedure
+      .input(z.object({
+        caseId: z.number(),
+        reason: z.enum(["部材不足", "追加依頼", "手直し", "確認不足", "天候不良", "その他"]),
+        note: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        const { eq, sql } = await import("drizzle-orm");
+        const { revisitLogs } = await import("../drizzle/schema");
+        // Insert revisit log
+        await db.insert(revisitLogs).values({
+          caseId: input.caseId,
+          reason: input.reason,
+          note: input.note ?? null,
+          createdAt: Date.now(),
+          createdBy: ctx.user?.name ?? ctx.user?.openId ?? null,
+        });
+        // Increment revisitCount on case
+        await db.update(casesTable).set({ revisitCount: sql`COALESCE(${casesTable.revisitCount}, 0) + 1` }).where(eq(casesTable.id, input.caseId));
+        return { success: true };
+      }),
+    listRevisitLogs: protectedProcedure
+      .input(z.object({ caseId: z.number() }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        const { eq, desc } = await import("drizzle-orm");
+        const { revisitLogs } = await import("../drizzle/schema");
+        const logs = await db.select().from(revisitLogs).where(eq(revisitLogs.caseId, input.caseId)).orderBy(desc(revisitLogs.createdAt));
+        return logs;
+      }),
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {

@@ -902,3 +902,10 @@
 - [x] 案件詳細UIに再訪回数の表示・記録ボタンを追加
 - [x] ダッシュボード（Home）に「再訪ゼロ率」KPIカードを追加
 - [x] 効果測定ダッシュボードのKPI5と連動（route_assignments + revisitCount）
+
+## 再訪理由記録機能（ユーザー指示）
+- [x] revisit_logsテーブルを追加（caseId, reason, note, createdAt, createdBy）
+- [x] サーバーAPI: cases.addRevisit（理由付き再訪記録）/ cases.listRevisitLogs
+- [x] 案件詳細の再訪カードに理由選択ダイアログ（部材不足・追加依頼・手直し・その他）
+- [x] 再訪履歴のタイムライン表示
+- [x] revisitCount自動インクリメント（addRevisit時）
