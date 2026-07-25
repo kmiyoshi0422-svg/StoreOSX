@@ -110,7 +110,7 @@ import {
   searchDocuments,
   getDb,
 } from "./db";
-import { estimates as estimatesTable, caseSignatures as caseSignaturesTable, routeAssignments as routeAssignmentsTable, cases as casesTable } from "../drizzle/schema";
+import { estimates as estimatesTable, caseSignatures as caseSignaturesTable, routeAssignments as routeAssignmentsTable, cases as casesTable, partners as partnersTable } from "../drizzle/schema";
 import { makeRequest } from "./_core/map";
 import {
   buildSchedule,
@@ -139,6 +139,27 @@ import {
   parseCompletionContent,
   type CompletionReportContent,
 } from "../shared/completionReport";
+
+// ============================================================
+// Helper: partner access control
+// ============================================================
+
+/**
+ * partnerユーザーが見られる案件のみフィルタリング
+ * partnersテーブルのuserIdでログインユーザーの担当案件を特定
+ */
+async function filterCasesForPartner<T>(cases: T[], userId: number): Promise<T[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const { eq } = await import("drizzle-orm");
+  const partnerRecords = await db.select({ id: partnersTable.id }).from(partnersTable).where(eq(partnersTable.userId, userId));
+  if (partnerRecords.length === 0) return [];
+  const partnerIds = new Set(partnerRecords.map(p => p.id));
+  return cases.filter(c => {
+    const item = c as any;
+    return item.partnerId != null && partnerIds.has(item.partnerId);
+  });
+}
 
 // ============================================================
 // Zod schemas
@@ -273,6 +294,7 @@ export const appRouter = router({
               area: z.string().nullish(),
               notes: z.string().nullish(),
               isActive: z.boolean().optional(),
+              userId: z.number().nullish(),
             })
             .partial(),
         })
@@ -481,15 +503,77 @@ export const appRouter = router({
   }),
 
   cases: router({
-    list: protectedProcedure.query(() => listCases()),
-    listSummary: protectedProcedure.query(() => listCasesSummary()),
-    listForMap: protectedProcedure.query(() => listCasesForMap()),
-    listMinimal: protectedProcedure.query(() => listCasesMinimal()),
-    listForBudget: protectedProcedure.query(() => listCasesForBudget()),
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const all = await listCases();
+      if (ctx.user.role === 'partner') {
+        return filterCasesForPartner(all, ctx.user.id);
+      }
+      return all;
+    }),
+    listSummary: protectedProcedure.query(async ({ ctx }) => {
+      const all = await listCasesSummary();
+      if (ctx.user.role === 'partner') {
+        const filtered = await filterCasesForPartner(all, ctx.user.id);
+        // partnerは金額フィールド非表示（amountApproved=trueの案件のみ表示）
+        return filtered.map(c => ({
+          ...c,
+          plenusQuoteAmount: null,
+          estimatedCost: null,
+          actualCost: null,
+        }));
+      }
+      return all;
+    }),
+    listForMap: protectedProcedure.query(async ({ ctx }) => {
+      const all = await listCasesForMap();
+      if (ctx.user.role === 'partner') {
+        return filterCasesForPartner(all, ctx.user.id);
+      }
+      return all;
+    }),
+    listMinimal: protectedProcedure.query(async ({ ctx }) => {
+      const all = await listCasesMinimal();
+      if (ctx.user.role === 'partner') {
+        return filterCasesForPartner(all, ctx.user.id);
+      }
+      return all;
+    }),
+    listForBudget: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role === 'partner') return []; // partner cannot see budget view
+      return listCasesForBudget();
+    }),
 
-    get: protectedProcedure.input(z.object({ id: z.number() })).query(({ input }) =>
-      getCaseById(input.id)
-    ),
+    get: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
+      const caseData = await getCaseById(input.id);
+      if (!caseData) return null;
+      if (ctx.user.role === 'partner') {
+        // partnerは自分の担当案件のみアクセス可能
+        const allowed = await filterCasesForPartner([caseData], ctx.user.id);
+        if (allowed.length === 0) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'この案件へのアクセス権がありません' });
+        }
+        // 金額フィールドのマスク（amountApproved=falseの場合）
+        if (!caseData.amountApproved) {
+          return {
+            ...caseData,
+            plenusQuoteAmount: null,
+            estimatedCost: null,
+            actualCost: null,
+            estimatedMaterialCost: null,
+            estimatedLaborCost: null,
+            actualMaterialCost: null,
+            actualLaborCost: null,
+            managementFee: null,
+            siteExpense: null,
+            ownSurveyCost: null,
+            partnerSurveyCost: null,
+            transportCost: null,
+            laborCost: null,
+          };
+        }
+      }
+      return caseData;
+    }),
 
     create: protectedProcedure.input(caseInputSchema).mutation(async ({ ctx, input }) => {
       // 都道府県が未入力なら住所から自動推定して補完（手入力は優先）
@@ -548,6 +632,17 @@ export const appRouter = router({
         await db.update(casesTable).set({ revisitCount: input.revisitCount }).where(eq(casesTable.id, input.id));
         return { success: true };
       }),
+    // 金額承認: owner/adminが協力業者に金額を公開する
+    approveAmount: adminProcedure
+      .input(z.object({ id: z.number(), approved: z.boolean() }))
+      .mutation(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        const { eq } = await import("drizzle-orm");
+        await db.update(casesTable).set({ amountApproved: input.approved }).where(eq(casesTable.id, input.id));
+        return { success: true };
+      }),
+
     addRevisit: protectedProcedure
       .input(z.object({
         caseId: z.number(),

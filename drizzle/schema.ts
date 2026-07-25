@@ -9,7 +9,7 @@ export const users = mysqlTable("users", {
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  role: mysqlEnum("role", ["user", "admin", "owner", "partner"]).default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -104,6 +104,7 @@ export const cases = mysqlTable("cases", {
   surveyImpressionAuthor: varchar("surveyImpressionAuthor", { length: 128 }), // 記入者名
   // 再訪記録
   revisitCount: int("revisitCount").default(0).notNull(), // 再訪回数（0=再訪なし）
+  amountApproved: boolean("amountApproved").default(false).notNull(), // 金額公開承認（協力業者に見せるか）
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -224,6 +225,7 @@ export const partners = mysqlTable("partners", {
   area: varchar("area", { length: 128 }), // 対応エリア
   notes: text("notes"),
   isActive: boolean("isActive").default(true).notNull(),
+  userId: int("userId"), // users.id 協力業者ユーザーとの紐付け
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

@@ -177,6 +177,8 @@ export async function listCasesSummary() {
       createdAt: cases.createdAt,
       revisitCount: cases.revisitCount,
       surveyDate: cases.surveyDate,
+      partnerId: cases.partnerId,
+      amountApproved: cases.amountApproved,
     })
     .from(cases)
     .orderBy(desc(cases.createdAt));
@@ -202,6 +204,7 @@ export async function listCasesForMap() {
       urgency: cases.urgency,
       progressStage: cases.progressStage,
       status: cases.status,
+      partnerId: cases.partnerId,
     })
     .from(cases)
     .where(and(isNotNull(cases.latitude), isNotNull(cases.longitude)))

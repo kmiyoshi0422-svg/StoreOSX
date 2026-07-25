@@ -51,7 +51,8 @@ const URGENCY_LABEL: Record<string, string> = {
 export default function Home() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || user?.role === "owner";
+  const isPartner = user?.role === "partner";
   const { data: cases = [], isLoading } = trpc.cases.listSummary.useQuery();
   const { data: summary } = trpc.cases.summary.useQuery(undefined, { enabled: isAdmin });
 

@@ -91,6 +91,7 @@ type FormData = {
   area: string;
   notes: string;
   isActive: boolean;
+  userId: number | null;
 };
 
 const emptyForm: FormData = {
@@ -104,6 +105,7 @@ const emptyForm: FormData = {
   area: "",
   notes: "",
   isActive: true,
+  userId: null,
 };
 
 // 電話番号を tel: リンク用に整形
@@ -184,6 +186,7 @@ export default function Partners() {
       area: p.area ?? "",
       notes: p.notes ?? "",
       isActive: p.isActive,
+      userId: (p as any).userId ?? null,
     });
     setDialogOpen(true);
   };
@@ -206,7 +209,7 @@ export default function Partners() {
       isActive: form.isActive,
     };
     if (editingId) {
-      updateMut.mutate({ id: editingId, data: payload });
+      updateMut.mutate({ id: editingId, data: { ...payload, userId: form.userId } });
     } else {
       createMut.mutate(payload);
     }
@@ -335,6 +338,20 @@ export default function Partners() {
                 />
                 <Label htmlFor="isActive" className="cursor-pointer">有効・現役の協力会社</Label>
               </div>
+              {editingId && (
+                <div className="grid gap-2">
+                  <Label>ログインユーザー紐付け（userId）</Label>
+                  <Input
+                    type="number"
+                    placeholder="ユーザーIDを入力（空欄で解除）"
+                    value={form.userId ?? ""}
+                    onChange={(e) => setForm({ ...form, userId: e.target.value ? Number(e.target.value) : null })}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    この協力会社を特定のログインユーザーと紐付けると、そのユーザーが「協力業者」ロールでログインした際に担当案件のみ表示されます。
+                  </p>
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" className="bg-background" onClick={() => setDialogOpen(false)}>

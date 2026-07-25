@@ -27,32 +27,32 @@ import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
-type MenuItem = { icon: typeof LayoutDashboard; label: string; path: string; adminOnly?: boolean };
+type MenuItem = { icon: typeof LayoutDashboard; label: string; path: string; adminOnly?: boolean; hideForPartner?: boolean };
 const menuItems: MenuItem[] = [
   { icon: LayoutDashboard, label: "ダッシュボード", path: "/" },
   { icon: ClipboardList, label: "案件一覧", path: "/cases" },
-  { icon: Building2, label: "店舗一覧", path: "/stores" },
+  { icon: Building2, label: "店舗一覧", path: "/stores", hideForPartner: true },
   { icon: MapPinned, label: "案件マップ", path: "/cases/map" },
-  { icon: Images, label: "写真台帳・一括PDF", path: "/photo-ledger/batch" },
+  { icon: Images, label: "写真台帳・一括PDF", path: "/photo-ledger/batch", hideForPartner: true },
   { icon: Gauge, label: "ワークロード", path: "/workload", adminOnly: true },
   { icon: GanttChart, label: "横断工程表", path: "/cross-schedule" },
-  { icon: FilePlus, label: "案件登録", path: "/cases/new" },
-  { icon: FileSearch, label: "PDFから案件登録", path: "/cases/import-pdf" },
+  { icon: FilePlus, label: "案件登録", path: "/cases/new", hideForPartner: true },
+  { icon: FileSearch, label: "PDFから案件登録", path: "/cases/import-pdf", hideForPartner: true },
   { icon: Library, label: "資料DB庫", path: "/document-library" },
-  { icon: Droplets, label: "雨漏り調査", path: "/rain-leak" },
-  { icon: FileText, label: "見積書取込", path: "/estimates/import" },
-  { icon: FileSearch, label: "見積書OCR→Excel", path: "/estimates/ocr-excel" },
-  { icon: Upload, label: "CSVインポート", path: "/cases/import" },
-  { icon: Briefcase, label: "協力会社", path: "/partners" },
-  { icon: Users, label: "協力会社取込", path: "/partners/import" },
-  { icon: Receipt, label: "経費取込", path: "/expenses/import" },
+  { icon: Droplets, label: "雨漏り調査", path: "/rain-leak", hideForPartner: true },
+  { icon: FileText, label: "見積書取込", path: "/estimates/import", hideForPartner: true },
+  { icon: FileSearch, label: "見積書OCR→Excel", path: "/estimates/ocr-excel", hideForPartner: true },
+  { icon: Upload, label: "CSVインポート", path: "/cases/import", hideForPartner: true },
+  { icon: Briefcase, label: "協力会社", path: "/partners", hideForPartner: true },
+  { icon: Users, label: "協力会社取込", path: "/partners/import", hideForPartner: true },
+  { icon: Receipt, label: "経費取込", path: "/expenses/import", hideForPartner: true },
   { icon: Wallet, label: "立替者別経費", path: "/expenses/by-user", adminOnly: true },
   { icon: Wallet, label: "予実管理", path: "/budget", adminOnly: true },
   { icon: BarChart3, label: "月次レポート", path: "/reports/monthly", adminOnly: true },
   { icon: TrendingUp, label: "実績レポート", path: "/reports", adminOnly: true },
   { icon: Activity, label: "効果測定", path: "/effectiveness", adminOnly: true },
-  { icon: BookMarked, label: "全角化除外辞書", path: "/settings/exclusions" },
-  { icon: Sparkles, label: "所感AI設定", path: "/settings/impression" },
+  { icon: BookMarked, label: "全角化除外辞書", path: "/settings/exclusions", hideForPartner: true },
+  { icon: Sparkles, label: "所感AI設定", path: "/settings/impression", hideForPartner: true },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -138,8 +138,13 @@ function DashboardLayoutContent({
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const isAdmin = user?.role === "admin";
-  const visibleMenuItems = menuItems.filter(item => !item.adminOnly || isAdmin);
+  const isAdmin = user?.role === "admin" || user?.role === "owner";
+  const isPartner = user?.role === "partner";
+  const visibleMenuItems = menuItems.filter(item => {
+    if (item.adminOnly && !isAdmin) return false;
+    if (item.hideForPartner && isPartner) return false;
+    return true;
+  });
   const activeMenuItem = visibleMenuItems.find(item => item.path === location);
   const isMobile = useIsMobile();
 

@@ -42,6 +42,7 @@ import {
 } from "@shared/stageStatus";
 import { useLocation } from "wouter";
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -129,6 +130,9 @@ const PHOTO_TYPES = [
 
 export default function CaseDetail({ id }: { id: number }) {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const isPartner = user?.role === 'partner';
+  const isOwnerOrAdmin = user?.role === 'owner' || user?.role === 'admin';
   const utils = trpc.useUtils();
   const [activeTab, setActiveTab] = useState("info");
   const { data: caseData, isLoading } = trpc.cases.get.useQuery({ id });
@@ -205,30 +209,36 @@ export default function CaseDetail({ id }: { id: number }) {
             </div>
           </div>
           <div className="flex flex-wrap gap-2 shrink-0">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => generateQuotePDF(caseData, exclusionTerms)}
-            >
-              <Download className="h-4 w-4" />
-              見積書
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setLocation(`/cases/${id}/survey-report`)}
-            >
-              <PenLine className="h-4 w-4" />
-              現場調査報告書
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setLocation(`/cases/${id}/completion-report`)}
-            >
-              <PenLine className="h-4 w-4" />
-              施工完了報告書
-            </Button>
+            {!isPartner && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => generateQuotePDF(caseData, exclusionTerms)}
+              >
+                <Download className="h-4 w-4" />
+                見積書
+              </Button>
+            )}
+            {!isPartner && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setLocation(`/cases/${id}/survey-report`)}
+              >
+                <PenLine className="h-4 w-4" />
+                現場調査報告書
+              </Button>
+            )}
+            {!isPartner && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setLocation(`/cases/${id}/completion-report`)}
+              >
+                <PenLine className="h-4 w-4" />
+                施工完了報告書
+              </Button>
+            )}
             <Button onClick={() => setLocation(`/cases/${id}/ledger`)} size="sm">
               <FileText className="h-4 w-4" />
               写真台帳
@@ -261,18 +271,24 @@ export default function CaseDetail({ id }: { id: number }) {
                 {photos.length}
               </Badge>
             </TabsTrigger>
-            <TabsTrigger value="estimates" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
-              <Receipt className="h-3.5 w-3.5" />
-              見積書
-            </TabsTrigger>
-            <TabsTrigger value="profit" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
-              <Wallet className="h-3.5 w-3.5" />
-              収支
-            </TabsTrigger>
-            <TabsTrigger value="expenses" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
-              <Receipt className="h-3.5 w-3.5" />
-              経費
-            </TabsTrigger>
+            {!isPartner && (
+              <TabsTrigger value="estimates" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
+                <Receipt className="h-3.5 w-3.5" />
+                見積書
+              </TabsTrigger>
+            )}
+            {!isPartner && (
+              <TabsTrigger value="profit" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
+                <Wallet className="h-3.5 w-3.5" />
+                収支
+              </TabsTrigger>
+            )}
+            {!isPartner && (
+              <TabsTrigger value="expenses" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
+                <Receipt className="h-3.5 w-3.5" />
+                経費
+              </TabsTrigger>
+            )}
             <TabsTrigger value="schedule" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
               <CalendarDays className="h-3.5 w-3.5" />
               工程
@@ -304,17 +320,23 @@ export default function CaseDetail({ id }: { id: number }) {
           />
         </TabsContent>
 
-        <TabsContent value="estimates">
-          {activeTab === "estimates" && <EstimatesTab caseId={id} partnerToken={caseData.partnerToken} />}
-        </TabsContent>
+        {!isPartner && (
+          <TabsContent value="estimates">
+            {activeTab === "estimates" && <EstimatesTab caseId={id} partnerToken={caseData.partnerToken} />}
+          </TabsContent>
+        )}
 
-        <TabsContent value="profit">
-          {activeTab === "profit" && <ProfitTab caseData={caseData} onUpdated={() => utils.cases.get.invalidate({ id })} />}
-        </TabsContent>
+        {!isPartner && (
+          <TabsContent value="profit">
+            {activeTab === "profit" && <ProfitTab caseData={caseData} onUpdated={() => utils.cases.get.invalidate({ id })} />}
+          </TabsContent>
+        )}
 
-        <TabsContent value="expenses">
-          {activeTab === "expenses" && <ExpensesTab caseId={id} />}
-        </TabsContent>
+        {!isPartner && (
+          <TabsContent value="expenses">
+            {activeTab === "expenses" && <ExpensesTab caseId={id} />}
+          </TabsContent>
+        )}
 
         <TabsContent value="schedule">
           {activeTab === "schedule" && <ScheduleTab caseId={id} caseData={caseData} />}
@@ -324,7 +346,54 @@ export default function CaseDetail({ id }: { id: number }) {
           {activeTab === "documents" && <DocumentsTab caseId={id} caseData={caseData} />}
         </TabsContent>
       </Tabs>
+
+      {/* 金額承認カード（owner/adminのみ） */}
+      {isOwnerOrAdmin && (
+        <AmountApprovalCard caseId={id} approved={caseData.amountApproved} onUpdated={() => utils.cases.get.invalidate({ id })} />
+      )}
     </div>
+  );
+}
+
+// ============================================================
+// Amount Approval Card (owner/admin only)
+// ============================================================
+function AmountApprovalCard({ caseId, approved, onUpdated }: { caseId: number; approved: boolean; onUpdated: () => void }) {
+  const approveAmount = trpc.cases.approveAmount.useMutation({
+    onSuccess: () => {
+      toast.success(approved ? "金額公開を取り消しました" : "協力業者に金額を公開しました");
+      onUpdated();
+    },
+    onError: () => toast.error("操作に失敗しました"),
+  });
+
+  return (
+    <Card className="border-amber-200 bg-amber-50/50">
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-amber-600" />
+            <span className="text-sm font-medium text-amber-800">協力業者への金額公開</span>
+            {approved ? (
+              <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">公開中</Badge>
+            ) : (
+              <Badge variant="outline" className="text-muted-foreground">非公開</Badge>
+            )}
+          </div>
+          <Button
+            size="sm"
+            variant={approved ? "outline" : "default"}
+            onClick={() => approveAmount.mutate({ id: caseId, approved: !approved })}
+            disabled={approveAmount.isPending}
+          >
+            {approved ? "公開を取り消す" : "金額を公開する"}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">
+          公開すると、この案件に紐付いた協力業者が見積金額・実績金額を閲覧できるようになります。粗利・利益率は常に非表示です。
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 
