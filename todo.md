@@ -935,3 +935,13 @@
 - [x] partnerが変更可能なステータス: 全ステータス（受付/現調中/見積中/施工待ち/施工中/完了/クローズ）
 - [x] フロントエンド: 案件詳細InfoTabにpartner専用ステータス変更Selectを追加（編集ボタンは非表示）
 - [x] 案件一覧のステータスSelectはpartnerでもそのまま使用可能
+
+## ステータス変更履歴タイムライン＋完了時写真・コメント（ユーザー指示）
+- [x] DBスキーマ: statusLogsテーブル作成（caseId, userId, userName, fromStatus, toStatus, comment, photoUrls, createdAt）
+- [x] マイグレーションSQL実行
+- [x] サーバー: statusLogs.listByCase / statusLogs.create プロシージャ
+- [x] サーバー: cases.updateのステータス変更時にstatusLogを自動記録
+- [x] サーバー: 完了報告用プロシージャ（写真アップロード＋コメント＋ステータス変更を一括処理）
+- [x] フロントエンド: 案件詳細にステータス変更タイムラインUIを追加（「履歴」タブ）
+- [x] フロントエンド: 完了ステータス変更時に写真・コメント入力ダイアログを表示
+- [x] テスト実行・動作確認（286テスト全パス）

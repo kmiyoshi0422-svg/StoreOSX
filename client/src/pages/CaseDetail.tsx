@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -297,6 +298,10 @@ export default function CaseDetail({ id }: { id: number }) {
               <Folder className="h-3.5 w-3.5" />
               図面・資料
             </TabsTrigger>
+            <TabsTrigger value="history" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
+              <Clock className="h-3.5 w-3.5" />
+              履歴
+            </TabsTrigger>
           </TabsList>
         </div>
 
@@ -344,6 +349,10 @@ export default function CaseDetail({ id }: { id: number }) {
 
         <TabsContent value="documents">
           {activeTab === "documents" && <DocumentsTab caseId={id} caseData={caseData} />}
+        </TabsContent>
+
+        <TabsContent value="history">
+          {activeTab === "history" && <StatusHistoryTab caseId={id} />}
         </TabsContent>
       </Tabs>
 
@@ -492,28 +501,7 @@ function InfoTab({
 
           {/* Partner向けステータス変更UI */}
           {isPartner && (
-            <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
-              <Label className="text-xs text-muted-foreground whitespace-nowrap">ステータス変更</Label>
-              <Select
-                value={caseData.status}
-                onValueChange={(v) => {
-                  updateMutation.mutate({ id: caseData.id, data: { status: v as any } });
-                }}
-              >
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="受付">受付</SelectItem>
-                  <SelectItem value="現調中">現調中</SelectItem>
-                  <SelectItem value="見積中">見積中</SelectItem>
-                  <SelectItem value="施工待ち">施工待ち</SelectItem>
-                  <SelectItem value="施工中">施工中</SelectItem>
-                  <SelectItem value="完了">完了</SelectItem>
-                  <SelectItem value="クローズ">クローズ</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <PartnerStatusChanger caseId={caseData.id} currentStatus={caseData.status} onUpdated={onUpdated} />
           )}
 
           {editing ? (
@@ -4044,6 +4032,290 @@ function RevisitCard({
                 <Loader2 className="h-4 w-4 animate-spin mr-1" />
               ) : null}
               再訪を記録
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+
+// ============================================================
+// Status History Tab (ステータス変更履歴タイムライン)
+// ============================================================
+function StatusHistoryTab({ caseId }: { caseId: number }) {
+  const { data: logs = [], isLoading } = trpc.statusLogs.listByCase.useQuery({ caseId });
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="p-6 flex items-center justify-center">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (logs.length === 0) {
+    return (
+      <Card>
+        <CardContent className="p-6 text-center text-sm text-muted-foreground">
+          ステータス変更の履歴はまだありません
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardContent className="p-5">
+        <h3 className="font-serif-jp font-semibold mb-4 flex items-center gap-2">
+          <Clock className="h-4 w-4" />
+          ステータス変更履歴
+        </h3>
+        <div className="relative">
+          {/* タイムラインの縦線 */}
+          <div className="absolute left-3 top-2 bottom-2 w-0.5 bg-border" />
+          <div className="space-y-4">
+            {logs.map((log, idx) => {
+              const photoUrls: string[] = log.photoUrls ? JSON.parse(log.photoUrls) : [];
+              return (
+                <div key={log.id} className="relative pl-8">
+                  {/* タイムラインのドット */}
+                  <div className={`absolute left-1.5 top-1.5 w-3 h-3 rounded-full border-2 ${
+                    log.toStatus === '完了' ? 'bg-emerald-500 border-emerald-300' :
+                    log.toStatus === 'クローズ' ? 'bg-gray-500 border-gray-300' :
+                    idx === 0 ? 'bg-blue-500 border-blue-300' : 'bg-muted border-border'
+                  }`} />
+                  <div className="bg-muted/30 border rounded-lg p-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className="text-[10px]">{log.fromStatus ?? '—'}</Badge>
+                        <span className="text-muted-foreground text-xs">→</span>
+                        <Badge className={`text-[10px] ${
+                          log.toStatus === '完了' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+                          log.toStatus === '施工中' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                          'bg-secondary text-secondary-foreground'
+                        }`}>{log.toStatus}</Badge>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                        {new Date(log.createdAt).toLocaleString("ja-JP", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {log.userName ?? '不明'}
+                    </div>
+                    {log.comment && (
+                      <div className="mt-2 text-sm bg-background border rounded p-2">
+                        {log.comment}
+                      </div>
+                    )}
+                    {photoUrls.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {photoUrls.map((url, i) => (
+                          <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                            <img
+                              src={url}
+                              alt={`完了写真 ${i + 1}`}
+                              className="h-16 w-16 object-cover rounded border hover:opacity-80 transition-opacity"
+                            />
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+
+// ============================================================
+// Partner Status Changer (完了時に写真・コメント入力ダイアログ表示)
+// ============================================================
+function PartnerStatusChanger({ caseId, currentStatus, onUpdated }: { caseId: number; currentStatus: string; onUpdated: () => void }) {
+  const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const [comment, setComment] = useState("");
+  const [photos, setPhotos] = useState<{ file: File; preview: string }[]>([]);
+  const [uploading, setUploading] = useState(false);
+
+  const utils = trpc.useUtils();
+  const updateMutation = trpc.cases.update.useMutation({
+    onSuccess: () => {
+      toast.success("ステータスを変更しました");
+      onUpdated();
+      utils.statusLogs.listByCase.invalidate({ caseId });
+    },
+    onError: () => toast.error("ステータス変更に失敗しました"),
+  });
+
+  const completeWithReport = trpc.statusLogs.completeWithReport.useMutation({
+    onSuccess: () => {
+      toast.success("完了報告を送信しました");
+      setShowCompleteDialog(false);
+      setComment("");
+      setPhotos([]);
+      onUpdated();
+      utils.statusLogs.listByCase.invalidate({ caseId });
+    },
+    onError: () => toast.error("完了報告の送信に失敗しました"),
+  });
+
+  const handleStatusChange = (newStatus: string) => {
+    if (newStatus === "完了") {
+      setShowCompleteDialog(true);
+    } else {
+      updateMutation.mutate({ id: caseId, data: { status: newStatus as any } });
+    }
+  };
+
+  const handlePhotoAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const newPhotos = files.map(file => ({
+      file,
+      preview: URL.createObjectURL(file),
+    }));
+    setPhotos(prev => [...prev, ...newPhotos]);
+    e.target.value = "";
+  };
+
+  const handleRemovePhoto = (idx: number) => {
+    setPhotos(prev => {
+      const updated = [...prev];
+      URL.revokeObjectURL(updated[idx].preview);
+      updated.splice(idx, 1);
+      return updated;
+    });
+  };
+
+  const handleSubmitComplete = async () => {
+    setUploading(true);
+    try {
+      // Convert files to base64
+      const photoData = await Promise.all(
+        photos.map(async (p) => {
+          const arrayBuffer = await p.file.arrayBuffer();
+          const base64 = btoa(
+            new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), "")
+          );
+          return {
+            fileName: p.file.name,
+            fileBase64: base64,
+            mimeType: p.file.type || "image/jpeg",
+          };
+        })
+      );
+      completeWithReport.mutate({
+        caseId,
+        comment,
+        photos: photoData,
+      });
+    } catch {
+      toast.error("写真の処理に失敗しました");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+        <Label className="text-xs text-muted-foreground whitespace-nowrap">ステータス変更</Label>
+        <Select value={currentStatus} onValueChange={handleStatusChange}>
+          <SelectTrigger className="w-[140px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="受付">受付</SelectItem>
+            <SelectItem value="現調中">現調中</SelectItem>
+            <SelectItem value="見積中">見積中</SelectItem>
+            <SelectItem value="施工待ち">施工待ち</SelectItem>
+            <SelectItem value="施工中">施工中</SelectItem>
+            <SelectItem value="完了">完了</SelectItem>
+            <SelectItem value="クローズ">クローズ</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* 完了報告ダイアログ */}
+      <Dialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Camera className="h-5 w-5 text-emerald-600" />
+              完了報告
+            </DialogTitle>
+            <DialogDescription>
+              現場の完了写真と報告コメントを入力してください
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* 写真アップロード */}
+            <div>
+              <Label className="text-sm font-medium mb-2 block">完了写真</Label>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {photos.map((p, idx) => (
+                  <div key={idx} className="relative group">
+                    <img
+                      src={p.preview}
+                      alt={`写真 ${idx + 1}`}
+                      className="h-20 w-20 object-cover rounded border"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRemovePhoto(idx)}
+                      className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                <label className="h-20 w-20 border-2 border-dashed rounded flex items-center justify-center cursor-pointer hover:border-primary hover:bg-muted/50 transition-colors">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handlePhotoAdd}
+                  />
+                  <Camera className="h-6 w-6 text-muted-foreground" />
+                </label>
+              </div>
+              <p className="text-[11px] text-muted-foreground">タップして写真を追加（複数選択可）</p>
+            </div>
+
+            {/* コメント */}
+            <div>
+              <Label className="text-sm font-medium mb-2 block">報告コメント</Label>
+              <Textarea
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="施工完了の報告内容を入力してください..."
+                rows={4}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setShowCompleteDialog(false)}>
+              キャンセル
+            </Button>
+            <Button
+              onClick={handleSubmitComplete}
+              disabled={uploading || completeWithReport.isPending || !comment.trim()}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              {(uploading || completeWithReport.isPending) && (
+                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              )}
+              完了報告を送信
             </Button>
           </DialogFooter>
         </DialogContent>

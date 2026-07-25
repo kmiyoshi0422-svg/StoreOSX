@@ -43,6 +43,8 @@ import {
   projectFolderDocuments,
   documentVersions,
   InsertDocumentVersion,
+  statusLogs,
+  InsertStatusLog,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -1396,4 +1398,26 @@ export async function searchDocuments(query: string, opts?: { scope?: "case" | "
     .where(and(...conditions))
     .orderBy(desc(documents.createdAt))
     .limit(opts?.limit || 50);
+}
+
+
+// ============================================================
+// Status Logs (ステータス変更履歴)
+// ============================================================
+export async function listStatusLogsByCase(caseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const { eq, desc } = await import("drizzle-orm");
+  return db
+    .select()
+    .from(statusLogs)
+    .where(eq(statusLogs.caseId, caseId))
+    .orderBy(desc(statusLogs.createdAt));
+}
+
+export async function createStatusLog(data: InsertStatusLog) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const [result] = await db.insert(statusLogs).values(data);
+  return result.insertId;
 }

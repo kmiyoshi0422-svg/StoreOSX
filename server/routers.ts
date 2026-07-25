@@ -109,6 +109,8 @@ import {
   getLatestVersionNumber,
   searchDocuments,
   getDb,
+  listStatusLogsByCase,
+  createStatusLog,
 } from "./db";
 import { estimates as estimatesTable, caseSignatures as caseSignaturesTable, routeAssignments as routeAssignmentsTable, cases as casesTable, partners as partnersTable } from "../drizzle/schema";
 import { makeRequest } from "./_core/map";
@@ -609,6 +611,22 @@ export const appRouter = router({
           if (detected) data.prefecture = detected;
         } else if (data.prefecture != null) {
           data.prefecture = data.prefecture.trim() || null;
+        }
+        // ステータス変更時は履歴を記録
+        if (data.status != null) {
+          const current = await getCaseById(input.id);
+          if (current && current.status !== data.status) {
+            await createStatusLog({
+              caseId: input.id,
+              userId: ctx.user.id,
+              userName: ctx.user.name ?? '不明',
+              fromStatus: current.status,
+              toStatus: data.status,
+              comment: null,
+              photoUrls: null,
+              createdAt: Date.now(),
+            });
+          }
         }
         await updateCase(input.id, data);
                 return { success: true };
@@ -4073,6 +4091,86 @@ JSONスキーマに従って回答してください。`,
           listCrossPartnerRoutes(rangeStart, rangeEnd),
         ]);
         return { schedules, routes };
+      }),
+  }),
+
+  statusLogs: router({
+    listByCase: protectedProcedure
+      .input(z.object({ caseId: z.number() }))
+      .query(async ({ input }) => {
+        return listStatusLogsByCase(input.caseId);
+      }),
+    create: protectedProcedure
+      .input(z.object({
+        caseId: z.number(),
+        toStatus: z.string(),
+        comment: z.string().optional(),
+        photoUrls: z.array(z.string()).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // 現在のステータスを取得
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: 'NOT_FOUND', message: '案件が見つかりません' });
+        const id = await createStatusLog({
+          caseId: input.caseId,
+          userId: ctx.user.id,
+          userName: ctx.user.name ?? '不明',
+          fromStatus: caseData.status,
+          toStatus: input.toStatus,
+          comment: input.comment ?? null,
+          photoUrls: input.photoUrls ? JSON.stringify(input.photoUrls) : null,
+          createdAt: Date.now(),
+        });
+        return { id };
+      }),
+    // 完了報告（ステータス変更＋写真＋コメントを一括処理）
+    completeWithReport: protectedProcedure
+      .input(z.object({
+        caseId: z.number(),
+        comment: z.string(),
+        photos: z.array(z.object({
+          fileName: z.string(),
+          fileBase64: z.string(),
+          mimeType: z.string(),
+        })),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: 'NOT_FOUND', message: '案件が見つかりません' });
+        // 写真をS3にアップロード
+        const uploadedUrls: string[] = [];
+        for (const photo of input.photos) {
+          const base64 = photo.fileBase64.includes(",") ? photo.fileBase64.split(",")[1] : photo.fileBase64;
+          const buffer = Buffer.from(base64, "base64");
+          const ext = photo.fileName.includes(".") ? photo.fileName.split(".").pop() : "jpg";
+          const key = `completion-photos/case-${input.caseId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+          const { url } = await storagePut(key, buffer, photo.mimeType);
+          uploadedUrls.push(url);
+        }
+        // ステータス変更ログを記録
+        await createStatusLog({
+          caseId: input.caseId,
+          userId: ctx.user.id,
+          userName: ctx.user.name ?? '不明',
+          fromStatus: caseData.status,
+          toStatus: '完了',
+          comment: input.comment,
+          photoUrls: JSON.stringify(uploadedUrls),
+          createdAt: Date.now(),
+        });
+        // ステータスを完了に更新
+        const { updateCase } = await import("./db");
+        const { resolveStageStatus } = await import("../shared/stageStatus");
+        const resolved = resolveStageStatus({
+          currentStage: (caseData.progressStage as any) ?? '未対応',
+          currentStatus: (caseData.status as any) ?? '受付',
+          nextStatus: '完了',
+        });
+        await updateCase(input.caseId, {
+          status: resolved.status,
+          progressStage: resolved.progressStage,
+        });
+        return { success: true };
       }),
   }),
 });

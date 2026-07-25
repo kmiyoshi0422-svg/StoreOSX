@@ -592,3 +592,21 @@ export const revisitLogs = mysqlTable("revisit_logs", {
 });
 export type RevisitLog = typeof revisitLogs.$inferSelect;
 export type InsertRevisitLog = typeof revisitLogs.$inferInsert;
+
+
+// ============================================================
+// Status Change Logs (ステータス変更履歴)
+// ============================================================
+export const statusLogs = mysqlTable("status_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("case_id").notNull(),
+  userId: int("user_id"),
+  userName: varchar("user_name", { length: 255 }),
+  fromStatus: varchar("from_status", { length: 50 }),
+  toStatus: varchar("to_status", { length: 50 }).notNull(),
+  comment: text("comment"),
+  photoUrls: text("photo_urls"), // JSON array of photo URLs
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+});
+export type StatusLog = typeof statusLogs.$inferSelect;
+export type InsertStatusLog = typeof statusLogs.$inferInsert;
