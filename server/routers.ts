@@ -3130,6 +3130,148 @@ export const appRouter = router({
           workload: workloadRows,
         };
       }),
+
+    // KPIアラート: 期限超過・期限間近の案件を返す
+    kpiAlerts: protectedProcedure.query(async () => {
+      const allCases = await listCases();
+      const dbInstance = await getDb();
+      if (!dbInstance) return [];
+
+      const allEstimates = await dbInstance.select().from(estimatesTable);
+
+      const now = new Date();
+      const toDate = (v: any) => (v ? new Date(v) : null);
+      const diffDays = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
+
+      // 見積提出日マップ
+      const estByCaseFirst = new Map<number, Date>();
+      for (const e of allEstimates) {
+        const d = toDate(e.createdAt);
+        if (!d) continue;
+        const existing = estByCaseFirst.get(e.caseId);
+        if (!existing || d < existing) estByCaseFirst.set(e.caseId, d);
+      }
+
+      type Alert = {
+        caseId: number;
+        requestNumber: string;
+        storeName: string;
+        kpiType: string;
+        severity: "overdue" | "warning";
+        daysElapsed: number;
+        deadline: number;
+        message: string;
+      };
+
+      const alerts: Alert[] = [];
+
+      for (const c of allCases) {
+        // 完了・クローズは除外
+        if (c.status === "完了" || c.status === "クローズ") continue;
+
+        const reqDate = toDate(c.requestDate) ?? toDate(c.createdAt);
+        if (!reqDate) continue;
+
+        // KPI1: 至急案件の一次対応（surveyDateがない至急案件）
+        if (c.urgency === "S" && !toDate(c.surveyDate)) {
+          const elapsed = diffDays(reqDate, now);
+          if (elapsed >= 1) {
+            alerts.push({
+              caseId: c.id,
+              requestNumber: c.requestNumber,
+              storeName: c.storeName,
+              kpiType: "至急一次対応",
+              severity: elapsed > 1 ? "overdue" : "warning",
+              daysElapsed: elapsed,
+              deadline: 1,
+              message: `至急案件: 依頼から${elapsed}日経過（基準: 当日/翌日）`,
+            });
+          }
+        }
+
+        // KPI2: 見積書提出7日以内（見積未提出の案件）
+        if (!estByCaseFirst.has(c.id)) {
+          const elapsed = diffDays(reqDate, now);
+          if (elapsed >= 5) {
+            alerts.push({
+              caseId: c.id,
+              requestNumber: c.requestNumber,
+              storeName: c.storeName,
+              kpiType: "見積書提出",
+              severity: elapsed > 7 ? "overdue" : "warning",
+              daysElapsed: elapsed,
+              deadline: 7,
+              message: elapsed > 7
+                ? `見積未提出: 依頼から${elapsed}日経過（基準: 7日以内）`
+                : `見積提出期限間近: 残り${7 - elapsed}日`,
+            });
+          }
+        }
+
+        // KPI3: 承認後10日以内の施工完了（承認済だが未完了）
+        if (
+          (c.progressStage === "承認済" || c.status === "施工待ち" || c.status === "施工中") &&
+          !toDate(c.completedAt)
+        ) {
+          const estDate = estByCaseFirst.get(c.id);
+          const approvalDate = estDate ?? reqDate;
+          const elapsed = diffDays(approvalDate, now);
+          if (elapsed >= 7) {
+            alerts.push({
+              caseId: c.id,
+              requestNumber: c.requestNumber,
+              storeName: c.storeName,
+              kpiType: "施工完了",
+              severity: elapsed > 10 ? "overdue" : "warning",
+              daysElapsed: elapsed,
+              deadline: 10,
+              message: elapsed > 10
+                ? `施工未完了: 承認から${elapsed}日経過（基準: 10日以内）`
+                : `施工完了期限間近: 残り${10 - elapsed}日`,
+            });
+          }
+        }
+
+        // KPI4: 施工完了から5日以内の報告書提出（完了しているが報告書未提出）
+        // ※ completedAtがあるがsignatureがない案件 → 別途チェック
+      }
+
+      // KPI4: 完了報告書未提出チェック
+      const allSignatures = await dbInstance.select().from(caseSignaturesTable);
+      const sigByCaseCompletion = new Set<number>();
+      for (const s of allSignatures) {
+        if (s.reportType === "completion") sigByCaseCompletion.add(s.caseId);
+      }
+      for (const c of allCases) {
+        const compDate = toDate(c.completedAt);
+        if (!compDate) continue;
+        if (sigByCaseCompletion.has(c.id)) continue;
+        if (c.status === "クローズ") continue;
+        const elapsed = diffDays(compDate, now);
+        if (elapsed >= 3) {
+          alerts.push({
+            caseId: c.id,
+            requestNumber: c.requestNumber,
+            storeName: c.storeName,
+            kpiType: "完了報告書",
+            severity: elapsed > 5 ? "overdue" : "warning",
+            daysElapsed: elapsed,
+            deadline: 5,
+            message: elapsed > 5
+              ? `報告書未提出: 完了から${elapsed}日経過（基準: 5日以内）`
+              : `報告書提出期限間近: 残り${5 - elapsed}日`,
+          });
+        }
+      }
+
+      // Sort: overdue first, then by daysElapsed desc
+      alerts.sort((a, b) => {
+        if (a.severity !== b.severity) return a.severity === "overdue" ? -1 : 1;
+        return b.daysElapsed - a.daysElapsed;
+      });
+
+      return alerts;
+    }),
   }),
 
   // アプリ設定（AI生成トーン・記入者プリセット等）

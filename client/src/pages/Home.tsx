@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,11 @@ import {
   TrendingDown,
   Wallet,
   Minus,
+  AlertTriangle,
+  Zap,
+  FileText,
+  Wrench,
+  BookCheck,
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -158,6 +164,9 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* KPIアラート */}
+      <KpiAlertSection />
 
       {/* v12: ルート推進＆スケジュール盤 */}
       <ScheduleBoard />
@@ -310,5 +319,106 @@ function KpiCard({
         </p>
       </CardContent>
     </Card>
+  );
+}
+
+// ─── KPI Alert Section ─────────────────────────────────────────
+const KPI_ICONS: Record<string, React.ReactNode> = {
+  "至急一次対応": <Zap className="h-3.5 w-3.5" />,
+  "見積書提出": <FileText className="h-3.5 w-3.5" />,
+  "施工完了": <Wrench className="h-3.5 w-3.5" />,
+  "完了報告書": <BookCheck className="h-3.5 w-3.5" />,
+};
+
+function KpiAlertSection() {
+  const [, setLocation] = useLocation();
+  const { data: alerts = [], isLoading } = trpc.reports.kpiAlerts.useQuery();
+  const [showAll, setShowAll] = useState(false);
+
+  if (isLoading) return null;
+  if (alerts.length === 0) return null;
+
+  const overdueCount = alerts.filter((a) => a.severity === "overdue").length;
+  const warningCount = alerts.filter((a) => a.severity === "warning").length;
+  const displayed = showAll ? alerts : alerts.slice(0, 8);
+
+  return (
+    <div>
+      <div className="flex items-end justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="h-5 w-5 text-red-600" />
+          <div>
+            <h2 className="font-serif-jp text-xl font-semibold">KPIアラート</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              期限超過 <span className="font-bold text-red-600">{overdueCount}件</span>
+              {warningCount > 0 && (
+                <> / 期限間近 <span className="font-bold text-amber-600">{warningCount}件</span></>
+              )}
+            </p>
+          </div>
+        </div>
+        {alerts.length > 8 && (
+          <Button variant="ghost" size="sm" onClick={() => setShowAll(!showAll)}>
+            {showAll ? "折りたたむ" : `すべて表示 (${alerts.length}件)`}
+          </Button>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        {displayed.map((alert, i) => (
+          <button
+            key={`${alert.caseId}-${alert.kpiType}-${i}`}
+            onClick={() => setLocation(`/cases/${alert.caseId}`)}
+            className="w-full text-left group"
+          >
+            <Card className={`transition-all duration-200 hover:shadow-md ${
+              alert.severity === "overdue"
+                ? "border-red-200 bg-red-50/50 hover:border-red-300"
+                : "border-amber-200 bg-amber-50/50 hover:border-amber-300"
+            }`}>
+              <CardContent className="p-3 flex items-center gap-3">
+                {/* Severity indicator */}
+                <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                  alert.severity === "overdue" ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-600"
+                }`}>
+                  {KPI_ICONS[alert.kpiType] || <AlertCircle className="h-3.5 w-3.5" />}
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
+                      alert.severity === "overdue"
+                        ? "border-red-300 text-red-700 bg-red-100"
+                        : "border-amber-300 text-amber-700 bg-amber-100"
+                    }`}>
+                      {alert.severity === "overdue" ? "超過" : "間近"}
+                    </Badge>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                      {alert.kpiType}
+                    </Badge>
+                    <span className="text-[11px] text-muted-foreground font-mono">{alert.requestNumber}</span>
+                  </div>
+                  <p className="text-sm font-medium truncate">{alert.storeName}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{alert.message}</p>
+                </div>
+
+                {/* Days badge */}
+                <div className={`flex-shrink-0 text-center px-2 py-1 rounded ${
+                  alert.severity === "overdue" ? "bg-red-100" : "bg-amber-100"
+                }`}>
+                  <p className={`text-lg font-bold ${
+                    alert.severity === "overdue" ? "text-red-700" : "text-amber-700"
+                  }`}>{alert.daysElapsed}</p>
+                  <p className="text-[10px] text-muted-foreground">日経過</p>
+                </div>
+
+                <ArrowUpRight className="h-4 w-4 text-muted-foreground/50 group-hover:text-primary flex-shrink-0" />
+              </CardContent>
+            </Card>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
