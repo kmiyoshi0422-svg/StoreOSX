@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean, unique } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean, unique, index } from "drizzle-orm/mysql-core";
 
 /**
  * ユーザーテーブル（OAuth認証）
@@ -105,7 +105,13 @@ export const cases = mysqlTable("cases", {
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (t) => ({
+  statusCreatedIdx: index("idx_cases_status_created").on(t.status, t.createdAt),
+  progressStageIdx: index("idx_cases_progress_stage").on(t.progressStage),
+  assigneeIdx: index("idx_cases_assignee").on(t.assigneeId),
+  brandIdx: index("idx_cases_brand").on(t.brand),
+  partnerIdx: index("idx_cases_partner").on(t.partnerId),
+}));
 export type Case = typeof cases.$inferSelect;
 export type InsertCase = typeof cases.$inferInsert;
 
@@ -125,7 +131,9 @@ export const checklistItems = mysqlTable("checklist_items", {
   memo: text("memo"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (t) => ({
+  caseIdx: index("idx_checklist_case").on(t.caseId),
+}));
 
 export type ChecklistItem = typeof checklistItems.$inferSelect;
 export type InsertChecklistItem = typeof checklistItems.$inferInsert;
@@ -165,7 +173,9 @@ export const photos = mysqlTable("photos", {
   uploadedBy: int("uploadedBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (t) => ({
+  caseIdx: index("idx_photos_case").on(t.caseId),
+}));
 
 export type Photo = typeof photos.$inferSelect;
 export type InsertPhoto = typeof photos.$inferInsert;
@@ -239,7 +249,9 @@ export const estimates = mysqlTable("estimates", {
   uploadedBy: int("uploadedBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (t) => ({
+  caseIdx: index("idx_estimates_case").on(t.caseId),
+}));
 
 export type Estimate = typeof estimates.$inferSelect;
 export type InsertEstimate = typeof estimates.$inferInsert;
@@ -259,7 +271,11 @@ export const routeAssignments = mysqlTable("route_assignments", {
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (t) => ({
+  caseIdx: index("idx_routes_case").on(t.caseId),
+  dateIdx: index("idx_routes_date").on(t.scheduledDate),
+  teamDateIdx: index("idx_routes_team_date").on(t.team, t.scheduledDate),
+}));
 
 export type RouteAssignment = typeof routeAssignments.$inferSelect;
 export type InsertRouteAssignment = typeof routeAssignments.$inferInsert;
@@ -328,7 +344,9 @@ export const expenses = mysqlTable("expenses", {
   uploadedBy: int("uploadedBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (t) => ({
+  caseIdx: index("idx_expenses_case").on(t.caseId),
+}));
 
 export type Expense = typeof expenses.$inferSelect;
 export type InsertExpense = typeof expenses.$inferInsert;
@@ -409,7 +427,10 @@ export const caseSchedules = mysqlTable("case_schedules", {
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (t) => ({
+  caseIdx: index("idx_schedules_case").on(t.caseId),
+  datesIdx: index("idx_schedules_dates").on(t.startDate, t.endDate),
+}));
 export type CaseSchedule = typeof caseSchedules.$inferSelect;
 export type InsertCaseSchedule = typeof caseSchedules.$inferInsert;
 
@@ -505,7 +526,9 @@ export const documents = mysqlTable("documents", {
   uploadedBy: int("uploadedBy"),
   isLocked: int("isLocked").default(0).notNull(), // 1 = locked (restricted access)
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => ({
+  caseIdx: index("idx_documents_case").on(t.caseId),
+}));
 export type Document = typeof documents.$inferSelect;
 export type InsertDocument = typeof documents.$inferInsert;
 

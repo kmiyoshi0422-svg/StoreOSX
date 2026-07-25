@@ -26,7 +26,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useLocation } from "wouter";
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useDebounce } from "@/hooks/useDebounce";
 import {
   Plus,
@@ -320,6 +321,21 @@ export default function CasesList() {
       .sort((a, b) => regionSortIndex(a.label) - regionSortIndex(b.label));
   }, [prefGroups]);
 
+  // 仮想スクロール（compact / table モード用）
+  const scrollParentRef = useRef<HTMLDivElement>(null);
+  const compactVirtualizer = useVirtualizer({
+    count: filtered.length,
+    getScrollElement: () => scrollParentRef.current,
+    estimateSize: () => 44, // compact行の推定高さ(px)
+    overscan: 10,
+  });
+  const tableVirtualizer = useVirtualizer({
+    count: filtered.length,
+    getScrollElement: () => scrollParentRef.current,
+    estimateSize: () => 40, // table行の推定高さ(px)
+    overscan: 10,
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex items-end justify-between border-b border-border/60 pb-6">
@@ -605,58 +621,78 @@ export default function CasesList() {
       ) : viewMode === "card" ? (
         <div className="grid gap-3">{filtered.map((c) => renderCard(c))}</div>
       ) : viewMode === "compact" ? (
-        <div className="divide-y border rounded-lg overflow-hidden bg-card">
-          {filtered.map((c) => {
-            const stage = (c.progressStage as ProgressStage) ?? "未対応";
-            const assigneeUser = c.assigneeId ? userMap.get(c.assigneeId) : null;
-            return (
-              <div
-                key={c.id}
-                className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 cursor-pointer transition-colors"
-                onClick={() => setLocation(`/cases/${c.id}`)}
-              >
-                <span className={`inline-flex h-5 min-w-5 px-1 items-center justify-center rounded text-[9px] font-bold ${URGENCY_COLORS[c.urgency]}`}>
-                  {c.urgency}
-                </span>
-                <Select
-                  value={c.status}
-                  onValueChange={(v) => handleStatusChange(c.id, v)}
+        <div
+          ref={scrollParentRef}
+          className="border rounded-lg overflow-y-auto bg-card"
+          style={{ height: "calc(100vh - 320px)" }}
+        >
+          <div
+            style={{ height: `${compactVirtualizer.getTotalSize()}px`, position: "relative" }}
+          >
+            {compactVirtualizer.getVirtualItems().map((virtualRow) => {
+              const c = filtered[virtualRow.index];
+              const assigneeUser = c.assigneeId ? userMap.get(c.assigneeId) : null;
+              return (
+                <div
+                  key={c.id}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    height: `${virtualRow.size}px`,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 cursor-pointer transition-colors border-b"
+                  onClick={() => setLocation(`/cases/${c.id}`)}
                 >
-                  <SelectTrigger
-                    className={`h-6 w-auto min-w-[70px] px-2 text-[9px] font-medium border ${STATUS_COLORS[c.status]} shrink-0`}
-                    onClick={(e) => e.stopPropagation()}
+                  <span className={`inline-flex h-5 min-w-5 px-1 items-center justify-center rounded text-[9px] font-bold ${URGENCY_COLORS[c.urgency]}`}>
+                    {c.urgency}
+                  </span>
+                  <Select
+                    value={c.status}
+                    onValueChange={(v) => handleStatusChange(c.id, v)}
                   >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CASE_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s} className="text-xs">
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <span className="text-sm font-medium truncate min-w-0 flex-1">{c.storeName}</span>
-                <span className="text-[11px] text-muted-foreground font-mono shrink-0 hidden sm:inline">{c.requestNumber}</span>
-                {c.plenusQuoteAmount != null && (
-                  <span className="text-xs font-mono text-emerald-700 shrink-0">¥{c.plenusQuoteAmount.toLocaleString()}</span>
-                )}
-                {assigneeUser && (
-                  <Avatar className="h-6 w-6 shrink-0">
-                    <AvatarFallback className={`text-[9px] font-semibold ${avatarColor(assigneeUser.id)}`}>
-                      {userInitials(assigneeUser.name, assigneeUser.email)}
-                    </AvatarFallback>
-                  </Avatar>
-                )}
-                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-              </div>
-            );
-          })}
+                    <SelectTrigger
+                      className={`h-6 w-auto min-w-[70px] px-2 text-[9px] font-medium border ${STATUS_COLORS[c.status]} shrink-0`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CASE_STATUSES.map((s) => (
+                        <SelectItem key={s} value={s} className="text-xs">
+                          {s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span className="text-sm font-medium truncate min-w-0 flex-1">{c.storeName}</span>
+                  <span className="text-[11px] text-muted-foreground font-mono shrink-0 hidden sm:inline">{c.requestNumber}</span>
+                  {c.plenusQuoteAmount != null && (
+                    <span className="text-xs font-mono text-emerald-700 shrink-0">¥{c.plenusQuoteAmount.toLocaleString()}</span>
+                  )}
+                  {assigneeUser && (
+                    <Avatar className="h-6 w-6 shrink-0">
+                      <AvatarFallback className={`text-[9px] font-semibold ${avatarColor(assigneeUser.id)}`}>
+                        {userInitials(assigneeUser.name, assigneeUser.email)}
+                      </AvatarFallback>
+                    </Avatar>
+                  )}
+                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : (
-        <div className="border rounded-lg overflow-x-auto bg-card">
+        <div
+          ref={scrollParentRef}
+          className="border rounded-lg overflow-y-auto bg-card"
+          style={{ height: "calc(100vh - 320px)" }}
+        >
           <table className="w-full text-sm">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-card">
               <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
                 <th className="px-3 py-2 text-left font-medium">緑急</th>
                 <th className="px-3 py-2 text-left font-medium">ステータス</th>
@@ -668,49 +704,49 @@ export default function CasesList() {
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
-            <tbody className="divide-y">
-              {filtered.map((c) => {
-                const assigneeUser = c.assigneeId ? userMap.get(c.assigneeId) : null;
-                return (
-                  <tr key={c.id} className="hover:bg-muted/30 cursor-pointer transition-colors" onClick={() => setLocation(`/cases/${c.id}`)}>
-                    <td className="px-3 py-2">
-                      <span className={`inline-flex h-5 min-w-5 px-1 items-center justify-center rounded text-[9px] font-bold ${URGENCY_COLORS[c.urgency]}`}>{c.urgency}</span>
-                    </td>
-                    <td className="px-3 py-2">
-                      <Select
-                        value={c.status}
-                        onValueChange={(v) => handleStatusChange(c.id, v)}
+            <tbody>
+              <tr style={{ height: `${tableVirtualizer.getTotalSize()}px` }}>
+                <td colSpan={8} style={{ padding: 0, position: "relative" }}>
+                  {tableVirtualizer.getVirtualItems().map((virtualRow) => {
+                    const c = filtered[virtualRow.index];
+                    const assigneeUser = c.assigneeId ? userMap.get(c.assigneeId) : null;
+                    return (
+                      <div
+                        key={c.id}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          height: `${virtualRow.size}px`,
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                        className="flex items-center hover:bg-muted/30 cursor-pointer transition-colors border-b text-sm"
+                        onClick={() => setLocation(`/cases/${c.id}`)}
                       >
-                        <SelectTrigger
-                          className={`h-6 w-auto min-w-[70px] px-2 text-[9px] font-medium border ${STATUS_COLORS[c.status]}`}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CASE_STATUSES.map((s) => (
-                            <SelectItem key={s} value={s} className="text-xs">
-                              {s}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="px-3 py-2 font-medium truncate max-w-[200px]">{c.storeName}</td>
-                    <td className="px-3 py-2 font-mono text-xs text-muted-foreground hidden md:table-cell">{c.requestNumber}</td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground hidden lg:table-cell">{c.categoryLarge || "—"}</td>
-                    <td className="px-3 py-2 text-right font-mono text-xs">{c.plenusQuoteAmount != null ? `¥${c.plenusQuoteAmount.toLocaleString()}` : "—"}</td>
-                    <td className="px-3 py-2 hidden sm:table-cell">
-                      {assigneeUser ? (
-                        <span className="text-xs">{assigneeUser.name || assigneeUser.email}</span>
-                      ) : (
-                        <span className="text-xs text-amber-600">未割当</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2"><ChevronRight className="h-4 w-4 text-muted-foreground" /></td>
-                  </tr>
-                );
-              })}
+                        <span className="px-3 py-2 w-[60px] shrink-0">
+                          <span className={`inline-flex h-5 min-w-5 px-1 items-center justify-center rounded text-[9px] font-bold ${URGENCY_COLORS[c.urgency]}`}>{c.urgency}</span>
+                        </span>
+                        <span className="px-3 py-2 w-[100px] shrink-0">
+                          <span className={`inline-block h-6 px-2 text-[9px] font-medium border rounded leading-6 ${STATUS_COLORS[c.status]}`}>{c.status}</span>
+                        </span>
+                        <span className="px-3 py-2 font-medium truncate flex-1 min-w-0">{c.storeName}</span>
+                        <span className="px-3 py-2 font-mono text-xs text-muted-foreground w-[120px] shrink-0 hidden md:inline">{c.requestNumber}</span>
+                        <span className="px-3 py-2 text-xs text-muted-foreground w-[100px] shrink-0 hidden lg:inline">{c.categoryLarge || "—"}</span>
+                        <span className="px-3 py-2 text-right font-mono text-xs w-[100px] shrink-0">{c.plenusQuoteAmount != null ? `¥${c.plenusQuoteAmount.toLocaleString()}` : "—"}</span>
+                        <span className="px-3 py-2 w-[80px] shrink-0 hidden sm:inline">
+                          {assigneeUser ? (
+                            <span className="text-xs">{assigneeUser.name || assigneeUser.email}</span>
+                          ) : (
+                            <span className="text-xs text-amber-600">未割当</span>
+                          )}
+                        </span>
+                        <span className="px-3 py-2 w-[40px] shrink-0"><ChevronRight className="h-4 w-4 text-muted-foreground" /></span>
+                      </div>
+                    );
+                  })}
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
