@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, like, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lte, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   cases,
@@ -45,6 +45,10 @@ import {
   InsertDocumentVersion,
   statusLogs,
   InsertStatusLog,
+  storeMaster,
+  InsertStoreMaster,
+  surveySkipLogs,
+  InsertSurveySkipLog,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -1420,4 +1424,154 @@ export async function createStatusLog(data: InsertStatusLog) {
   if (!db) throw new Error("DB not available");
   const [result] = await db.insert(statusLogs).values(data);
   return result.insertId;
+}
+
+
+// ============================================================
+// Store Master (店舗マスタ)
+// ============================================================
+export async function listStoreMaster() {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(storeMaster)
+    .orderBy(storeMaster.brand, storeMaster.storeName);
+}
+
+export async function getStoreMasterById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(storeMaster).where(eq(storeMaster.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getStoreMasterByCode(storeCode: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select()
+    .from(storeMaster)
+    .where(eq(storeMaster.storeCode, storeCode))
+    .limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function createStoreMaster(data: InsertStoreMaster) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(storeMaster).values(data).$returningId();
+  return result[0].id;
+}
+
+export async function updateStoreMaster(id: number, data: Partial<InsertStoreMaster>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(storeMaster).set(data).where(eq(storeMaster.id, id));
+}
+
+export async function deleteStoreMaster(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(storeMaster).where(eq(storeMaster.id, id));
+}
+
+// ============================================================
+// 過去案件・写真取得（同一店舗の履歴参照）
+// ============================================================
+export async function listCasesByStoreId(storeId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: cases.id,
+      requestNumber: cases.requestNumber,
+      storeName: cases.storeName,
+      categoryLarge: cases.categoryLarge,
+      categoryMedium: cases.categoryMedium,
+      requestContent: cases.requestContent,
+      progressStage: cases.progressStage,
+      status: cases.status,
+      surveyDate: cases.surveyDate,
+      constructionDate: cases.constructionDate,
+      completedAt: cases.completedAt,
+      createdAt: cases.createdAt,
+    })
+    .from(cases)
+    .where(eq(cases.storeId, storeId))
+    .orderBy(desc(cases.createdAt));
+}
+
+export async function listPhotosByStoreId(storeId: number, limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: photos.id,
+      caseId: photos.caseId,
+      fileKey: photos.fileKey,
+      photoType: photos.photoType,
+      workCategory: photos.workCategory,
+      workItem: photos.workItem,
+      memo: photos.memo,
+      takenAt: photos.takenAt,
+      createdAt: photos.createdAt,
+    })
+    .from(photos)
+    .innerJoin(cases, eq(photos.caseId, cases.id))
+    .where(eq(cases.storeId, storeId))
+    .orderBy(desc(photos.createdAt))
+    .limit(limit);
+}
+
+// ============================================================
+// Survey Skip Logs (現調スキップ記録)
+// ============================================================
+export async function createSurveySkipLog(data: InsertSurveySkipLog) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(surveySkipLogs).values(data).$returningId();
+  return result[0].id;
+}
+
+export async function listSurveySkipLogsByCase(caseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(surveySkipLogs)
+    .where(eq(surveySkipLogs.caseId, caseId))
+    .orderBy(desc(surveySkipLogs.createdAt));
+}
+
+export async function getSurveySkipStats() {
+  const db = await getDb();
+  if (!db) return { totalSkips: 0, totalCases: 0, skipRate: 0, byReason: [] };
+
+  // 全案件数
+  const totalResult = await db.select({ cnt: count() }).from(cases);
+  const totalCases = totalResult[0]?.cnt ?? 0;
+
+  // スキップ件数（ユニークcaseId）
+  const skipResult = await db
+    .select({ cnt: sql<number>`COUNT(DISTINCT ${surveySkipLogs.caseId})` })
+    .from(surveySkipLogs);
+  const totalSkips = skipResult[0]?.cnt ?? 0;
+
+  // 理由別集計
+  const byReason = await db
+    .select({
+      reason: surveySkipLogs.reason,
+      cnt: count(),
+    })
+    .from(surveySkipLogs)
+    .groupBy(surveySkipLogs.reason)
+    .orderBy(desc(count()));
+
+  return {
+    totalSkips,
+    totalCases,
+    skipRate: totalCases > 0 ? Math.round((totalSkips / totalCases) * 100) : 0,
+    byReason,
+  };
 }

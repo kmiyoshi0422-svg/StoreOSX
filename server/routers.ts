@@ -111,6 +111,17 @@ import {
   getDb,
   listStatusLogsByCase,
   createStatusLog,
+  listStoreMaster,
+  getStoreMasterById,
+  getStoreMasterByCode,
+  createStoreMaster,
+  updateStoreMaster,
+  deleteStoreMaster,
+  listCasesByStoreId,
+  listPhotosByStoreId,
+  createSurveySkipLog,
+  listSurveySkipLogsByCase,
+  getSurveySkipStats,
 } from "./db";
 import { estimates as estimatesTable, caseSignatures as caseSignaturesTable, routeAssignments as routeAssignmentsTable, cases as casesTable, partners as partnersTable } from "../drizzle/schema";
 import { makeRequest } from "./_core/map";
@@ -203,6 +214,7 @@ const caseInputSchema = z.object({
   contractorPic: z.string().nullish(),
   contractorPhone: z.string().nullish(),
   partnerId: z.number().int().nullish(),
+  storeId: z.number().int().nullish(),
   status: z
     .enum(["受付", "現調中", "見積中", "施工待ち", "施工中", "完了", "クローズ"])
     .default("受付"),
@@ -4172,6 +4184,118 @@ JSONスキーマに従って回答してください。`,
         });
         return { success: true };
       }),
+  }),
+  // ============================================================
+  // Store Master (店舗マスタ)
+  // ============================================================
+  storeMaster: router({
+    list: protectedProcedure.query(async () => {
+      return listStoreMaster();
+    }),
+    get: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        return getStoreMasterById(input.id);
+      }),
+    getByCode: protectedProcedure
+      .input(z.object({ storeCode: z.string() }))
+      .query(async ({ input }) => {
+        return getStoreMasterByCode(input.storeCode);
+      }),
+    create: protectedProcedure
+      .input(z.object({
+        storeCode: z.string().nullish(),
+        storeName: z.string().min(1),
+        brand: z.enum(["ほっともっと", "やよい軒", "その他"]).default("ほっともっと"),
+        prefecture: z.string().nullish(),
+        address: z.string().nullish(),
+        phone: z.string().nullish(),
+        businessHours: z.string().nullish(),
+        floorPlanUrl: z.string().nullish(),
+        equipmentNotes: z.string().nullish(),
+        accessNotes: z.string().nullish(),
+        keyNotes: z.string().nullish(),
+      }))
+      .mutation(async ({ input }) => {
+        const id = await createStoreMaster(input);
+        return { id };
+      }),
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        storeCode: z.string().nullish(),
+        storeName: z.string().min(1).optional(),
+        brand: z.enum(["ほっともっと", "やよい軒", "その他"]).optional(),
+        prefecture: z.string().nullish(),
+        address: z.string().nullish(),
+        phone: z.string().nullish(),
+        businessHours: z.string().nullish(),
+        floorPlanUrl: z.string().nullish(),
+        equipmentNotes: z.string().nullish(),
+        accessNotes: z.string().nullish(),
+        keyNotes: z.string().nullish(),
+        lastSurveyDate: z.date().nullish(),
+        totalSurveyCount: z.number().int().optional(),
+        totalCaseCount: z.number().int().optional(),
+        totalPhotoCount: z.number().int().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        await updateStoreMaster(id, data);
+        return { success: true };
+      }),
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteStoreMaster(input.id);
+        return { success: true };
+      }),
+    pastCases: protectedProcedure
+      .input(z.object({ storeId: z.number() }))
+      .query(async ({ input }) => {
+        return listCasesByStoreId(input.storeId);
+      }),
+    pastPhotos: protectedProcedure
+      .input(z.object({ storeId: z.number(), limit: z.number().int().optional() }))
+      .query(async ({ input }) => {
+        return listPhotosByStoreId(input.storeId, input.limit ?? 50);
+      }),
+  }),
+  // ============================================================
+  // Survey Skip (現調スキップ)
+  // ============================================================
+  surveySkip: router({
+    create: protectedProcedure
+      .input(z.object({
+        caseId: z.number(),
+        storeId: z.number().nullish(),
+        reason: z.enum([
+          "過去写真で判断可能",
+          "図面あり",
+          "軽微な修理",
+          "リピート案件",
+          "電話ヒアリング済",
+          "その他",
+        ]),
+        reasonDetail: z.string().nullish(),
+        referenceCaseId: z.number().nullish(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const id = await createSurveySkipLog({
+          ...input,
+          decidedBy: ctx.user.id,
+          decidedByName: ctx.user.name ?? '不明',
+        });
+        return { id };
+      }),
+    listByCase: protectedProcedure
+      .input(z.object({ caseId: z.number() }))
+      .query(async ({ input }) => {
+        return listSurveySkipLogsByCase(input.caseId);
+      }),
+    stats: protectedProcedure.query(async () => {
+      return getSurveySkipStats();
+    }),
   }),
 });
 export type AppRouter = typeof appRouter;

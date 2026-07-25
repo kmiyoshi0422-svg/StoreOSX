@@ -38,7 +38,14 @@ export function registerStorageProxy(app: Express) {
         return;
       }
 
-      res.set("Cache-Control", "no-store");
+      // 画像ファイルはimmutable（一度アップロードされたら変更されない）ため長期キャッシュ
+      const isImage = /\.(jpg|jpeg|png|gif|webp|svg|heic)$/i.test(key);
+      res.set(
+        "Cache-Control",
+        isImage
+          ? "public, max-age=31536000, immutable"
+          : "public, max-age=300"
+      );
       res.redirect(307, url);
     } catch (err) {
       console.error("[StorageProxy] failed:", err);

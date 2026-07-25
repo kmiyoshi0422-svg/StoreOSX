@@ -88,6 +88,8 @@ import {
   ShieldCheck,
   Minus as MinusIcon,
   Plus as PlusIcon,
+  Building2,
+  SkipForward,
 } from "lucide-react";
 import { generateQuotePDF, generateCompletionReportPDF } from "@/lib/documentPdf";
 import { PdfPreviewModal } from "@/components/PdfPreviewModal";
@@ -302,6 +304,12 @@ export default function CaseDetail({ id }: { id: number }) {
               <Clock className="h-3.5 w-3.5" />
               履歴
             </TabsTrigger>
+            {!isPartner && (caseData as any).storeId && (
+              <TabsTrigger value="storeHistory" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
+                <Building2 className="h-3.5 w-3.5" />
+                店舗履歴
+              </TabsTrigger>
+            )}
           </TabsList>
         </div>
 
@@ -354,6 +362,12 @@ export default function CaseDetail({ id }: { id: number }) {
         <TabsContent value="history">
           {activeTab === "history" && <StatusHistoryTab caseId={id} />}
         </TabsContent>
+
+        {!isPartner && (caseData as any).storeId && (
+          <TabsContent value="storeHistory">
+            {activeTab === "storeHistory" && <StoreHistoryTab storeId={(caseData as any).storeId} currentCaseId={id} />}
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* 金額承認カード（owner/adminのみ） */}
@@ -812,6 +826,10 @@ function InfoTab({
       </Card>
       {/* 再訪記録カード */}
       <RevisitCard caseId={caseData.id} revisitCount={(caseData as any).revisitCount ?? 0} onUpdated={onUpdated} />
+      {/* 現調スキップカード */}
+      {!isPartner && (
+        <SurveySkipCard caseId={caseData.id} storeId={(caseData as any).storeId ?? null} progressStage={(caseData as any).progressStage ?? '未対応'} />
+      )}
     </div>
   );
 }
@@ -4321,5 +4339,340 @@ function PartnerStatusChanger({ caseId, currentStatus, onUpdated }: { caseId: nu
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+
+// ============================================================
+// Store History Tab (店舗履歴タブ - 同一店舗の過去案件・写真)
+// ============================================================
+function StoreHistoryTab({ storeId, currentCaseId }: { storeId: number; currentCaseId: number }) {
+  const { data: pastCases = [], isLoading: casesLoading } = trpc.storeMaster.pastCases.useQuery({ storeId });
+  const { data: pastPhotos = [], isLoading: photosLoading } = trpc.storeMaster.pastPhotos.useQuery({ storeId, limit: 30 });
+  const { data: storeInfo } = trpc.storeMaster.get.useQuery({ id: storeId });
+  const lightbox = useLightbox();
+  const lightboxItems = useMemo(
+    () => pastPhotos.map((p) => ({
+      url: `/api/storage/${p.fileKey}`,
+      title: [p.photoType, p.workItem].filter(Boolean).join(" / "),
+      subtitle: p.memo ?? undefined,
+    })),
+    [pastPhotos]
+  );
+
+  const otherCases = pastCases.filter((c) => c.id !== currentCaseId);
+
+  if (casesLoading || photosLoading) {
+    return (
+      <Card>
+        <CardContent className="p-6 flex items-center justify-center">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* 店舗情報サマリ */}
+      {storeInfo && (
+        <Card>
+          <CardContent className="p-5">
+            <h3 className="font-serif-jp font-semibold flex items-center gap-2 mb-3">
+              <Building2 className="h-4 w-4" />
+              {storeInfo.storeName}
+              <Badge variant="outline" className="text-[10px]">{storeInfo.brand}</Badge>
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+              <div>
+                <span className="text-muted-foreground text-xs">累計案件</span>
+                <p className="font-semibold">{storeInfo.totalCaseCount}件</p>
+              </div>
+              <div>
+                <span className="text-muted-foreground text-xs">累計現調</span>
+                <p className="font-semibold">{storeInfo.totalSurveyCount}回</p>
+              </div>
+              <div>
+                <span className="text-muted-foreground text-xs">累計写真</span>
+                <p className="font-semibold">{storeInfo.totalPhotoCount}枚</p>
+              </div>
+              <div>
+                <span className="text-muted-foreground text-xs">最終現調</span>
+                <p className="font-semibold">
+                  {storeInfo.lastSurveyDate
+                    ? new Date(storeInfo.lastSurveyDate).toLocaleDateString("ja-JP")
+                    : "—"}
+                </p>
+              </div>
+            </div>
+            {(storeInfo.equipmentNotes || storeInfo.accessNotes || storeInfo.keyNotes) && (
+              <div className="mt-3 pt-3 border-t space-y-2 text-sm">
+                {storeInfo.equipmentNotes && (
+                  <div>
+                    <span className="text-muted-foreground text-xs">設備メモ:</span>
+                    <p className="text-xs mt-0.5">{storeInfo.equipmentNotes}</p>
+                  </div>
+                )}
+                {storeInfo.accessNotes && (
+                  <div>
+                    <span className="text-muted-foreground text-xs">アクセス:</span>
+                    <p className="text-xs mt-0.5">{storeInfo.accessNotes}</p>
+                  </div>
+                )}
+                {storeInfo.keyNotes && (
+                  <div>
+                    <span className="text-muted-foreground text-xs">鍵情報:</span>
+                    <p className="text-xs mt-0.5">{storeInfo.keyNotes}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 過去案件一覧 */}
+      <Card>
+        <CardContent className="p-5">
+          <h3 className="font-serif-jp font-semibold flex items-center gap-2 mb-3">
+            <FileText className="h-4 w-4" />
+            同一店舗の過去案件
+            <Badge variant="secondary" className="text-[10px]">{otherCases.length}件</Badge>
+          </h3>
+          {otherCases.length === 0 ? (
+            <p className="text-sm text-muted-foreground">この店舗の他の案件はありません</p>
+          ) : (
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {otherCases.map((c) => (
+                <a
+                  key={c.id}
+                  href={`/cases/${c.id}`}
+                  className="block border rounded-lg p-3 hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-mono text-muted-foreground">{c.requestNumber}</span>
+                        <Badge variant="outline" className="text-[10px]">{c.progressStage}</Badge>
+                        <Badge variant="outline" className="text-[10px]">{c.status}</Badge>
+                      </div>
+                      <p className="text-sm mt-1 truncate">{c.requestContent || c.categoryLarge || "—"}</p>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                      {new Date(c.createdAt).toLocaleDateString("ja-JP")}
+                    </span>
+                  </div>
+                </a>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 過去写真ギャラリー */}
+      <Card>
+        <CardContent className="p-5">
+          <h3 className="font-serif-jp font-semibold flex items-center gap-2 mb-3">
+            <ImageIcon className="h-4 w-4" />
+            同一店舗の写真
+            <Badge variant="secondary" className="text-[10px]">{pastPhotos.length}枚</Badge>
+          </h3>
+          {pastPhotos.length === 0 ? (
+            <p className="text-sm text-muted-foreground">この店舗の写真はまだありません</p>
+          ) : (
+            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
+              {pastPhotos.map((photo, idx) => (
+                <div
+                  key={photo.id}
+                  className="relative aspect-square rounded-md overflow-hidden border cursor-pointer hover:ring-2 ring-primary transition-all"
+                  onClick={() => lightbox.open(idx)}
+                >
+                  <img
+                    src={`/api/storage/${photo.fileKey}`}
+                    alt={photo.memo || photo.photoType || "写真"}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                  {photo.photoType && (
+                    <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[8px] text-center py-0.5 truncate">
+                      {photo.photoType}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Lightbox
+        items={lightboxItems}
+        index={lightbox.index}
+        onClose={lightbox.close}
+        onIndexChange={lightbox.setIndex}
+      />
+    </div>
+  );
+}
+
+// ============================================================
+// Survey Skip Card (現調スキップ判断カード)
+// ============================================================
+const SKIP_REASONS = [
+  { value: "過去写真で判断可能", label: "過去写真で判断可能", color: "bg-blue-100 text-blue-800" },
+  { value: "図面あり", label: "図面あり", color: "bg-green-100 text-green-800" },
+  { value: "軽微な修理", label: "軽微な修理", color: "bg-yellow-100 text-yellow-800" },
+  { value: "リピート案件", label: "リピート案件", color: "bg-purple-100 text-purple-800" },
+  { value: "電話ヒアリング済", label: "電話ヒアリング済", color: "bg-orange-100 text-orange-800" },
+  { value: "その他", label: "その他", color: "bg-slate-100 text-slate-800" },
+] as const;
+
+function SurveySkipCard({
+  caseId,
+  storeId,
+  progressStage,
+}: {
+  caseId: number;
+  storeId: number | null;
+  progressStage: string;
+}) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedReason, setSelectedReason] = useState<string>("");
+  const [reasonDetail, setReasonDetail] = useState("");
+  const utils = trpc.useUtils();
+
+  const { data: skipLogs = [] } = trpc.surveySkip.listByCase.useQuery({ caseId });
+
+  const createSkip = trpc.surveySkip.create.useMutation({
+    onSuccess: () => {
+      toast.success("現調スキップを記録しました");
+      setDialogOpen(false);
+      setSelectedReason("");
+      setReasonDetail("");
+      utils.surveySkip.listByCase.invalidate({ caseId });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const handleSubmit = () => {
+    if (!selectedReason) {
+      toast.error("スキップ理由を選択してください");
+      return;
+    }
+    createSkip.mutate({
+      caseId,
+      storeId,
+      reason: selectedReason as any,
+      reasonDetail: reasonDetail || undefined,
+    });
+  };
+
+  // 未対応ステージのみスキップ操作を表示
+  const canSkip = progressStage === "未対応";
+
+  return (
+    <Card className="col-span-full lg:col-span-2">
+      <CardContent className="p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-serif-jp font-semibold flex items-center gap-2">
+            <SkipForward className="h-4 w-4" />
+            現調スキップ
+          </h3>
+          {skipLogs.length === 0 && (
+            <Badge variant="outline" className="border-slate-300 text-slate-600 bg-slate-50 text-[10px]">
+              スキップなし
+            </Badge>
+          )}
+          {skipLogs.length > 0 && (
+            <Badge variant="outline" className="border-emerald-300 text-emerald-700 bg-emerald-50 text-[10px]">
+              <ShieldCheck className="h-3 w-3 mr-1" />
+              現調省略済
+            </Badge>
+          )}
+        </div>
+
+        {/* スキップ履歴 */}
+        {skipLogs.length > 0 && (
+          <div className="space-y-2">
+            {skipLogs.map((log) => {
+              const reasonDef = SKIP_REASONS.find(r => r.value === log.reason);
+              return (
+                <div key={log.id} className="flex items-center justify-between gap-2 text-sm border rounded-md p-2">
+                  <div className="flex items-center gap-2">
+                    <Badge className={`text-[10px] ${reasonDef?.color ?? "bg-slate-100 text-slate-800"}`}>
+                      {log.reason}
+                    </Badge>
+                    {log.reasonDetail && (
+                      <span className="text-xs text-muted-foreground truncate max-w-[150px]">{log.reasonDetail}</span>
+                    )}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground whitespace-nowrap">
+                    {log.decidedByName} ・ {new Date(log.createdAt!).toLocaleDateString("ja-JP")}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* スキップ登録ボタン */}
+        {canSkip && (
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full"
+              onClick={() => setDialogOpen(true)}
+            >
+              <SkipForward className="h-3.5 w-3.5 mr-1" />
+              現調スキップを記録
+            </Button>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>現調スキップ記録</DialogTitle>
+                <DialogDescription>
+                  現場調査を省略する理由を選択してください。
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="grid grid-cols-2 gap-2">
+                  {SKIP_REASONS.map((reason) => (
+                    <Button
+                      key={reason.value}
+                      variant={selectedReason === reason.value ? "default" : "outline"}
+                      size="sm"
+                      className="text-xs justify-start"
+                      onClick={() => setSelectedReason(reason.value)}
+                    >
+                      {reason.label}
+                    </Button>
+                  ))}
+                </div>
+                {selectedReason === "その他" && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">詳細理由</Label>
+                    <Textarea
+                      value={reasonDetail}
+                      onChange={(e) => setReasonDetail(e.target.value)}
+                      placeholder="スキップ理由の詳細を入力..."
+                      rows={2}
+                    />
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                  キャンセル
+                </Button>
+                <Button onClick={handleSubmit} disabled={!selectedReason || createSkip.isPending}>
+                  {createSkip.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+                  記録する
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+      </CardContent>
+    </Card>
   );
 }

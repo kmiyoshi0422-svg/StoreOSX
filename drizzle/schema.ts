@@ -105,6 +105,7 @@ export const cases = mysqlTable("cases", {
   // 再訪記録
   revisitCount: int("revisitCount").default(0).notNull(), // 再訪回数（0=再訪なし）
   amountApproved: boolean("amountApproved").default(false).notNull(), // 金額公開承認（協力業者に見せるか）
+  storeId: int("store_id"), // 店舗マスタへの外部キー
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -114,6 +115,7 @@ export const cases = mysqlTable("cases", {
   assigneeIdx: index("idx_cases_assignee").on(t.assigneeId),
   brandIdx: index("idx_cases_brand").on(t.brand),
   partnerIdx: index("idx_cases_partner").on(t.partnerId),
+  storeIdx: index("idx_cases_store").on(t.storeId),
 }));
 export type Case = typeof cases.$inferSelect;
 export type InsertCase = typeof cases.$inferInsert;
@@ -610,3 +612,62 @@ export const statusLogs = mysqlTable("status_logs", {
 });
 export type StatusLog = typeof statusLogs.$inferSelect;
 export type InsertStatusLog = typeof statusLogs.$inferInsert;
+
+// ============================================================
+// 店舗マスタ（正規化された店舗情報）
+// ============================================================
+export const storeMaster = mysqlTable("store_master", {
+  id: int("id").autoincrement().primaryKey(),
+  storeCode: varchar("store_code", { length: 64 }).unique(), // 店舗コード
+  storeName: varchar("store_name", { length: 255 }).notNull(),
+  brand: mysqlEnum("brand", ["ほっともっと", "やよい軒", "その他"]).default("ほっともっと").notNull(),
+  prefecture: varchar("prefecture", { length: 16 }),
+  address: text("address"),
+  phone: varchar("phone", { length: 32 }),
+  businessHours: varchar("business_hours", { length: 64 }),
+  // 店舗固有の蓄積情報
+  floorPlanUrl: varchar("floor_plan_url", { length: 512 }), // 図面URL
+  equipmentNotes: text("equipment_notes"), // 設備メモ（型番・設置年等）
+  accessNotes: text("access_notes"), // アクセス方法・駐車場情報
+  keyNotes: text("key_notes"), // 鍵の場所・管理方法
+  // 現調実績サマリ
+  lastSurveyDate: timestamp("last_survey_date"), // 最終現調日
+  totalSurveyCount: int("total_survey_count").default(0).notNull(), // 累計現調回数
+  totalCaseCount: int("total_case_count").default(0).notNull(), // 累計案件数
+  totalPhotoCount: int("total_photo_count").default(0).notNull(), // 累計写真枚数
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  storeCodeIdx: index("idx_store_master_code").on(t.storeCode),
+  brandIdx: index("idx_store_master_brand").on(t.brand),
+  prefectureIdx: index("idx_store_master_pref").on(t.prefecture),
+}));
+export type StoreMaster = typeof storeMaster.$inferSelect;
+export type InsertStoreMaster = typeof storeMaster.$inferInsert;
+
+// ============================================================
+// 現調スキップログ（現調省略の判断記録）
+// ============================================================
+export const surveySkipLogs = mysqlTable("survey_skip_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("case_id").notNull(),
+  storeId: int("store_id"), // store_master.id
+  reason: mysqlEnum("reason", [
+    "過去写真で判断可能",
+    "図面あり",
+    "軽微な修理",
+    "リピート案件",
+    "電話ヒアリング済",
+    "その他",
+  ]).notNull(),
+  reasonDetail: text("reason_detail"), // その他の場合の詳細
+  referenceCaseId: int("reference_case_id"), // 参照した過去案件
+  decidedBy: int("decided_by"), // 判断者 users.id
+  decidedByName: varchar("decided_by_name", { length: 128 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  caseIdx: index("idx_skip_case").on(t.caseId),
+  storeIdx: index("idx_skip_store").on(t.storeId),
+}));
+export type SurveySkipLog = typeof surveySkipLogs.$inferSelect;
+export type InsertSurveySkipLog = typeof surveySkipLogs.$inferInsert;
