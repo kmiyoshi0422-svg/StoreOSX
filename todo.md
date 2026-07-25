@@ -924,3 +924,8 @@
 
 ## 野口を協力業者位置付けに変更（ユーザー指示）
 - [x] 野口直人のroleをpartnerに変更（DB更新）
+
+## 協力業者は案件全件閲覧可能に変更（ユーザー指示）
+- [x] partnerロールの案件フィルタリングを解除（全案件閲覧可能に）
+- [x] filterCasesForPartner関数の呼び出しを削除（list/listForMap/listMinimal/get）
+- [x] 金額非表示制御はそのまま維持（amountApproved=trueの案件のみ金額表示）

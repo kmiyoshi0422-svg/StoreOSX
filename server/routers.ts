@@ -504,39 +504,26 @@ export const appRouter = router({
 
   cases: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const all = await listCases();
-      if (ctx.user.role === 'partner') {
-        return filterCasesForPartner(all, ctx.user.id);
-      }
-      return all;
+      return listCases();
     }),
     listSummary: protectedProcedure.query(async ({ ctx }) => {
       const all = await listCasesSummary();
       if (ctx.user.role === 'partner') {
-        const filtered = await filterCasesForPartner(all, ctx.user.id);
-        // partnerは金額フィールド非表示（amountApproved=trueの案件のみ表示）
-        return filtered.map(c => ({
+        // partnerは金額フィールド非表示（amountApproved=trueの案件のみ金額表示）
+        return all.map(c => ({
           ...c,
-          plenusQuoteAmount: null,
-          estimatedCost: null,
-          actualCost: null,
+          plenusQuoteAmount: (c as any).amountApproved ? c.plenusQuoteAmount : null,
+          estimatedCost: (c as any).amountApproved ? c.estimatedCost : null,
+          actualCost: (c as any).amountApproved ? c.actualCost : null,
         }));
       }
       return all;
     }),
     listForMap: protectedProcedure.query(async ({ ctx }) => {
-      const all = await listCasesForMap();
-      if (ctx.user.role === 'partner') {
-        return filterCasesForPartner(all, ctx.user.id);
-      }
-      return all;
+      return listCasesForMap();
     }),
     listMinimal: protectedProcedure.query(async ({ ctx }) => {
-      const all = await listCasesMinimal();
-      if (ctx.user.role === 'partner') {
-        return filterCasesForPartner(all, ctx.user.id);
-      }
-      return all;
+      return listCasesMinimal();
     }),
     listForBudget: protectedProcedure.query(async ({ ctx }) => {
       if (ctx.user.role === 'partner') return []; // partner cannot see budget view
@@ -547,12 +534,7 @@ export const appRouter = router({
       const caseData = await getCaseById(input.id);
       if (!caseData) return null;
       if (ctx.user.role === 'partner') {
-        // partnerは自分の担当案件のみアクセス可能
-        const allowed = await filterCasesForPartner([caseData], ctx.user.id);
-        if (allowed.length === 0) {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'この案件へのアクセス権がありません' });
-        }
-        // 金額フィールドのマスク（amountApproved=falseの場合）
+        // partnerは全案件閲覧可能だが金額フィールドはamountApproved時のみ
         if (!caseData.amountApproved) {
           return {
             ...caseData,
