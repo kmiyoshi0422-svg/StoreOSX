@@ -175,6 +175,8 @@ export async function listCasesSummary() {
       requestContent: cases.requestContent,
       requesterName: cases.requesterName,
       createdAt: cases.createdAt,
+      revisitCount: cases.revisitCount,
+      surveyDate: cases.surveyDate,
     })
     .from(cases)
     .orderBy(desc(cases.createdAt));

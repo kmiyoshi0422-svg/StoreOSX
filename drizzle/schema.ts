@@ -102,6 +102,8 @@ export const cases = mysqlTable("cases", {
   // 現調報告書 所感
   surveyImpression: text("surveyImpression"), // 所感テキスト
   surveyImpressionAuthor: varchar("surveyImpressionAuthor", { length: 128 }), // 記入者名
+  // 再訪記録
+  revisitCount: int("revisitCount").default(0).notNull(), // 再訪回数（0=再訪なし）
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

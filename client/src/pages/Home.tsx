@@ -21,6 +21,7 @@ import {
   FileText,
   Wrench,
   BookCheck,
+  ShieldCheck,
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -79,7 +80,7 @@ export default function Home() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
         <KpiCard
           icon={<ClipboardList className="h-4 w-4" />}
           label="案件総数"
@@ -108,6 +109,7 @@ export default function Home() {
           accent="text-emerald-600"
           onClick={() => setLocation("/cases?status=完了")}
         />
+        <RevisitZeroCard cases={cases} />
       </div>
 
       {/* 予実サマリー（管理者のみ） */}
@@ -420,5 +422,33 @@ function KpiAlertSection() {
         ))}
       </div>
     </div>
+  );
+}
+
+
+// 再訪ゼロ率KPIカード
+function RevisitZeroCard({ cases }: { cases: any[] }) {
+  // 現調実施済み（surveyDateあり）の案件を対象
+  const surveyed = cases.filter((c) => c.surveyDate);
+  const noRevisit = surveyed.filter((c) => (c.revisitCount ?? 0) === 0);
+  const rate = surveyed.length > 0 ? Math.round((noRevisit.length / surveyed.length) * 100) : 100;
+  return (
+    <Card
+      className="cursor-pointer transition-all duration-200 hover:shadow-md hover:border-emerald-200 active:scale-[0.97]"
+      onClick={() => {}}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="p-1.5 rounded-md bg-emerald-50">
+            <ShieldCheck className="h-4 w-4 text-emerald-600" />
+          </div>
+          <span className="text-xs text-muted-foreground">再訪ゼロ率</span>
+        </div>
+        <p className="text-2xl font-bold text-emerald-600">{rate}%</p>
+        <p className="text-[10px] text-muted-foreground mt-1">
+          {noRevisit.length}/{surveyed.length}件 一発完了
+        </p>
+      </CardContent>
+    </Card>
   );
 }

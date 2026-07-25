@@ -110,7 +110,7 @@ import {
   searchDocuments,
   getDb,
 } from "./db";
-import { estimates as estimatesTable, caseSignatures as caseSignaturesTable, routeAssignments as routeAssignmentsTable } from "../drizzle/schema";
+import { estimates as estimatesTable, caseSignatures as caseSignaturesTable, routeAssignments as routeAssignmentsTable, cases as casesTable } from "../drizzle/schema";
 import { makeRequest } from "./_core/map";
 import {
   buildSchedule,
@@ -210,6 +210,7 @@ const caseInputSchema = z.object({
   notes: z.string().nullish(),
   surveyImpression: z.string().nullish(),
   surveyImpressionAuthor: z.string().nullish(),
+  revisitCount: z.number().int().min(0).default(0),
 });
 
 // ============================================================
@@ -535,9 +536,18 @@ export const appRouter = router({
           data.prefecture = data.prefecture.trim() || null;
         }
         await updateCase(input.id, data);
+                return { success: true };
+      }),
+    // 再訪記録の更新
+    markRevisit: protectedProcedure
+      .input(z.object({ id: z.number(), revisitCount: z.number().int().min(0) }))
+      .mutation(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        const { eq } = await import("drizzle-orm");
+        await db.update(casesTable).set({ revisitCount: input.revisitCount }).where(eq(casesTable.id, input.id));
         return { success: true };
       }),
-
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
@@ -3024,8 +3034,9 @@ export const appRouter = router({
         // 対象: surveyDateがある案件（現調実施済み）
         const surveyedCases = allCases.filter(c => toDate(c.surveyDate));
         const noRevisitMet = surveyedCases.filter(c => {
-          const count = surveyCountByCase.get(c.id) ?? 0;
-          return count <= 1; // 0 or 1回 = 再訪なし
+          const routeCount = surveyCountByCase.get(c.id) ?? 0;
+          const revisitCount = (c as any).revisitCount ?? 0;
+          return routeCount <= 1 && revisitCount === 0; // routeが1回以下かつ手動再訪記録が0
         });
 
         // --- KPI月別推移 ---
@@ -3074,8 +3085,9 @@ export const appRouter = router({
           // KPI5
           if (toDate(c.surveyDate)) {
             bucket.noRevisit.total++;
-            const count = surveyCountByCase.get(c.id) ?? 0;
-            if (count <= 1) bucket.noRevisit.met++;
+            const routeCount = surveyCountByCase.get(c.id) ?? 0;
+            const revisitCount = (c as any).revisitCount ?? 0;
+            if (routeCount <= 1 && revisitCount === 0) bucket.noRevisit.met++;
           }
         }
         const trends: KpiTrend[] = buckets.map(b => {

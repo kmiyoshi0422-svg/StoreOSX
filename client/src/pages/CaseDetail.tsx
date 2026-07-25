@@ -75,6 +75,10 @@ import {
   Eye,
   Globe,
   Tag,
+  Repeat,
+  ShieldCheck,
+  Minus as MinusIcon,
+  Plus as PlusIcon,
 } from "lucide-react";
 import { generateQuotePDF, generateCompletionReportPDF } from "@/lib/documentPdf";
 import { PdfPreviewModal } from "@/components/PdfPreviewModal";
@@ -712,6 +716,8 @@ function InfoTab({
           </div>
         </CardContent>
       </Card>
+      {/* 再訪記録カード */}
+      <RevisitCard caseId={caseData.id} revisitCount={(caseData as any).revisitCount ?? 0} onUpdated={onUpdated} />
     </div>
   );
 }
@@ -3738,5 +3744,88 @@ function DocumentsTab({ caseId, caseData }: { caseId: number; caseData: any }) {
         </div>
       )}
     </div>
+  );
+}
+
+
+// 再訪記録カード
+function RevisitCard({
+  caseId,
+  revisitCount,
+  onUpdated,
+}: {
+  caseId: number;
+  revisitCount: number;
+  onUpdated: () => void;
+}) {
+  const markRevisit = trpc.cases.markRevisit.useMutation({
+    onSuccess: () => {
+      toast.success("再訪記録を更新しました");
+      onUpdated();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  return (
+    <Card className="col-span-full lg:col-span-2">
+      <CardContent className="p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-serif-jp font-semibold flex items-center gap-2">
+            <Repeat className="h-4 w-4" />
+            現場再訪記録
+          </h3>
+          {revisitCount === 0 && (
+            <Badge variant="outline" className="border-emerald-300 text-emerald-700 bg-emerald-50">
+              <ShieldCheck className="h-3 w-3 mr-1" />
+              再訪なし
+            </Badge>
+          )}
+          {revisitCount > 0 && (
+            <Badge variant="outline" className="border-red-300 text-red-700 bg-red-50">
+              <Repeat className="h-3 w-3 mr-1" />
+              再訪 {revisitCount}回
+            </Badge>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          プレナス目標: 現場再訪ゼロ。一度の訪問で全作業を完了させることが求められます。
+        </p>
+        <div className="flex items-center gap-3 pt-2">
+          <span className="text-sm font-medium">再訪回数:</span>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 w-8 p-0"
+              disabled={revisitCount === 0 || markRevisit.isPending}
+              onClick={() => markRevisit.mutate({ id: caseId, revisitCount: revisitCount - 1 })}
+            >
+              <MinusIcon className="h-3.5 w-3.5" />
+            </Button>
+            <span className="text-2xl font-bold min-w-[2rem] text-center">{revisitCount}</span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 w-8 p-0"
+              disabled={markRevisit.isPending}
+              onClick={() => markRevisit.mutate({ id: caseId, revisitCount: revisitCount + 1 })}
+            >
+              <PlusIcon className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          {revisitCount > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-xs text-muted-foreground"
+              onClick={() => markRevisit.mutate({ id: caseId, revisitCount: 0 })}
+              disabled={markRevisit.isPending}
+            >
+              リセット
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
