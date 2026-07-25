@@ -929,3 +929,9 @@
 - [x] partnerロールの案件フィルタリングを解除（全案件閲覧可能に）
 - [x] filterCasesForPartner関数の呼び出しを削除（list/listForMap/listMinimal/get）
 - [x] 金額非表示制御はそのまま維持（amountApproved=trueの案件のみ金額表示）
+
+## 協力業者が担当案件のステータスを変更可能に（ユーザー指示）
+- [x] cases.updateプロシージャでpartnerロールのステータス変更を許可（status/progressStageのみ、他フィールドはFORBIDDEN）
+- [x] partnerが変更可能なステータス: 全ステータス（受付/現調中/見積中/施工待ち/施工中/完了/クローズ）
+- [x] フロントエンド: 案件詳細InfoTabにpartner専用ステータス変更Selectを追加（編集ボタンは非表示）
+- [x] 案件一覧のステータスSelectはpartnerでもそのまま使用可能

@@ -578,8 +578,17 @@ export const appRouter = router({
 
     update: protectedProcedure
       .input(z.object({ id: z.number(), data: caseInputSchema.partial() }))
-      .mutation(async ({ input }) => {
-        const data = { ...input.data };
+      .mutation(async ({ ctx, input }) => {
+        let data = { ...input.data };
+        // partnerロールはステータス/進捗ステージの変更のみ許可
+        if (ctx.user.role === 'partner') {
+          const allowedKeys = ['status', 'progressStage'];
+          const keys = Object.keys(data).filter(k => (data as any)[k] !== undefined);
+          const disallowed = keys.filter(k => !allowedKeys.includes(k));
+          if (disallowed.length > 0) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: '協力業者はステータスの変更のみ可能です' });
+          }
+        }
         // 進捗ステージ⇔ステータスの連動（前進専用）
         if (data.progressStage != null || data.status != null) {
           const current = await getCaseById(input.id);

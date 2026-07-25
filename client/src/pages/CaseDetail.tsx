@@ -301,7 +301,7 @@ export default function CaseDetail({ id }: { id: number }) {
         </div>
 
         <TabsContent value="info">
-          <InfoTab caseData={caseData} onUpdated={() => utils.cases.get.invalidate({ id })} />
+          <InfoTab caseData={caseData} onUpdated={() => utils.cases.get.invalidate({ id })} isPartner={isPartner} />
         </TabsContent>
 
         <TabsContent value="checklist">
@@ -403,9 +403,11 @@ function AmountApprovalCard({ caseId, approved, onUpdated }: { caseId: number; a
 function InfoTab({
   caseData,
   onUpdated,
+  isPartner = false,
 }: {
   caseData: Case;
   onUpdated: () => void;
+  isPartner?: boolean;
 }) {
   const updateMutation = trpc.cases.update.useMutation({
     onSuccess: () => {
@@ -469,22 +471,50 @@ function InfoTab({
         <CardContent className="p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-serif-jp font-semibold">案件情報</h3>
-            {!editing ? (
-              <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
-                編集
-              </Button>
-            ) : (
-              <div className="flex gap-2">
-                <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
-                  キャンセル
+            {!isPartner && (
+              !editing ? (
+                <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+                  編集
                 </Button>
-                <Button size="sm" onClick={handleSave} disabled={updateMutation.isPending}>
-                  <Save className="h-3.5 w-3.5" />
-                  保存
-                </Button>
-              </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+                    キャンセル
+                  </Button>
+                  <Button size="sm" onClick={handleSave} disabled={updateMutation.isPending}>
+                    <Save className="h-3.5 w-3.5" />
+                    保存
+                  </Button>
+                </div>
+              )
             )}
           </div>
+
+          {/* Partner向けステータス変更UI */}
+          {isPartner && (
+            <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+              <Label className="text-xs text-muted-foreground whitespace-nowrap">ステータス変更</Label>
+              <Select
+                value={caseData.status}
+                onValueChange={(v) => {
+                  updateMutation.mutate({ id: caseData.id, data: { status: v as any } });
+                }}
+              >
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="受付">受付</SelectItem>
+                  <SelectItem value="現調中">現調中</SelectItem>
+                  <SelectItem value="見積中">見積中</SelectItem>
+                  <SelectItem value="施工待ち">施工待ち</SelectItem>
+                  <SelectItem value="施工中">施工中</SelectItem>
+                  <SelectItem value="完了">完了</SelectItem>
+                  <SelectItem value="クローズ">クローズ</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {editing ? (
             <div className="space-y-3">
