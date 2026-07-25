@@ -22,73 +22,57 @@ function createAdminContext(): TrpcContext {
   };
 }
 
-describe("reports.effectiveness 効果測定ダッシュボード", () => {
-  it("デフォルト12ヶ月の効果測定データを返す", async () => {
-    const caller = appRouter.createCaller(createAdminContext());
-    const result = await caller.reports.effectiveness();
-    expect(result).toHaveProperty("summary");
-    expect(result).toHaveProperty("processingSpeed");
-    expect(result).toHaveProperty("costOptimization");
-    expect(result).toHaveProperty("workload");
-    expect(result).toHaveProperty("digitalization");
-    expect(result).toHaveProperty("partnerPerformance");
-  });
-
-  it("summaryに必要なKPIフィールドが含まれる", async () => {
-    const caller = appRouter.createCaller(createAdminContext());
-    const result = await caller.reports.effectiveness();
-    const { summary } = result;
-    expect(summary).toHaveProperty("totalCases");
-    expect(summary).toHaveProperty("completedCases");
-    expect(summary).toHaveProperty("avgProcessingDays");
-    expect(summary).toHaveProperty("totalRevenue");
-    expect(summary).toHaveProperty("totalCost");
-    expect(summary).toHaveProperty("totalProfit");
-    expect(summary).toHaveProperty("profitMargin");
-    expect(summary).toHaveProperty("partnerCount");
-    expect(summary).toHaveProperty("activePartners");
-    expect(summary).toHaveProperty("digitalRate");
-    expect(summary).toHaveProperty("balanceScore");
-    expect(summary).toHaveProperty("estimatedAnnualSavings");
-    expect(typeof summary.totalCases).toBe("number");
-    expect(typeof summary.balanceScore).toBe("number");
-  });
-
-  it("processingSpeedの各月にkey/totalDays/count/avgDaysがある", async () => {
+describe("v-kpi: reports.effectiveness プレナスKPI基準", () => {
+  it("kpis オブジェクトに5つのKPI指標が含まれる", async () => {
     const caller = appRouter.createCaller(createAdminContext());
     const result = await caller.reports.effectiveness({ months: 6 });
-    expect(result.processingSpeed.length).toBe(6);
-    for (const row of result.processingSpeed) {
-      expect(row).toHaveProperty("key");
-      expect(row).toHaveProperty("totalDays");
-      expect(row).toHaveProperty("count");
-      expect(row).toHaveProperty("avgDays");
-      expect(typeof row.avgDays).toBe("number");
-    }
+    expect(result.kpis).toBeDefined();
+    expect(result.kpis.urgentResponse).toHaveProperty("total");
+    expect(result.kpis.urgentResponse).toHaveProperty("met");
+    expect(result.kpis.urgentResponse).toHaveProperty("rate");
+    expect(result.kpis.estimateSubmission).toHaveProperty("rate");
+    expect(result.kpis.constructionCompletion).toHaveProperty("rate");
+    expect(result.kpis.reportSubmission).toHaveProperty("rate");
+    expect(result.kpis.noRevisit).toHaveProperty("rate");
   });
 
-  it("costOptimizationの各月にaccuracyRateがある", async () => {
+  it("trends 配列が months 分の月別データを返す", async () => {
     const caller = appRouter.createCaller(createAdminContext());
     const result = await caller.reports.effectiveness({ months: 3 });
-    expect(result.costOptimization.length).toBe(3);
-    for (const row of result.costOptimization) {
-      expect(row).toHaveProperty("accuracyRate");
-      expect(typeof row.accuracyRate).toBe("number");
+    expect(result.trends).toHaveLength(3);
+    for (const t of result.trends) {
+      expect(t).toHaveProperty("key");
+      expect(t).toHaveProperty("urgentRate");
+      expect(t).toHaveProperty("estimateRate");
+      expect(t).toHaveProperty("constructionRate");
+      expect(t).toHaveProperty("reportRate");
+      expect(t).toHaveProperty("noRevisitRate");
     }
   });
 
-  it("balanceScoreは0〜100の範囲", async () => {
+  it("summary に金額関連フィールドが含まれない", async () => {
     const caller = appRouter.createCaller(createAdminContext());
-    const result = await caller.reports.effectiveness();
-    expect(result.summary.balanceScore).toBeGreaterThanOrEqual(0);
-    expect(result.summary.balanceScore).toBeLessThanOrEqual(100);
+    const result = await caller.reports.effectiveness({ months: 6 });
+    const s = result.summary as any;
+    expect(s.totalRevenue).toBeUndefined();
+    expect(s.totalCost).toBeUndefined();
+    expect(s.totalProfit).toBeUndefined();
+    expect(s.profitMargin).toBeUndefined();
+    expect(s.estimatedAnnualSavings).toBeUndefined();
   });
 
-  it("partnerPerformanceはcaseCount降順でソートされている", async () => {
+  it("rate は 0〜100 の範囲内", async () => {
     const caller = appRouter.createCaller(createAdminContext());
-    const result = await caller.reports.effectiveness();
-    for (let i = 1; i < result.partnerPerformance.length; i++) {
-      expect(result.partnerPerformance[i - 1].caseCount).toBeGreaterThanOrEqual(result.partnerPerformance[i].caseCount);
+    const result = await caller.reports.effectiveness({ months: 12 });
+    for (const kpi of Object.values(result.kpis)) {
+      expect((kpi as any).rate).toBeGreaterThanOrEqual(0);
+      expect((kpi as any).rate).toBeLessThanOrEqual(100);
     }
+  });
+
+  it("workload 配列が返る", async () => {
+    const caller = appRouter.createCaller(createAdminContext());
+    const result = await caller.reports.effectiveness({ months: 6 });
+    expect(Array.isArray(result.workload)).toBe(true);
   });
 });

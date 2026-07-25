@@ -4,25 +4,17 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import {
-  TrendingUp,
-  TrendingDown,
   Clock,
   Users,
-  BarChart3,
   Target,
   Zap,
-  Award,
-  Building2,
-  ArrowUpRight,
-  ArrowDownRight,
   CheckCircle2,
-  Activity,
+  AlertTriangle,
+  FileText,
+  MapPin,
+  TrendingUp,
 } from "lucide-react";
 import {
-  AreaChart,
-  Area,
-  BarChart,
-  Bar,
   LineChart,
   Line,
   XAxis,
@@ -36,115 +28,91 @@ import {
   PolarAngleAxis,
   PolarRadiusAxis,
   Radar,
+  BarChart,
+  Bar,
   Cell,
 } from "recharts";
 
-// ─── KPI Card ────────────────────────────────────────────
-function KpiCard({
+// ─── KPI Gauge Card ────────────────────────────────────────────
+function KpiGauge({
   title,
-  value,
-  unit,
+  rate,
+  met,
+  total,
+  target,
   icon: Icon,
-  trend,
-  trendLabel,
-  color = "blue",
+  color,
 }: {
   title: string;
-  value: string | number;
-  unit?: string;
-  icon: any;
-  trend?: "up" | "down" | "neutral";
-  trendLabel?: string;
-  color?: "blue" | "green" | "amber" | "red" | "purple" | "emerald";
+  rate: number;
+  met: number;
+  total: number;
+  target: string;
+  icon: React.ElementType;
+  color: string;
 }) {
-  const colorMap = {
-    blue: "bg-blue-50 text-blue-600 border-blue-200",
-    green: "bg-green-50 text-green-600 border-green-200",
-    amber: "bg-amber-50 text-amber-600 border-amber-200",
-    red: "bg-red-50 text-red-600 border-red-200",
-    purple: "bg-purple-50 text-purple-600 border-purple-200",
-    emerald: "bg-emerald-50 text-emerald-600 border-emerald-200",
-  };
-  const iconBg = {
-    blue: "bg-blue-100 text-blue-600",
-    green: "bg-green-100 text-green-600",
-    amber: "bg-amber-100 text-amber-600",
-    red: "bg-red-100 text-red-600",
-    purple: "bg-purple-100 text-purple-600",
-    emerald: "bg-emerald-100 text-emerald-600",
-  };
+  const isGood = rate >= 80;
+  const isWarning = rate >= 50 && rate < 80;
+  const statusColor = isGood ? "text-emerald-600" : isWarning ? "text-amber-600" : "text-red-600";
+  const bgColor = isGood ? "bg-emerald-50" : isWarning ? "bg-amber-50" : "bg-red-50";
+  const ringColor = isGood ? "stroke-emerald-500" : isWarning ? "stroke-amber-500" : "stroke-red-500";
+
+  // SVG circular progress
+  const radius = 36;
+  const circumference = 2 * Math.PI * radius;
+  const progress = (rate / 100) * circumference;
 
   return (
-    <Card className={`border ${colorMap[color]} transition-all hover:shadow-md`}>
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <p className="text-xs font-medium text-muted-foreground mb-1">{title}</p>
-            <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold">{value}</span>
-              {unit && <span className="text-sm text-muted-foreground">{unit}</span>}
-            </div>
-            {trendLabel && (
-              <div className="flex items-center gap-1 mt-1">
-                {trend === "up" && <ArrowUpRight className="h-3 w-3 text-green-600" />}
-                {trend === "down" && <ArrowDownRight className="h-3 w-3 text-red-600" />}
-                <span className={`text-[10px] ${trend === "up" ? "text-green-600" : trend === "down" ? "text-red-600" : "text-muted-foreground"}`}>
-                  {trendLabel}
-                </span>
-              </div>
-            )}
+    <Card className={`${bgColor} border-none`}>
+      <CardContent className="pt-6 pb-4 flex flex-col items-center gap-3">
+        <div className="relative w-24 h-24">
+          <svg className="w-24 h-24 -rotate-90" viewBox="0 0 80 80">
+            <circle cx="40" cy="40" r={radius} fill="none" stroke="currentColor" strokeWidth="6" className="text-muted/20" />
+            <circle cx="40" cy="40" r={radius} fill="none" strokeWidth="6" strokeLinecap="round"
+              className={ringColor} strokeDasharray={circumference} strokeDashoffset={circumference - progress}
+              style={{ transition: "stroke-dashoffset 0.8s cubic-bezier(0.23,1,0.32,1)" }} />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className={`text-lg font-bold ${statusColor}`}>{rate}%</span>
           </div>
-          <div className={`p-2 rounded-lg ${iconBg[color]}`}>
-            <Icon className="h-4 w-4" />
+        </div>
+        <div className="text-center">
+          <div className="flex items-center gap-1.5 justify-center mb-1">
+            <Icon className={`h-4 w-4 ${statusColor}`} />
+            <span className="text-sm font-semibold text-foreground">{title}</span>
           </div>
+          <p className="text-xs text-muted-foreground">{met}/{total}件 達成</p>
+          <Badge variant="outline" className="mt-1 text-[10px]">{target}</Badge>
         </div>
       </CardContent>
     </Card>
   );
 }
 
-// ─── Section Header ──────────────────────────────────────
-function SectionHeader({ icon: Icon, title, description }: { icon: any; title: string; description: string }) {
-  return (
-    <div className="flex items-center gap-3 mb-4">
-      <div className="p-2 rounded-lg bg-primary/10 text-primary">
-        <Icon className="h-5 w-5" />
-      </div>
-      <div>
-        <h3 className="font-semibold text-lg">{title}</h3>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </div>
-    </div>
-  );
-}
-
-// ─── Main Component ──────────────────────────────────────
+// ─── Main Component ────────────────────────────────────────────
 export default function Effectiveness() {
   const [months, setMonths] = useState(12);
   const { data, isLoading } = trpc.reports.effectiveness.useQuery({ months });
 
-
-  // Radar chart data for overall score
+  // Radar chart data
   const radarData = useMemo(() => {
     if (!data) return [];
+    const { kpis } = data;
     return [
-      { subject: "処理速度", value: Math.min(100, data.summary.avgProcessingDays > 0 ? Math.round(100 - data.summary.avgProcessingDays * 2) : 80), fullMark: 100 },
-      { subject: "コスト精度", value: Math.min(100, Math.max(0, data.costOptimization.filter(c => c.count > 0).reduce((s, c) => s + c.accuracyRate, 0) / Math.max(1, data.costOptimization.filter(c => c.count > 0).length))), fullMark: 100 },
-      { subject: "稼働バランス", value: data.summary.balanceScore, fullMark: 100 },
-      { subject: "デジタル化", value: data.summary.digitalRate, fullMark: 100 },
-      { subject: "協力会社活用", value: Math.min(100, data.summary.activePartners * 10), fullMark: 100 },
-      { subject: "完了率", value: data.summary.totalCases > 0 ? Math.round(data.summary.completedCases / data.summary.totalCases * 100) : 0, fullMark: 100 },
+      { subject: "至急対応", value: kpis.urgentResponse.rate, fullMark: 100 },
+      { subject: "見積提出", value: kpis.estimateSubmission.rate, fullMark: 100 },
+      { subject: "施工完了", value: kpis.constructionCompletion.rate, fullMark: 100 },
+      { subject: "報告書提出", value: kpis.reportSubmission.rate, fullMark: 100 },
+      { subject: "再訪ゼロ", value: kpis.noRevisit.rate, fullMark: 100 },
     ];
   }, [data]);
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-muted rounded w-1/3" />
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[...Array(8)].map((_, i) => <div key={i} className="h-24 bg-muted rounded" />)}
-          </div>
+      <div className="p-6 space-y-6 animate-pulse">
+        <div className="h-8 w-48 bg-muted rounded" />
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {[...Array(5)].map((_, i) => <div key={i} className="h-48 bg-muted rounded-lg" />)}
         </div>
       </div>
     );
@@ -152,407 +120,220 @@ export default function Effectiveness() {
 
   if (!data) return null;
 
-  const { summary, processingSpeed, costOptimization, workload, digitalization, partnerPerformance } = data;
+  const { kpis, trends, summary, workload } = data;
+
+  // Overall score (average of 5 KPIs)
+  const overallScore = Math.round(
+    (kpis.urgentResponse.rate + kpis.estimateSubmission.rate + kpis.constructionCompletion.rate + kpis.reportSubmission.rate + kpis.noRevisit.rate) / 5 * 10
+  ) / 10;
 
   return (
-    <div className="p-4 md:p-6 space-y-8 max-w-[1400px] mx-auto">
+    <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Activity className="h-6 w-6 text-primary" />
-            効果測定ダッシュボード
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Store OSX 導入効果の可視化 — プレナス施設管理業務のDX推進状況
-          </p>
+          <h1 className="text-2xl font-bold text-foreground">効果測定ダッシュボード</h1>
+          <p className="text-sm text-muted-foreground mt-1">プレナス様 KPI達成状況</p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">期間:</span>
-          <Select value={String(months)} onValueChange={(v) => setMonths(Number(v))}>
-            <SelectTrigger className="w-[120px] h-8 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="3">直近3ヶ月</SelectItem>
-              <SelectItem value="6">直近6ヶ月</SelectItem>
-              <SelectItem value="12">直近12ヶ月</SelectItem>
-              <SelectItem value="24">直近24ヶ月</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <Select value={String(months)} onValueChange={(v) => setMonths(Number(v))}>
+          <SelectTrigger className="w-32">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="3">直近3ヶ月</SelectItem>
+            <SelectItem value="6">直近6ヶ月</SelectItem>
+            <SelectItem value="12">直近12ヶ月</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
-      {/* Executive Summary - ROI */}
-      <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-background">
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Target className="h-5 w-5 text-primary" />
-導入効果サマリー
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <KpiCard
-              title="累計案件数"
-              value={summary.totalCases}
-              unit="件"
-              icon={BarChart3}
-              color="blue"
-              trend="up"
-              trendLabel={`完了 ${summary.completedCases}件`}
-            />
-            <KpiCard
-              title="平均処理日数"
-              value={summary.avgProcessingDays}
-              unit="日"
-              icon={Clock}
-              color="green"
-              trend="down"
-              trendLabel="短縮傾向"
-            />
-            <KpiCard
-              title="デジタル化率"
-              value={summary.digitalRate}
-              unit="%"
-              icon={TrendingUp}
-              color="amber"
-            />
-            <KpiCard
-              title="完了率"
-              value={summary.totalCases > 0 ? Math.round(summary.completedCases / summary.totalCases * 100) : 0}
-              unit="%"
-              icon={CheckCircle2}
-              color="emerald"
-            />
+      {/* Overall Score Banner */}
+      <Card className="border-2 border-primary/20 bg-gradient-to-r from-primary/5 to-background">
+        <CardContent className="py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Target className="h-8 w-8 text-primary" />
+            <div>
+              <p className="text-sm text-muted-foreground">総合KPI達成スコア</p>
+              <p className="text-3xl font-bold text-foreground">{overallScore}<span className="text-lg text-muted-foreground ml-1">点</span></p>
+            </div>
           </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <KpiCard
-              title="デジタル化率"
-              value={summary.digitalRate}
-              unit="%"
-              icon={TrendingUp}
-              color="amber"
-            />
-            <KpiCard
-              title="稼働バランス"
-              value={summary.balanceScore}
-              unit="点"
-              icon={Users}
-              color="blue"
-              trendLabel="100点が理想"
-            />
-            <KpiCard
-              title="協力会社数"
-              value={summary.activePartners}
-              unit="社"
-              icon={Building2}
-              color="green"
-              trendLabel={`登録 ${summary.partnerCount}社`}
-            />
-            <KpiCard
-              title="完了率"
-              value={summary.totalCases > 0 ? Math.round(summary.completedCases / summary.totalCases * 100) : 0}
-              unit="%"
-              icon={CheckCircle2}
-              color="emerald"
-            />
+          <div className="flex gap-6 text-sm text-muted-foreground">
+            <div className="text-center">
+              <p className="text-lg font-semibold text-foreground">{summary.totalCases}</p>
+              <p>総案件数</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-semibold text-foreground">{summary.completedCases}</p>
+              <p>完了件数</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-semibold text-foreground">{summary.avgProcessingDays}</p>
+              <p>平均処理日数</p>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Overall Score Radar */}
+      {/* 5 KPI Gauges */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <KpiGauge
+          title="至急一次対応"
+          rate={kpis.urgentResponse.rate}
+          met={kpis.urgentResponse.met}
+          total={kpis.urgentResponse.total}
+          target="当日/翌日"
+          icon={Zap}
+          color="amber"
+        />
+        <KpiGauge
+          title="見積書提出"
+          rate={kpis.estimateSubmission.rate}
+          met={kpis.estimateSubmission.met}
+          total={kpis.estimateSubmission.total}
+          target="7日以内"
+          icon={FileText}
+          color="blue"
+        />
+        <KpiGauge
+          title="施工完了"
+          rate={kpis.constructionCompletion.rate}
+          met={kpis.constructionCompletion.met}
+          total={kpis.constructionCompletion.total}
+          target="承認後10日"
+          icon={CheckCircle2}
+          color="green"
+        />
+        <KpiGauge
+          title="完了報告書"
+          rate={kpis.reportSubmission.rate}
+          met={kpis.reportSubmission.met}
+          total={kpis.reportSubmission.total}
+          target="完了後5日"
+          icon={Clock}
+          color="purple"
+        />
+        <KpiGauge
+          title="再訪ゼロ"
+          rate={kpis.noRevisit.rate}
+          met={kpis.noRevisit.met}
+          total={kpis.noRevisit.total}
+          target="一発完了"
+          icon={MapPin}
+          color="emerald"
+        />
+      </div>
+
+      {/* Radar + Trend Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Radar Chart */}
         <Card className="lg:col-span-1">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">総合スコア</CardTitle>
+            <CardTitle className="text-base">KPIバランス</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={250}>
               <RadarChart data={radarData}>
-                <PolarGrid stroke="#e5e7eb" />
+                <PolarGrid />
                 <PolarAngleAxis dataKey="subject" tick={{ fontSize: 11 }} />
-                <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 9 }} />
-                <Radar name="スコア" dataKey="value" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.3} />
+                <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fontSize: 10 }} />
+                <Radar name="達成率" dataKey="value" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.3} strokeWidth={2} />
               </RadarChart>
             </ResponsiveContainer>
-            <p className="text-[10px] text-center text-muted-foreground mt-2">
-              各指標を100点満点で評価。バランスの取れた運営を目指す。
-            </p>
           </CardContent>
         </Card>
 
-        {/* Processing Speed Trend */}
+        {/* Trend Line Chart */}
         <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
-            <SectionHeader
-              icon={Clock}
-              title="案件処理速度"
-              description="受付から完了までの平均日数推移 — 短いほど効率的"
-            />
+            <CardTitle className="text-base">KPI達成率推移（月別）</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={250}>
-              <AreaChart data={processingSpeed.filter(s => s.count > 0)}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <LineChart data={trends}>
+                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                 <XAxis dataKey="key" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} unit="日" />
-                <Tooltip
-                  formatter={(value: number) => [`${value}日`, "平均処理日数"]}
-                  labelFormatter={(label) => `${label}`}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="avgDays"
-                  stroke="#10b981"
-                  fill="#10b981"
-                  fillOpacity={0.2}
-                  name="平均日数"
-                />
-              </AreaChart>
+                <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} unit="%" />
+                <Tooltip formatter={(v: number) => [`${v}%`]} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Line type="monotone" dataKey="urgentRate" name="至急対応" stroke="#f59e0b" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="estimateRate" name="見積提出" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="constructionRate" name="施工完了" stroke="#10b981" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="reportRate" name="報告書" stroke="#8b5cf6" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="noRevisitRate" name="再訪ゼロ" stroke="#06b6d4" strokeWidth={2} dot={false} />
+              </LineChart>
             </ResponsiveContainer>
-            <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <TrendingDown className="h-3 w-3 text-green-600" />
-                日数が減少 = 業務効率化が進行中
-              </span>
-              <span>
-                完了案件: {processingSpeed.reduce((s, p) => s + p.count, 0)}件
-              </span>
-            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Cost Optimization */}
-      <Card>
-        <CardHeader className="pb-2">
-          <SectionHeader
-            icon={Target}
-            title="コスト最適化 — 見積精度の向上"
-            description="見積と実績の乖離率。100%に近いほど精度が高い"
-          />
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={costOptimization.filter(c => c.count > 0)}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="key" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} unit="%" domain={[0, 100]} />
-              <Tooltip
-                formatter={(value: number, name: string) => {
-                  if (name === "accuracyRate") return [`${value}%`, "見積精度"];
-                  return [value, name];
-                }}
-              />
-              <Bar dataKey="accuracyRate" name="見積精度" radius={[4, 4, 0, 0]}>
-                {costOptimization.filter(c => c.count > 0).map((entry, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={entry.accuracyRate >= 80 ? "#10b981" : entry.accuracyRate >= 60 ? "#f59e0b" : "#ef4444"}
-                  />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-          <div className="flex items-center gap-4 mt-3 text-xs">
-            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">80%以上: 優秀</Badge>
-            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">60-80%: 改善中</Badge>
-            <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">60%未満: 要改善</Badge>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Workload Balance */}
+      {workload.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              担当者別ワークロード
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={workload} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                <XAxis type="number" tick={{ fontSize: 10 }} />
+                <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={80} />
+                <Tooltip />
+                <Bar dataKey="caseCount" name="担当件数" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="completedCount" name="完了件数" fill="hsl(var(--primary)/0.4)" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* KPI Target Explanation */}
       <Card>
         <CardHeader className="pb-2">
-          <SectionHeader
-            icon={Users}
-            title="担当者稼働バランス"
-            description="担当者間の案件数の偏りを可視化。均等配分で生産性向上"
-          />
+          <CardTitle className="text-base flex items-center gap-2">
+            <Target className="h-4 w-4" />
+            プレナス様 KPI基準
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <ResponsiveContainer width="100%" height={Math.max(200, workload.length * 40)}>
-                <BarChart data={workload} layout="vertical" margin={{ left: 80 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis type="number" tick={{ fontSize: 10 }} />
-                  <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={80} />
-                  <Tooltip formatter={(value: number, name: string) => [value, name === "caseCount" ? "担当件数" : "完了件数"]} />
-                  <Legend formatter={(value) => value === "caseCount" ? "担当件数" : "完了件数"} />
-                  <Bar dataKey="caseCount" fill="#3b82f6" name="caseCount" radius={[0, 4, 4, 0]} />
-                  <Bar dataKey="completedCount" fill="#10b981" name="completedCount" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="space-y-3">
-              <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
-                <div className="flex items-center gap-2 mb-2">
-                  <Award className="h-4 w-4 text-blue-600" />
-                  <span className="font-medium text-sm">バランススコア</span>
-                </div>
-                <div className="text-3xl font-bold text-blue-700">{summary.balanceScore}<span className="text-sm font-normal text-blue-500">/100</span></div>
-                <p className="text-xs text-blue-600 mt-1">
-                  {summary.balanceScore >= 80 ? "優秀: 担当者間の偏りが少なく効率的に運営されています" :
-                   summary.balanceScore >= 60 ? "良好: 一部偏りがありますが概ね均等です" :
-                   "要改善: 担当者間の案件数に大きな偏りがあります"}
-                </p>
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 text-sm">
+            <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Zap className="h-3.5 w-3.5 text-amber-600" />
+                <span className="font-semibold text-amber-800">至急一次対応</span>
               </div>
-              <div className="p-4 rounded-lg bg-muted/50 border">
-                <p className="text-xs text-muted-foreground mb-2">偏り解消の効果</p>
-                <ul className="text-xs space-y-1.5">
-                  <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3 w-3 text-green-600" />残業時間の削減</li>
-                  <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3 w-3 text-green-600" />対応遅延リスクの低減</li>
-                  <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3 w-3 text-green-600" />担当者のモチベーション維持</li>
-                  <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3 w-3 text-green-600" />顧客満足度の向上</li>
-                </ul>
+              <p className="text-amber-700">至急案件は依頼日当日または翌日に一次対応</p>
+            </div>
+            <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
+              <div className="flex items-center gap-1.5 mb-1">
+                <FileText className="h-3.5 w-3.5 text-blue-600" />
+                <span className="font-semibold text-blue-800">見積書提出</span>
               </div>
+              <p className="text-blue-700">依頼日より7日以内に見積書を提出</p>
             </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Digitalization Progress */}
-      <Card>
-        <CardHeader className="pb-2">
-          <SectionHeader
-            icon={Zap}
-            title="デジタル化進捗"
-            description="紙ベースからデジタル管理への移行状況。月別の案件登録・完了件数"
-          />
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div className="p-3 rounded-lg bg-purple-50 border border-purple-200 text-center">
-              <p className="text-xs text-purple-600 font-medium">デジタル化率</p>
-              <p className="text-2xl font-bold text-purple-700">{summary.digitalRate}%</p>
+            <div className="p-3 rounded-lg bg-green-50 border border-green-200">
+              <div className="flex items-center gap-1.5 mb-1">
+                <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                <span className="font-semibold text-green-800">施工完了</span>
+              </div>
+              <p className="text-green-700">承認後10日以内に施工完了</p>
             </div>
-            <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-center">
-              <p className="text-xs text-blue-600 font-medium">登録案件数</p>
-              <p className="text-2xl font-bold text-blue-700">{summary.totalCases}<span className="text-sm font-normal">件</span></p>
+            <div className="p-3 rounded-lg bg-purple-50 border border-purple-200">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Clock className="h-3.5 w-3.5 text-purple-600" />
+                <span className="font-semibold text-purple-800">完了報告書</span>
+              </div>
+              <p className="text-purple-700">施工完了から5日以内に報告書提出</p>
             </div>
-            <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-center">
-              <p className="text-xs text-emerald-600 font-medium">完了案件数</p>
-              <p className="text-2xl font-bold text-emerald-700">{summary.completedCases}<span className="text-sm font-normal">件</span></p>
-            </div>
-          </div>
-          <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={digitalization}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="key" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} />
-              <Tooltip formatter={(value: number, name: string) => [value, name === "newCases" ? "新規登録" : "完了"]} />
-              <Legend formatter={(value) => value === "newCases" ? "新規登録" : "完了"} />
-              <Line type="monotone" dataKey="newCases" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} name="newCases" />
-              <Line type="monotone" dataKey="completedCases" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} name="completedCases" />
-            </LineChart>
-          </ResponsiveContainer>
-          <div className="mt-4 p-4 rounded-lg bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200">
-            <h4 className="font-medium text-sm mb-2 flex items-center gap-1.5">
-              <Zap className="h-4 w-4 text-purple-600" />
-              デジタル化による削減効果（推定）
-            </h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-              <div><span className="text-muted-foreground">紙の使用量削減:</span><br/><span className="font-semibold">約{Math.round(summary.totalCases * 5)}枚/年</span></div>
-              <div><span className="text-muted-foreground">移動時間削減:</span><br/><span className="font-semibold">約{Math.round(summary.totalCases * 0.5)}時間/年</span></div>
-              <div><span className="text-muted-foreground">情報共有速度:</span><br/><span className="font-semibold">リアルタイム化</span></div>
-              <div><span className="text-muted-foreground">書類紛失リスク:</span><br/><span className="font-semibold">ゼロ</span></div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Partner Performance */}
-      <Card>
-        <CardHeader className="pb-2">
-          <SectionHeader
-            icon={Building2}
-            title="協力会社パフォーマンス"
-            description="発注先の多様化と各社の実績比較"
-          />
-        </CardHeader>
-        <CardContent>
-          {partnerPerformance.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Building2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">協力会社のデータがありません</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/30">
-                    <th className="text-left p-2 font-medium">会社名</th>
-                    <th className="text-left p-2 font-medium">業種</th>
-                    <th className="text-right p-2 font-medium">案件数</th>
-                    <th className="text-right p-2 font-medium">完了数</th>
-                    <th className="text-right p-2 font-medium">完了率</th>
-
-                  </tr>
-                </thead>
-                <tbody>
-                  {partnerPerformance.slice(0, 15).map((p) => (
-                    <tr key={p.id} className="border-b hover:bg-muted/20 transition-colors">
-                      <td className="p-2 font-medium">{p.name}</td>
-                      <td className="p-2">
-                        <Badge variant="outline" className="text-[10px]">{p.category}</Badge>
-                      </td>
-                      <td className="p-2 text-right">{p.caseCount}</td>
-                      <td className="p-2 text-right">{p.completedCount}</td>
-                      <td className="p-2 text-right">
-                        <span className={p.caseCount > 0 && p.completedCount / p.caseCount >= 0.8 ? "text-green-600 font-medium" : ""}>
-                          {p.caseCount > 0 ? Math.round(p.completedCount / p.caseCount * 100) : 0}%
-                        </span>
-                      </td>
-
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Value Proposition Footer */}
-      <Card className="border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-green-50">
-        <CardContent className="p-6">
-          <div className="text-center mb-4">
-            <h3 className="text-lg font-bold text-emerald-800 flex items-center justify-center gap-2">
-              <Award className="h-5 w-5" />
-              Store OSX 導入価値の提言
-            </h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 rounded-lg bg-white/80 border border-emerald-200">
-              <h4 className="font-semibold text-sm text-emerald-700 mb-2">業務効率化</h4>
-              <ul className="text-xs space-y-1 text-emerald-900">
-                <li>・案件処理の平均{summary.avgProcessingDays}日で完了</li>
-                <li>・紙の書類管理からの完全脱却</li>
-                <li>・リアルタイムの進捗把握</li>
-                <li>・移動ルート最適化で時間削減</li>
-              </ul>
-            </div>
-            <div className="p-4 rounded-lg bg-white/80 border border-emerald-200">
-              <h4 className="font-semibold text-sm text-emerald-700 mb-2">コスト管理</h4>
-              <ul className="text-xs space-y-1 text-emerald-900">
-                <li>・見積精度向上で予算超過を防止</li>
-                <li>・協力会社の比較で最適発注</li>
-                <li>・予実管理の自動化</li>
-                <li>・発注プロセスの透明化</li>
-              </ul>
-            </div>
-            <div className="p-4 rounded-lg bg-white/80 border border-emerald-200">
-              <h4 className="font-semibold text-sm text-emerald-700 mb-2">品質向上</h4>
-              <ul className="text-xs space-y-1 text-emerald-900">
-                <li>・チェックリストで漏れゼロ</li>
-                <li>・写真台帳の自動生成</li>
-                <li>・担当者間の情報共有即時化</li>
-                <li>・過去案件のナレッジ蓄積</li>
-              </ul>
+            <div className="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+              <div className="flex items-center gap-1.5 mb-1">
+                <MapPin className="h-3.5 w-3.5 text-cyan-600" />
+                <span className="font-semibold text-cyan-800">再訪ゼロ</span>
+              </div>
+              <p className="text-cyan-700">現場再訪がないよう一発完了を目標</p>
             </div>
           </div>
         </CardContent>

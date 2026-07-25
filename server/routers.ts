@@ -108,7 +108,9 @@ import {
   listDocumentVersions,
   getLatestVersionNumber,
   searchDocuments,
+  getDb,
 } from "./db";
+import { estimates as estimatesTable, caseSignatures as caseSignaturesTable, routeAssignments as routeAssignmentsTable } from "../drizzle/schema";
 import { makeRequest } from "./_core/map";
 import {
   buildSchedule,
@@ -2933,7 +2935,6 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const months = input?.months ?? 12;
         const allCases = await listCases();
-        const allExpenses = await listAllExpenses();
         const users = await getAllUsers();
         const allPartners = await listPartners();
 
@@ -2944,49 +2945,152 @@ export const appRouter = router({
           buckets.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, year: d.getFullYear(), month: d.getMonth() + 1 });
         }
 
-        // --- 1. 案件処理速度（受付→完了の平均日数推移） ---
-        type SpeedBucket = { key: string; totalDays: number; count: number; avgDays: number };
-        const speedByMonth = new Map<string, SpeedBucket>(buckets.map(b => [b.key, { key: b.key, totalDays: 0, count: 0, avgDays: 0 }]));
-        for (const c of allCases) {
-          if (!c.completedAt) continue;
-          const start = c.requestDate ? new Date(c.requestDate as any) : new Date(c.createdAt as any);
-          const end = new Date(c.completedAt as any);
-          const days = Math.max(0, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-          const k = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}`;
-          const b = speedByMonth.get(k);
-          if (b) { b.totalDays += days; b.count += 1; }
-        }
-        const processingSpeed = buckets.map(b => {
-          const s = speedByMonth.get(b.key)!;
-          s.avgDays = s.count > 0 ? Math.round(s.totalDays / s.count * 10) / 10 : 0;
-          return s;
+        // Helper: diff in days between two dates
+        const diffDays = (a: Date, b: Date) => Math.max(0, Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24)));
+        const toDate = (v: any) => v ? new Date(v) : null;
+
+        // Fetch all estimates (for KPI2: 見積提出日)
+        const dbInstance = await getDb();
+        if (!dbInstance) return { kpis: { urgentResponse: { total: 0, met: 0, rate: 100 }, estimateSubmission: { total: 0, met: 0, rate: 100 }, constructionCompletion: { total: 0, met: 0, rate: 100 }, reportSubmission: { total: 0, met: 0, rate: 100 }, noRevisit: { total: 0, met: 0, rate: 100 } }, trends: [], summary: { totalCases: 0, completedCases: 0, avgProcessingDays: 0, partnerCount: 0, activePartners: 0 }, workload: [] };
+        // Direct queries for KPI data
+        const allEstimates = await dbInstance.select().from(estimatesTable);
+        const allSignatures = await dbInstance.select().from(caseSignaturesTable);
+        const allRouteAssigns = await dbInstance.select().from(routeAssignmentsTable);
+
+        // --- KPI 1: 至急案件の当日/翌日一次対応率 ---
+        // 至急 = urgency "S", 一次対応 = surveyDate が requestDate から1日以内
+        const urgentCases = allCases.filter(c => c.urgency === "S");
+        const urgentMet = urgentCases.filter(c => {
+          const req = toDate(c.requestDate) ?? toDate(c.createdAt);
+          const survey = toDate(c.surveyDate);
+          if (!req || !survey) return false;
+          return diffDays(req, survey) <= 1;
         });
 
-        // --- 2. コスト最適化（予実差異の改善率・見積精度） ---
-        const expByCase = new Map<number, number>();
-        for (const e of allExpenses) { if (e.caseId) expByCase.set(e.caseId, (expByCase.get(e.caseId) ?? 0) + (e.amount ?? 0)); }
-        type CostBucket = { key: string; totalVariance: number; totalBudget: number; count: number; accuracyRate: number };
-        const costByMonth = new Map<string, CostBucket>(buckets.map(b => [b.key, { key: b.key, totalVariance: 0, totalBudget: 0, count: 0, accuracyRate: 0 }]));
+        // --- KPI 2: 依頼日から7日以内の見積書提出率 ---
+        // 対象: 見積提出済 or 承認済 or 見積中以降の案件（estimatesに記録がある案件）
+        const estByCaseFirst = new Map<number, Date>(); // caseId -> earliest estimate createdAt
+        for (const e of allEstimates) {
+          const d = toDate(e.createdAt);
+          if (!d) continue;
+          const existing = estByCaseFirst.get(e.caseId);
+          if (!existing || d < existing) estByCaseFirst.set(e.caseId, d);
+        }
+        const casesWithEstimate = allCases.filter(c => estByCaseFirst.has(c.id));
+        const estimateMet = casesWithEstimate.filter(c => {
+          const req = toDate(c.requestDate) ?? toDate(c.createdAt);
+          const estDate = estByCaseFirst.get(c.id)!;
+          if (!req) return false;
+          return diffDays(req, estDate) <= 7;
+        });
+
+        // --- KPI 3: 承認後10日以内の施工完了率 ---
+        // 承認済案件で constructionDate or completedAt が見積提出日から10日以内
+        // 「承認後」= progressStage が承認済の案件。承認日は不明なので最新見積日を代用
+        const approvedCases = allCases.filter(c => c.progressStage === "承認済" || c.status === "施工待ち" || c.status === "施工中" || c.status === "完了" || c.status === "クローズ");
+        const approvedWithCompletion = approvedCases.filter(c => toDate(c.constructionDate) || toDate(c.completedAt));
+        const constructionMet = approvedWithCompletion.filter(c => {
+          // 承認日 ≒ 最新見積日 or progressStage変更日（不明なので見積日を代用）
+          const estDate = estByCaseFirst.get(c.id);
+          const approvalDate = estDate ?? toDate(c.requestDate) ?? toDate(c.createdAt);
+          const completionDate = toDate(c.completedAt) ?? toDate(c.constructionDate);
+          if (!approvalDate || !completionDate) return false;
+          return diffDays(approvalDate, completionDate) <= 10;
+        });
+
+        // --- KPI 4: 施工完了から5日以内の完了報告書提出率 ---
+        // completedAt がある案件で caseSignatures(reportType="completion").signedAt - completedAt <= 5日
+        const sigByCaseCompletion = new Map<number, Date>(); // caseId -> completion signature date
+        for (const s of allSignatures) {
+          if (s.reportType !== "completion") continue;
+          const d = toDate(s.signedAt);
+          if (d) sigByCaseCompletion.set(s.caseId, d);
+        }
+        const completedCasesArr = allCases.filter(c => toDate(c.completedAt));
+        const completedWithReport = completedCasesArr.filter(c => sigByCaseCompletion.has(c.id));
+        const reportMet = completedWithReport.filter(c => {
+          const comp = toDate(c.completedAt)!;
+          const sig = sigByCaseCompletion.get(c.id)!;
+          return diffDays(comp, sig) <= 5;
+        });
+
+        // --- KPI 5: 現場再訪ゼロ率（一発完了率） ---
+        // route_assignments で同一caseId + taskType="survey" が2件以上 = 再訪あり
+        const surveyCountByCase = new Map<number, number>();
+        for (const ra of allRouteAssigns) {
+          if (ra.taskType !== "survey") continue;
+          surveyCountByCase.set(ra.caseId, (surveyCountByCase.get(ra.caseId) ?? 0) + 1);
+        }
+        // 対象: surveyDateがある案件（現調実施済み）
+        const surveyedCases = allCases.filter(c => toDate(c.surveyDate));
+        const noRevisitMet = surveyedCases.filter(c => {
+          const count = surveyCountByCase.get(c.id) ?? 0;
+          return count <= 1; // 0 or 1回 = 再訪なし
+        });
+
+        // --- KPI月別推移 ---
+        type KpiTrend = { key: string; urgentRate: number; estimateRate: number; constructionRate: number; reportRate: number; noRevisitRate: number };
+        const trendByMonth = new Map<string, { urgent: { total: number; met: number }; estimate: { total: number; met: number }; construction: { total: number; met: number }; report: { total: number; met: number }; noRevisit: { total: number; met: number } }>();
+        for (const b of buckets) {
+          trendByMonth.set(b.key, { urgent: { total: 0, met: 0 }, estimate: { total: 0, met: 0 }, construction: { total: 0, met: 0 }, report: { total: 0, met: 0 }, noRevisit: { total: 0, met: 0 } });
+        }
+        // Assign cases to months based on requestDate
         for (const c of allCases) {
-          if (!c.estimatedCost) continue;
-          const refDate = c.completedAt ? new Date(c.completedAt as any) : (c.requestDate ? new Date(c.requestDate as any) : new Date(c.createdAt as any));
+          const refDate = toDate(c.requestDate) ?? toDate(c.createdAt);
+          if (!refDate) continue;
           const k = `${refDate.getFullYear()}-${String(refDate.getMonth() + 1).padStart(2, "0")}`;
-          const b = costByMonth.get(k);
-          if (!b) continue;
-          const actual = (c.actualCost ?? 0) + (expByCase.get(c.id) ?? 0);
-          const estimated = c.estimatedCost;
-          const variance = Math.abs(actual - estimated);
-          b.totalVariance += variance;
-          b.totalBudget += estimated;
-          b.count += 1;
+          const bucket = trendByMonth.get(k);
+          if (!bucket) continue;
+
+          // KPI1
+          if (c.urgency === "S") {
+            bucket.urgent.total++;
+            const survey = toDate(c.surveyDate);
+            if (survey && diffDays(refDate, survey) <= 1) bucket.urgent.met++;
+          }
+          // KPI2
+          if (estByCaseFirst.has(c.id)) {
+            bucket.estimate.total++;
+            const estDate = estByCaseFirst.get(c.id)!;
+            if (diffDays(refDate, estDate) <= 7) bucket.estimate.met++;
+          }
+          // KPI3
+          if (c.progressStage === "承認済" || c.status === "施工待ち" || c.status === "施工中" || c.status === "完了" || c.status === "クローズ") {
+            const completionDate = toDate(c.completedAt) ?? toDate(c.constructionDate);
+            if (completionDate) {
+              bucket.construction.total++;
+              const estDate = estByCaseFirst.get(c.id);
+              const approvalDate = estDate ?? refDate;
+              if (diffDays(approvalDate, completionDate) <= 10) bucket.construction.met++;
+            }
+          }
+          // KPI4
+          if (toDate(c.completedAt) && sigByCaseCompletion.has(c.id)) {
+            bucket.report.total++;
+            const comp = toDate(c.completedAt)!;
+            const sig = sigByCaseCompletion.get(c.id)!;
+            if (diffDays(comp, sig) <= 5) bucket.report.met++;
+          }
+          // KPI5
+          if (toDate(c.surveyDate)) {
+            bucket.noRevisit.total++;
+            const count = surveyCountByCase.get(c.id) ?? 0;
+            if (count <= 1) bucket.noRevisit.met++;
+          }
         }
-        const costOptimization = buckets.map(b => {
-          const s = costByMonth.get(b.key)!;
-          s.accuracyRate = s.totalBudget > 0 ? Math.round((1 - s.totalVariance / s.totalBudget) * 1000) / 10 : 0;
-          return s;
+        const trends: KpiTrend[] = buckets.map(b => {
+          const t = trendByMonth.get(b.key)!;
+          return {
+            key: b.key,
+            urgentRate: t.urgent.total > 0 ? Math.round(t.urgent.met / t.urgent.total * 1000) / 10 : 100,
+            estimateRate: t.estimate.total > 0 ? Math.round(t.estimate.met / t.estimate.total * 1000) / 10 : 100,
+            constructionRate: t.construction.total > 0 ? Math.round(t.construction.met / t.construction.total * 1000) / 10 : 100,
+            reportRate: t.report.total > 0 ? Math.round(t.report.met / t.report.total * 1000) / 10 : 100,
+            noRevisitRate: t.noRevisit.total > 0 ? Math.round(t.noRevisit.met / t.noRevisit.total * 1000) / 10 : 100,
+          };
         });
 
-        // --- 3. 担当者稼働率（偏り解消率） ---
+        // --- 担当者稼働率（偏り解消率） ---
         const workloadByUser = new Map<number, { userId: number; name: string; caseCount: number; completedCount: number }>();
         for (const u of users) workloadByUser.set(u.id, { userId: u.id, name: u.name ?? `User ${u.id}`, caseCount: 0, completedCount: 0 });
         for (const c of allCases) {
@@ -2996,83 +3100,34 @@ export const appRouter = router({
           if (c.completedAt || c.status === "完了") w.completedCount += 1;
         }
         const workloadRows = Array.from(workloadByUser.values()).filter(w => w.caseCount > 0);
-        const avgCases = workloadRows.length > 0 ? workloadRows.reduce((s, w) => s + w.caseCount, 0) / workloadRows.length : 0;
-        const maxDeviation = workloadRows.length > 0 ? Math.max(...workloadRows.map(w => Math.abs(w.caseCount - avgCases))) : 0;
-        const balanceScore = avgCases > 0 ? Math.max(0, Math.min(100, Math.round((1 - maxDeviation / avgCases) * 100))) : 100;
 
-        // --- 4. デジタル化進捗 ---
-        // 写真台帳生成数 = 写真がある案件数、PDF取込数 = estimatesテーブルのレコード数
-        const casesWithPhotos = allCases.filter(c => c.status !== "受付").length; // 進行中以降はデジタル化済みとみなす
-        const totalCasesCount = allCases.length;
-        const digitalRate = totalCasesCount > 0 ? Math.round(casesWithPhotos / totalCasesCount * 1000) / 10 : 0;
-        // 月別デジタル化件数
-        type DigitalBucket = { key: string; newCases: number; completedCases: number };
-        const digitalByMonth = new Map<string, DigitalBucket>(buckets.map(b => [b.key, { key: b.key, newCases: 0, completedCases: 0 }]));
-        for (const c of allCases) {
-          const refDate = c.requestDate ? new Date(c.requestDate as any) : new Date(c.createdAt as any);
-          const k = `${refDate.getFullYear()}-${String(refDate.getMonth() + 1).padStart(2, "0")}`;
-          const b = digitalByMonth.get(k);
-          if (b) { b.newCases += 1; if (c.completedAt || c.status === "完了") b.completedCases += 1; }
-        }
-        const digitalization = buckets.map(b => digitalByMonth.get(b.key)!);
-
-        // --- 5. 協力会社パフォーマンス ---
-        const partnerStats = new Map<number, { id: number; name: string; category: string; caseCount: number; completedCount: number; totalCost: number; avgCost: number }>(); 
-        for (const p of allPartners) partnerStats.set(p.id, { id: p.id, name: p.name, category: p.category, caseCount: 0, completedCount: 0, totalCost: 0, avgCost: 0 });
-        for (const c of allCases) {
-          if (!c.partnerId || !partnerStats.has(c.partnerId)) continue;
-          const ps = partnerStats.get(c.partnerId)!;
-          ps.caseCount += 1;
-          if (c.completedAt || c.status === "完了") ps.completedCount += 1;
-          ps.totalCost += c.estimatedCost ?? 0;
-        }
-        const partnerPerformance = Array.from(partnerStats.values())
-          .filter(p => p.caseCount > 0)
-          .map(p => ({ ...p, avgCost: p.caseCount > 0 ? Math.round(p.totalCost / p.caseCount) : 0 }))
-          .sort((a, b) => b.caseCount - a.caseCount);
-
-        // --- 6. ROI試算 ---
-        const totalRevenue = allCases.reduce((s, c) => {
-          const p = calcCaseProfit({ plenusQuoteAmount: c.plenusQuoteAmount, estimatedCost: c.estimatedCost, expensesTotal: expByCase.get(c.id) ?? 0 });
-          return s + p.sales;
-        }, 0);
-        const totalCost = allCases.reduce((s, c) => {
-          const p = calcCaseProfit({ plenusQuoteAmount: c.plenusQuoteAmount, estimatedCost: c.estimatedCost, expensesTotal: expByCase.get(c.id) ?? 0 });
-          return s + p.cost;
-        }, 0);
-        const totalProfit = totalRevenue - totalCost;
+        // --- Summary ---
         const completedCases = allCases.filter(c => c.completedAt || c.status === "完了").length;
         const avgProcessingDays = completedCases > 0
           ? Math.round(allCases.filter(c => c.completedAt).reduce((s, c) => {
-              const start = c.requestDate ? new Date(c.requestDate as any) : new Date(c.createdAt as any);
-              const end = new Date(c.completedAt as any);
-              return s + Math.max(0, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+              const start = toDate(c.requestDate) ?? toDate(c.createdAt);
+              const end = toDate(c.completedAt)!;
+              return s + (start ? diffDays(start, end) : 0);
             }, 0) / completedCases * 10) / 10
           : 0;
 
-        // 年間推定削減額（平均処理日数が1日短縮ごとに約X万円の機会損失削減と仮定）
-        const estimatedAnnualSavings = Math.round(completedCases * 0.5 * 10000); // 案件あたり0.5万円の人件費削減と仮定
-
         return {
+          kpis: {
+            urgentResponse: { total: urgentCases.length, met: urgentMet.length, rate: urgentCases.length > 0 ? Math.round(urgentMet.length / urgentCases.length * 1000) / 10 : 100 },
+            estimateSubmission: { total: casesWithEstimate.length, met: estimateMet.length, rate: casesWithEstimate.length > 0 ? Math.round(estimateMet.length / casesWithEstimate.length * 1000) / 10 : 100 },
+            constructionCompletion: { total: approvedWithCompletion.length, met: constructionMet.length, rate: approvedWithCompletion.length > 0 ? Math.round(constructionMet.length / approvedWithCompletion.length * 1000) / 10 : 100 },
+            reportSubmission: { total: completedWithReport.length, met: reportMet.length, rate: completedWithReport.length > 0 ? Math.round(reportMet.length / completedWithReport.length * 1000) / 10 : 100 },
+            noRevisit: { total: surveyedCases.length, met: noRevisitMet.length, rate: surveyedCases.length > 0 ? Math.round(noRevisitMet.length / surveyedCases.length * 1000) / 10 : 100 },
+          },
+          trends,
           summary: {
             totalCases: allCases.length,
             completedCases,
             avgProcessingDays,
-            totalRevenue,
-            totalCost,
-            totalProfit,
-            profitMargin: totalRevenue > 0 ? Math.round(totalProfit / totalRevenue * 1000) / 10 : 0,
             partnerCount: allPartners.length,
-            activePartners: partnerPerformance.length,
-            digitalRate,
-            balanceScore,
-            estimatedAnnualSavings,
+            activePartners: Array.from(new Set(allCases.filter(c => c.partnerId).map(c => c.partnerId!))).length,
           },
-          processingSpeed,
-          costOptimization,
           workload: workloadRows,
-          digitalization,
-          partnerPerformance,
         };
       }),
   }),
