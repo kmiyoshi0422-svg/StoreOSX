@@ -973,22 +973,22 @@ export default function CrossSchedule() {
           <div className="overflow-x-auto" ref={ganttRef} style={{ WebkitOverflowScrolling: "touch" }}>
             <div className="min-w-[800px]">
               {/* Date header */}
-              <div className="flex border-b bg-muted/30 sticky top-0 z-10">
-                <div className="w-[180px] sm:w-[220px] flex-shrink-0 px-3 py-2 text-[10px] font-semibold text-muted-foreground border-r bg-muted/30">
+              <div className="flex border-b-2 border-border/60 bg-muted/50 sticky top-0 z-10">
+                <div className="w-[200px] sm:w-[260px] flex-shrink-0 px-3 py-2.5 text-[11px] font-bold text-foreground/80 border-r-2 border-border/60 bg-muted/50">
                   {viewMode === "partner" ? "業者名" : "案件名"}
                 </div>
                 <div className="flex-1 flex">
                   {dateHeaders.map((h, i) => (
                     <div
                       key={i}
-                      className={`flex-1 ${zoomLevel === "day" ? "min-w-[48px]" : zoomLevel === "month" ? "min-w-[4px]" : "min-w-[28px]"} text-center py-1.5 text-[9px] border-r border-border/30 ${
-                        h.isWeekend ? "bg-rose-50/60" : ""
+                      className={`flex-1 ${zoomLevel === "day" ? "min-w-[52px]" : zoomLevel === "month" ? "min-w-[5px]" : "min-w-[32px]"} text-center py-2 text-[10px] border-r border-border/40 ${
+                        h.isWeekend ? "bg-rose-50/80" : ""
                       } ${h.isToday ? "bg-red-50 font-bold border-l-2 border-l-red-500" : ""}`}
                     >
                       {h.monthLabel && (
-                        <div className="text-[8px] text-muted-foreground font-medium">{h.monthLabel}</div>
+                        <div className="text-[9px] text-foreground/60 font-semibold">{h.monthLabel}</div>
                       )}
-                      {h.label && <div className={h.isToday ? "text-red-600 font-bold" : "text-muted-foreground"}>{h.label}</div>}
+                      {h.label && <div className={h.isToday ? "text-red-600 font-bold" : "text-foreground/70 font-medium"}>{h.label}</div>}
                     </div>
                   ))}
                 </div>
@@ -997,7 +997,7 @@ export default function CrossSchedule() {
               {/* Rows - partner or case based */}
               {viewMode === "partner" ? (
                 <>
-              {filteredRows.map((row) => {
+              {filteredRows.map((row, rowIdx) => {
                 const rangeStartStr = fmtYmd(rangeStart);
                 const rangeEndStr = fmtYmd(rangeEnd);
                 const visibleItems = row.items.filter(
@@ -1005,29 +1005,29 @@ export default function CrossSchedule() {
                 );
 
                 return (
-                  <div key={row.id ?? "unassigned"} className="flex border-b last:border-b-0 hover:bg-muted/10 transition-colors">
+                  <div key={row.id ?? "unassigned"} className={`flex border-b last:border-b-0 hover:bg-blue-50/40 transition-colors ${rowIdx % 2 === 0 ? "bg-white" : "bg-slate-50/60"}`}>
                     {/* Partner name column */}
-                    <div className="w-[180px] sm:w-[220px] flex-shrink-0 px-2 sm:px-3 py-2 border-r bg-white/50">
+                    <div className="w-[200px] sm:w-[260px] flex-shrink-0 px-2 sm:px-3 py-2.5 border-r-2 border-border/40">
                       <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${row.id ? "bg-indigo-500" : "bg-gray-300"}`} />
+                        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${row.id ? "bg-indigo-500" : "bg-gray-300"}`} />
                         <div className="min-w-0 flex-1">
                           <p
-                            className="text-[11px] sm:text-xs font-medium truncate cursor-pointer hover:text-primary transition-colors"
+                            className="text-xs sm:text-sm font-semibold truncate cursor-pointer hover:text-primary transition-colors"
                             onClick={() => row.id && setLocation(`/partners/${row.id}`)}
                             title={row.name}
                           >
                             {row.name}
                           </p>
                           {row.id && partnerMap.get(row.id) && (
-                            <p className="text-[9px] text-muted-foreground">{partnerMap.get(row.id)!.category}</p>
+                            <p className="text-[10px] text-muted-foreground font-medium">{partnerMap.get(row.id)!.category}</p>
                           )}
-                          <p className="text-[9px] text-muted-foreground">{visibleItems.length} 件</p>
+                          <p className="text-[10px] text-muted-foreground">{visibleItems.length} 件</p>
                         </div>
                       </div>
                     </div>
 
                     {/* Gantt area */}
-                    <div className="flex-1 relative py-1" style={{ minHeight: `${Math.max(32, visibleItems.length * 22 + 8)}px` }}>
+                    <div className="flex-1 relative py-2" style={{ minHeight: `${Math.max(40, visibleItems.length * 28 + 12)}px` }}>
                       {/* Today line - prominent red indicator */}
                       {(() => {
                         const todayStr = fmtYmd(new Date());
@@ -1038,14 +1038,14 @@ export default function CrossSchedule() {
                           return (
                             <>
                               <div
-                                className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-20"
+                                className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-20 shadow-sm"
                                 style={{ left: `${(todayOffset / totalDays) * 100}%` }}
                               />
                               <div
                                 className="absolute top-0 z-20 -translate-x-1/2"
                                 style={{ left: `${(todayOffset / totalDays) * 100}%` }}
                               >
-                                <div className="bg-red-500 text-white text-[8px] px-1 py-0.5 rounded-b font-bold whitespace-nowrap">
+                                <div className="bg-red-500 text-white text-[9px] px-1.5 py-0.5 rounded-b font-bold whitespace-nowrap shadow-sm">
                                   TODAY
                                 </div>
                               </div>
@@ -1060,7 +1060,7 @@ export default function CrossSchedule() {
                         h.isWeekend ? (
                           <div
                             key={`bg-${i}`}
-                            className="absolute top-0 bottom-0 bg-rose-50/40"
+                            className="absolute top-0 bottom-0 bg-rose-50/60"
                             style={{ left: `${(i / totalDays) * 100}%`, width: `${(1 / totalDays) * 100}%` }}
                           />
                         ) : null
@@ -1093,21 +1093,22 @@ export default function CrossSchedule() {
 
                         const leftPct = (clampedOffset / totalDays) * 100;
                         const widthPct = (clampedDuration / totalDays) * 100;
-                        const topPx = idx * 22 + 4;
+                        const topPx = idx * 28 + 4;
                         const isDragging = dragState?.itemId === item.id && dragState?.itemType === item.type;
 
                         return (
                           <div
                             key={`${item.type}-${item.id}`}
                             ref={isDragging ? dragItemRef : undefined}
-                            className={`absolute h-[18px] rounded-sm shadow-sm overflow-hidden transition-all group/bar ${
+                            className={`absolute h-[24px] rounded shadow-md overflow-hidden transition-all group/bar border ${
                               item.type === "schedule" ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
-                            } ${isDragging ? "opacity-80 ring-2 ring-primary z-20 scale-[1.02]" : "hover:brightness-110"}`}
+                            } ${isDragging ? "opacity-80 ring-2 ring-primary z-20 scale-[1.03]" : "hover:brightness-105 hover:shadow-lg"}`}
                             style={{
                               left: `${leftPct}%`,
                               width: `${Math.max(widthPct, 1.5)}%`,
                               top: `${topPx}px`,
-                              backgroundColor: `color-mix(in srgb, ${item.color} 35%, transparent)`,
+                              backgroundColor: `color-mix(in srgb, ${item.color} 55%, transparent)`,
+                              borderColor: `color-mix(in srgb, ${item.color} 70%, transparent)`,
                             }}
                             title={isDragging ? undefined : `${item.storeName} - ${item.title}\n${effectiveStart} 〜 ${effectiveEnd}\nステータス: ${item.status}${item.progress > 0 ? ` (${item.progress}%)` : ""}${item.type === "schedule" ? "\n※ドラッグで日程変更 / 端をドラッグで工期変更" : ""}`}
                             onMouseDown={(e) => handleDragStart(e, item)}
@@ -1120,7 +1121,7 @@ export default function CrossSchedule() {
                             {/* Realtime date tooltip during drag/resize */}
                             {isDragging && (
                               <div
-                                className="absolute -top-7 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[9px] px-2 py-0.5 rounded shadow-lg whitespace-nowrap z-50 pointer-events-none"
+                                className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] px-2.5 py-1 rounded shadow-lg whitespace-nowrap z-50 pointer-events-none"
                                 style={{ minWidth: "max-content" }}
                               >
                                 {dragState?.resizeMode === "left" && (
@@ -1137,25 +1138,25 @@ export default function CrossSchedule() {
                             {/* Left resize handle */}
                             {item.type === "schedule" && (
                               <div
-                                className="absolute left-0 top-0 bottom-0 w-[6px] cursor-col-resize z-10 hover:bg-black/20 transition-colors flex items-center justify-center"
+                                className="absolute left-0 top-0 bottom-0 w-[7px] cursor-col-resize z-10 hover:bg-black/20 transition-colors flex items-center justify-center"
                                 onMouseDown={(e) => handleResizeStart(e, item, "left")}
                                 onTouchStart={(e) => handleResizeStart(e, item, "left")}
                                 onClick={(e) => e.stopPropagation()}
                                 title="左端をドラッグして開始日を変更"
                               >
-                                <div className="w-[2px] h-[10px] bg-black/30 rounded-full opacity-0 group-hover/bar:opacity-100 transition-opacity" />
+                                <div className="w-[2px] h-[12px] bg-black/30 rounded-full opacity-0 group-hover/bar:opacity-100 transition-opacity" />
                               </div>
                             )}
                             {/* Right resize handle */}
                             {item.type === "schedule" && (
                               <div
-                                className="absolute right-0 top-0 bottom-0 w-[6px] cursor-col-resize z-10 hover:bg-black/20 transition-colors flex items-center justify-center"
+                                className="absolute right-0 top-0 bottom-0 w-[7px] cursor-col-resize z-10 hover:bg-black/20 transition-colors flex items-center justify-center"
                                 onMouseDown={(e) => handleResizeStart(e, item, "right")}
                                 onTouchStart={(e) => handleResizeStart(e, item, "right")}
                                 onClick={(e) => e.stopPropagation()}
                                 title="右端をドラッグして終了日を変更"
                               >
-                                <div className="w-[2px] h-[10px] bg-black/30 rounded-full opacity-0 group-hover/bar:opacity-100 transition-opacity" />
+                                <div className="w-[2px] h-[12px] bg-black/30 rounded-full opacity-0 group-hover/bar:opacity-100 transition-opacity" />
                               </div>
                             )}
                             {/* Progress fill */}
@@ -1165,19 +1166,24 @@ export default function CrossSchedule() {
                             />
                             {/* Label */}
                             <span
-                              className="absolute inset-0 flex items-center px-2 text-[9px] font-medium truncate z-[5] drop-shadow-sm"
-                              style={{ color: item.progress > 50 ? "#fff" : "#333" }}
+                              className="absolute inset-0 flex items-center px-2 text-[10px] font-semibold truncate z-[5] drop-shadow-sm gap-0.5"
+                              style={{ color: item.progress > 50 ? "#fff" : "#1e293b" }}
                             >
                               {item.urgency && (
-                                <span className={`inline-flex h-3 min-w-3 px-0.5 items-center justify-center rounded text-[7px] font-bold mr-0.5 ${URGENCY_COLORS[item.urgency] || ""}`}>
+                                <span className={`inline-flex h-3.5 min-w-3.5 px-0.5 items-center justify-center rounded text-[8px] font-bold mr-0.5 ${URGENCY_COLORS[item.urgency] || ""}`}>
                                   {item.urgency}
                                 </span>
                               )}
                               {item.type === "route" && (
-                                <span className="mr-0.5">{item.taskType === "survey" ? "🔍" : "🔨"}</span>
+                                <span className="mr-0.5 text-[11px]">{item.taskType === "survey" ? "🔍" : "🔨"}</span>
+                              )}
+                              {item.status && item.type === "schedule" && (
+                                <span className={`inline-flex h-3.5 items-center px-1 rounded text-[7px] font-bold mr-0.5 ${STATUS_COLORS[item.status] || "bg-slate-200 text-slate-700"}`}>
+                                  {item.status === "完了" ? "✓" : item.status === "進行中" ? "▶" : "○"}
+                                </span>
                               )}
                               <span className="truncate">
-                                {item.storeName.length > 8 ? item.storeName.slice(0, 8) + "…" : item.storeName}
+                                {item.storeName.length > 10 ? item.storeName.slice(0, 10) + "…" : item.storeName}
                                 {item.type === "schedule" && ` - ${item.title}`}
                               </span>
                             </span>
@@ -1191,7 +1197,7 @@ export default function CrossSchedule() {
                 </>
               ) : (
                 <>
-              {filteredCaseRows.map((row) => {
+              {filteredCaseRows.map((row, rowIdx) => {
                 const rangeStartStr = fmtYmd(rangeStart);
                 const rangeEndStr = fmtYmd(rangeEnd);
                 const visibleItems = row.items.filter(
@@ -1199,26 +1205,26 @@ export default function CrossSchedule() {
                 );
 
                 return (
-                  <div key={row.caseId} className="flex border-b last:border-b-0 hover:bg-muted/10 transition-colors">
+                  <div key={row.caseId} className={`flex border-b last:border-b-0 hover:bg-blue-50/40 transition-colors ${rowIdx % 2 === 0 ? "bg-white" : "bg-slate-50/60"}`}>
                     {/* Case name column */}
-                    <div className="w-[180px] sm:w-[220px] flex-shrink-0 px-2 sm:px-3 py-2 border-r bg-white/50">
+                    <div className="w-[200px] sm:w-[260px] flex-shrink-0 px-2 sm:px-3 py-2.5 border-r-2 border-border/40">
                       <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full flex-shrink-0 bg-emerald-500" />
+                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-emerald-500" />
                         <div className="min-w-0 flex-1">
                           <p
-                            className="text-[11px] sm:text-xs font-medium truncate cursor-pointer hover:text-primary transition-colors"
+                            className="text-xs sm:text-sm font-semibold truncate cursor-pointer hover:text-primary transition-colors"
                             onClick={() => setLocation(`/cases/${row.caseId}`)}
                             title={row.storeName}
                           >
                             {row.storeName}
                           </p>
                           {row.assigneeName && (
-                            <p className="text-[9px] text-muted-foreground flex items-center gap-0.5">
-                              <Users className="h-2.5 w-2.5" />
+                            <p className="text-[10px] text-muted-foreground flex items-center gap-0.5 font-medium">
+                              <Users className="h-3 w-3" />
                               {row.assigneeName}
                             </p>
                           )}
-                          <p className="text-[9px] text-muted-foreground">
+                          <p className="text-[10px] text-muted-foreground">
                             {row.brand && <span className="mr-1">{row.brand}</span>}
                             {visibleItems.length} 件
                           </p>
@@ -1227,7 +1233,7 @@ export default function CrossSchedule() {
                     </div>
 
                     {/* Gantt area */}
-                    <div className="flex-1 relative py-1" style={{ minHeight: `${Math.max(32, visibleItems.length * 22 + 8)}px` }}>
+                    <div className="flex-1 relative py-2" style={{ minHeight: `${Math.max(40, visibleItems.length * 28 + 12)}px` }}>
                       {/* Today line */}
                       {(() => {
                         const todayStr = fmtYmd(new Date());
@@ -1238,14 +1244,14 @@ export default function CrossSchedule() {
                           return (
                             <>
                               <div
-                                className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-20"
+                                className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-20 shadow-sm"
                                 style={{ left: `${(todayOffset / totalDays) * 100}%` }}
                               />
                               <div
                                 className="absolute top-0 z-20 -translate-x-1/2"
                                 style={{ left: `${(todayOffset / totalDays) * 100}%` }}
                               >
-                                <div className="bg-red-500 text-white text-[8px] px-1 py-0.5 rounded-b font-bold whitespace-nowrap">
+                                <div className="bg-red-500 text-white text-[9px] px-1.5 py-0.5 rounded-b font-bold whitespace-nowrap shadow-sm">
                                   TODAY
                                 </div>
                               </div>
@@ -1260,7 +1266,7 @@ export default function CrossSchedule() {
                         h.isWeekend ? (
                           <div
                             key={`bg-${i}`}
-                            className="absolute top-0 bottom-0 bg-rose-50/40"
+                            className="absolute top-0 bottom-0 bg-rose-50/60"
                             style={{ left: `${(i / totalDays) * 100}%`, width: `${(1 / totalDays) * 100}%` }}
                           />
                         ) : null
@@ -1291,21 +1297,22 @@ export default function CrossSchedule() {
 
                         const leftPct = (clampedOffset / totalDays) * 100;
                         const widthPct = (clampedDuration / totalDays) * 100;
-                        const topPx = idx * 22 + 4;
+                        const topPx = idx * 28 + 4;
                         const isDragging = dragState?.itemId === item.id && dragState?.itemType === item.type;
 
                         return (
                           <div
                             key={`${item.type}-${item.id}`}
                             ref={isDragging ? dragItemRef : undefined}
-                            className={`absolute h-[18px] rounded-sm shadow-sm overflow-hidden transition-all group/bar ${
+                            className={`absolute h-[24px] rounded shadow-md overflow-hidden transition-all group/bar border ${
                               item.type === "schedule" ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
-                            } ${isDragging ? "opacity-80 ring-2 ring-primary z-20 scale-[1.02]" : "hover:brightness-110"}`}
+                            } ${isDragging ? "opacity-80 ring-2 ring-primary z-20 scale-[1.03]" : "hover:brightness-105 hover:shadow-lg"}`}
                             style={{
                               left: `${leftPct}%`,
                               width: `${Math.max(widthPct, 1.5)}%`,
                               top: `${topPx}px`,
-                              backgroundColor: `color-mix(in srgb, ${item.color} 35%, transparent)`,
+                              backgroundColor: `color-mix(in srgb, ${item.color} 55%, transparent)`,
+                              borderColor: `color-mix(in srgb, ${item.color} 70%, transparent)`,
                             }}
                             title={isDragging ? undefined : `${item.storeName} - ${item.title}\n${effectiveStart} 〜 ${effectiveEnd}\nステータス: ${item.status}${item.progress > 0 ? ` (${item.progress}%)` : ""}${item.type === "schedule" ? "\n※ドラッグで日程変更 / 端をドラッグで工期変更" : ""}`}
                             onMouseDown={(e) => handleDragStart(e, item)}
@@ -1318,7 +1325,7 @@ export default function CrossSchedule() {
                             {/* Realtime date tooltip during drag/resize */}
                             {isDragging && (
                               <div
-                                className="absolute -top-7 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[9px] px-2 py-0.5 rounded shadow-lg whitespace-nowrap z-50 pointer-events-none"
+                                className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] px-2.5 py-1 rounded shadow-lg whitespace-nowrap z-50 pointer-events-none"
                                 style={{ minWidth: "max-content" }}
                               >
                                 {dragState?.resizeMode === "left" && (
@@ -1335,23 +1342,23 @@ export default function CrossSchedule() {
                             {/* Left resize handle */}
                             {item.type === "schedule" && (
                               <div
-                                className="absolute left-0 top-0 bottom-0 w-[6px] cursor-col-resize z-10 hover:bg-black/20 transition-colors flex items-center justify-center"
+                                className="absolute left-0 top-0 bottom-0 w-[7px] cursor-col-resize z-10 hover:bg-black/20 transition-colors flex items-center justify-center"
                                 onMouseDown={(e) => handleResizeStart(e, item, "left")}
                                 onTouchStart={(e) => handleResizeStart(e, item, "left")}
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                <div className="w-[2px] h-[10px] bg-black/30 rounded-full opacity-0 group-hover/bar:opacity-100 transition-opacity" />
+                                <div className="w-[2px] h-[12px] bg-black/30 rounded-full opacity-0 group-hover/bar:opacity-100 transition-opacity" />
                               </div>
                             )}
                             {/* Right resize handle */}
                             {item.type === "schedule" && (
                               <div
-                                className="absolute right-0 top-0 bottom-0 w-[6px] cursor-col-resize z-10 hover:bg-black/20 transition-colors flex items-center justify-center"
+                                className="absolute right-0 top-0 bottom-0 w-[7px] cursor-col-resize z-10 hover:bg-black/20 transition-colors flex items-center justify-center"
                                 onMouseDown={(e) => handleResizeStart(e, item, "right")}
                                 onTouchStart={(e) => handleResizeStart(e, item, "right")}
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                <div className="w-[2px] h-[10px] bg-black/30 rounded-full opacity-0 group-hover/bar:opacity-100 transition-opacity" />
+                                <div className="w-[2px] h-[12px] bg-black/30 rounded-full opacity-0 group-hover/bar:opacity-100 transition-opacity" />
                               </div>
                             )}
                             {/* Progress fill */}
@@ -1361,16 +1368,21 @@ export default function CrossSchedule() {
                             />
                             {/* Label */}
                             <span
-                              className="absolute inset-0 flex items-center px-2 text-[9px] font-medium truncate z-[5] drop-shadow-sm"
-                              style={{ color: item.progress > 50 ? "#fff" : "#333" }}
+                              className="absolute inset-0 flex items-center px-2 text-[10px] font-semibold truncate z-[5] drop-shadow-sm gap-0.5"
+                              style={{ color: item.progress > 50 ? "#fff" : "#1e293b" }}
                             >
                               {item.urgency && (
-                                <span className={`inline-flex h-3 min-w-3 px-0.5 items-center justify-center rounded text-[7px] font-bold mr-0.5 ${URGENCY_COLORS[item.urgency] || ""}`}>
+                                <span className={`inline-flex h-3.5 min-w-3.5 px-0.5 items-center justify-center rounded text-[8px] font-bold mr-0.5 ${URGENCY_COLORS[item.urgency] || ""}`}>
                                   {item.urgency}
                                 </span>
                               )}
                               {item.type === "route" && (
-                                <span className="mr-0.5">{item.taskType === "survey" ? "🔍" : "🔨"}</span>
+                                <span className="mr-0.5 text-[11px]">{item.taskType === "survey" ? "🔍" : "🔨"}</span>
+                              )}
+                              {item.status && item.type === "schedule" && (
+                                <span className={`inline-flex h-3.5 items-center px-1 rounded text-[7px] font-bold mr-0.5 ${STATUS_COLORS[item.status] || "bg-slate-200 text-slate-700"}`}>
+                                  {item.status === "完了" ? "✓" : item.status === "進行中" ? "▶" : "○"}
+                                </span>
                               )}
                               <span className="truncate">{item.title}</span>
                             </span>
@@ -1390,28 +1402,40 @@ export default function CrossSchedule() {
 
       {/* Legend */}
       <Card>
-        <CardContent className="p-3 sm:p-4">
-          <div className="flex flex-wrap items-center gap-3 text-[10px] sm:text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">凡例:</span>
-            <span className="flex items-center gap-1">
-              <span className="w-3 h-3 rounded-sm bg-blue-500/35 border border-blue-500/50" />
-              工程スケジュール（ドラッグ可）
+        <CardContent className="p-4 sm:p-5">
+          <div className="flex flex-wrap items-center gap-4 text-[11px] sm:text-xs">
+            <span className="font-bold text-foreground text-xs">凡例</span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-5 h-4 rounded shadow-sm bg-blue-500/55 border border-blue-500/70" />
+              <span className="text-foreground/80 font-medium">工程スケジュール（ドラッグ可）</span>
             </span>
-            <span className="flex items-center gap-1">
-              <span className="w-3 h-3 rounded-sm bg-amber-500/35 border border-amber-500/50" />
-              🔍 現調
+            <span className="flex items-center gap-1.5">
+              <span className="w-5 h-4 rounded shadow-sm bg-amber-500/55 border border-amber-500/70" />
+              <span className="text-foreground/80 font-medium">🔍 現調</span>
             </span>
-            <span className="flex items-center gap-1">
-              <span className="w-3 h-3 rounded-sm bg-emerald-500/35 border border-emerald-500/50" />
-              🔨 工事
+            <span className="flex items-center gap-1.5">
+              <span className="w-5 h-4 rounded shadow-sm bg-emerald-500/55 border border-emerald-500/70" />
+              <span className="text-foreground/80 font-medium">🔨 工事</span>
             </span>
-            <span className="flex items-center gap-1 ml-4">
-              <span className="w-px h-4 bg-red-400" />
-              今日
+            <span className="border-l border-border/60 pl-4 flex items-center gap-1.5">
+              <span className="w-[3px] h-5 bg-red-500 rounded-full" />
+              <span className="text-foreground/80 font-medium">今日</span>
             </span>
-            <span className="flex items-center gap-1">
-              <span className="w-3 h-3 rounded-sm bg-rose-50 border border-rose-200" />
-              土日
+            <span className="flex items-center gap-1.5">
+              <span className="w-5 h-4 rounded bg-rose-50 border border-rose-300" />
+              <span className="text-foreground/80 font-medium">土日</span>
+            </span>
+            <span className="border-l border-border/60 pl-4 flex items-center gap-1.5">
+              <span className="inline-flex h-4 items-center px-1 rounded bg-slate-200 text-slate-700 text-[8px] font-bold">○</span>
+              <span className="text-foreground/80 font-medium">予定</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-flex h-4 items-center px-1 rounded bg-blue-200 text-blue-800 text-[8px] font-bold">▶</span>
+              <span className="text-foreground/80 font-medium">進行中</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-flex h-4 items-center px-1 rounded bg-emerald-200 text-emerald-800 text-[8px] font-bold">✓</span>
+              <span className="text-foreground/80 font-medium">完了</span>
             </span>
           </div>
         </CardContent>
