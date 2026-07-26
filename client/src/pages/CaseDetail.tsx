@@ -495,7 +495,7 @@ function InfoTab({
 
           {/* Partner向けステータス変更UI */}
           {isPartner && (
-            <PartnerStatusChanger caseId={caseData.id} currentStatus={caseData.status} onUpdated={onUpdated} />
+            <PartnerStatusChanger caseId={caseData.id} currentStatus={caseData.status} currentUrgency={caseData.urgency} onUpdated={onUpdated} />
           )}
 
           {editing ? (
@@ -4144,7 +4144,7 @@ function StatusHistoryTab({ caseId }: { caseId: number }) {
 // ============================================================
 // Partner Status Changer (完了時に写真・コメント入力ダイアログ表示)
 // ============================================================
-function PartnerStatusChanger({ caseId, currentStatus, onUpdated }: { caseId: number; currentStatus: string; onUpdated: () => void }) {
+function PartnerStatusChanger({ caseId, currentStatus, currentUrgency, onUpdated }: { caseId: number; currentStatus: string; currentUrgency: string; onUpdated: () => void }) {
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
   const [comment, setComment] = useState("");
   const [photos, setPhotos] = useState<{ file: File; preview: string }[]>([]);
@@ -4230,22 +4230,38 @@ function PartnerStatusChanger({ caseId, currentStatus, onUpdated }: { caseId: nu
 
   return (
     <>
-      <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
-        <Label className="text-xs text-muted-foreground whitespace-nowrap">ステータス変更</Label>
-        <Select value={currentStatus} onValueChange={handleStatusChange}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="受付">受付</SelectItem>
-            <SelectItem value="現調中">現調中</SelectItem>
-            <SelectItem value="見積中">見積中</SelectItem>
-            <SelectItem value="施工待ち">施工待ち</SelectItem>
-            <SelectItem value="施工中">施工中</SelectItem>
-            <SelectItem value="完了">完了</SelectItem>
-            <SelectItem value="クローズ">クローズ</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="flex flex-wrap items-center gap-3 p-3 rounded-lg border bg-muted/30">
+        <div className="flex items-center gap-2">
+          <Label className="text-xs text-muted-foreground whitespace-nowrap">ステータス</Label>
+          <Select value={currentStatus} onValueChange={handleStatusChange}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="受付">受付</SelectItem>
+              <SelectItem value="現調中">現調中</SelectItem>
+              <SelectItem value="見積中">見積中</SelectItem>
+              <SelectItem value="施工待ち">施工待ち</SelectItem>
+              <SelectItem value="施工中">施工中</SelectItem>
+              <SelectItem value="完了">完了</SelectItem>
+              <SelectItem value="クローズ">クローズ</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <Label className="text-xs text-muted-foreground whitespace-nowrap">緊急度</Label>
+          <Select value={currentUrgency} onValueChange={(v) => updateMutation.mutate({ id: caseId, data: { urgency: v as any } })}>
+            <SelectTrigger className="w-[110px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="S">S 緊急</SelectItem>
+              <SelectItem value="A">A 高</SelectItem>
+              <SelectItem value="B">B 中</SelectItem>
+              <SelectItem value="C">C 低</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* 完了報告ダイアログ */}

@@ -958,3 +958,8 @@
 - [x] 経費取込メニューをpartnerにも表示
 - [x] 店舗履歴タブをpartnerにも表示
 - [x] 収支タブのレイアウト調整（partner向けに不要な余白解消・ラベル最適化）
+
+## partnerが緊急度タグとステータスを変更可能に（ユーザー指示）
+- [x] サーバー: cases.updateのpartner許可フィールドにurgencyを追加
+- [x] フロントエンド: PartnerStatusChangerに緊急度変更Selectを追加
+- [x] CasesList.tsxのステータス変更はpartnerでもそのまま動作可能（サーバー側で許可済み）

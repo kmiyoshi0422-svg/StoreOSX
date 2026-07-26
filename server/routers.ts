@@ -578,13 +578,13 @@ export const appRouter = router({
       .input(z.object({ id: z.number(), data: caseInputSchema.partial() }))
       .mutation(async ({ ctx, input }) => {
         let data = { ...input.data };
-        // partnerロールはステータス/進捗ステージの変更のみ許可
+        // partnerロールはステータス/進捗ステージ/緊急度の変更のみ許可
         if (ctx.user.role === 'partner') {
-          const allowedKeys = ['status', 'progressStage'];
+          const allowedKeys = ['status', 'progressStage', 'urgency'];
           const keys = Object.keys(data).filter(k => (data as any)[k] !== undefined);
           const disallowed = keys.filter(k => !allowedKeys.includes(k));
           if (disallowed.length > 0) {
-            throw new TRPCError({ code: 'FORBIDDEN', message: '協力業者はステータスの変更のみ可能です' });
+            throw new TRPCError({ code: 'FORBIDDEN', message: '協力業者はステータス・緊急度の変更のみ可能です' });
           }
         }
         // 進捗ステージ⇔ステータスの連動（前進専用）
