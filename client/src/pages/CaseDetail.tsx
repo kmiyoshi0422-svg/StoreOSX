@@ -2203,7 +2203,7 @@ function ProfitTab({ caseData, onUpdated, isPartner = false }: { caseData: Case;
             </span>
           </div>
 
-          <div className="grid sm:grid-cols-2 gap-4">
+          <div className={`grid ${isPartner ? 'grid-cols-1' : 'sm:grid-cols-2'} gap-4`}>
             {!isPartner && (
             <div className="space-y-1.5">
               <Label className="text-sm font-medium">プレナスへ提出した見積金額・売上</Label>
@@ -2222,7 +2222,7 @@ function ProfitTab({ caseData, onUpdated, isPartner = false }: { caseData: Case;
             </div>
             )}
             <div className="space-y-1.5">
-              <Label className="text-sm font-medium">協力業者の見積金額・原価</Label>
+              <Label className="text-sm font-medium">{isPartner ? '見積金額' : '協力業者の見積金額・原価'}</Label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">¥</span>
                 <Input
@@ -2332,7 +2332,7 @@ function ProfitTab({ caseData, onUpdated, isPartner = false }: { caseData: Case;
             <h3 className="font-medium">個別案件 収支</h3>
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className={`grid ${isPartner ? 'sm:grid-cols-2 lg:grid-cols-3' : 'sm:grid-cols-2 lg:grid-cols-4'} gap-3`}>
             {!isPartner && (
             <div className="rounded-md border p-3 bg-blue-50 border-blue-200">
               <div className="text-xs text-blue-700 mb-1">売上・プレナス提出額</div>
@@ -2343,19 +2343,18 @@ function ProfitTab({ caseData, onUpdated, isPartner = false }: { caseData: Case;
             </div>
             )}
             <div className="rounded-md border p-3 bg-emerald-50 border-emerald-200">
-              <div className="text-xs text-emerald-700 mb-1">協力業者見積額</div>
+              <div className="text-xs text-emerald-700 mb-1">{isPartner ? '見積額' : '協力業者見積額'}</div>
               <div className="text-xl font-semibold tracking-tight">{yen(vendorAmount)}</div>
             </div>
             <div className="rounded-md border p-3 bg-amber-50 border-amber-200">
               <div className="text-xs text-amber-700 mb-1">経費・領収書</div>
               <div className="text-xl font-semibold tracking-tight">{yen(expensesTotal)}</div>
-              <div className="text-[11px] text-amber-700/80 mt-1">原価計: {yen(cost)}</div>
+              {!isPartner && <div className="text-[11px] text-amber-700/80 mt-1">原価計: {yen(cost)}</div>}
             </div>
             {overheadTotal > 0 && (
               <div className="rounded-md border p-3 bg-orange-50 border-orange-200">
                 <div className="text-xs text-orange-700 mb-1">管理費・現場経費</div>
                 <div className="text-xl font-semibold tracking-tight">{yen(overheadTotal)}</div>
-                <div className="text-[11px] text-orange-700/80 mt-1">原価に含まれます</div>
               </div>
             )}
             {!isPartner && (
@@ -2371,11 +2370,13 @@ function ProfitTab({ caseData, onUpdated, isPartner = false }: { caseData: Case;
             )}
           </div>
 
+          {!isPartner && (
           <div className="text-xs text-muted-foreground space-y-1 leading-relaxed pt-2 border-t">
             <div>・売上：プレナスへ提出した見積金額。未入力時は協力業者額から想定表示</div>
             <div>・原価：協力業者見積額 ＋ 領収書経費 ＋ 管理費・現場経費</div>
             <div>・粗利・粗利率は金額を保存すると即時に反映されます</div>
           </div>
+          )}
         </CardContent>
       </Card>
 
