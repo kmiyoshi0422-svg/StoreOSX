@@ -1051,14 +1051,27 @@ export const appRouter = router({
           `工事区分(小): ${c.categorySmall || "なし"}`,
           `備考: ${c.notes || "なし"}`,
         ].join("\n");
-        const response = await invokeLLM({
-          messages: [
-            { role: "system", content: "現場調査の所感を日本語で書くアシスタントです。" },
-            { role: "user", content: prompt },
-          ],
-        });
+        let response;
+        try {
+          response = await invokeLLM({
+            messages: [
+              { role: "system", content: "現場調査の所感を日本語で書くアシスタントです。" },
+              { role: "user", content: prompt },
+            ],
+          });
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error("[generateImpression] LLMエラー:", msg);
+          if (msg.includes("usage exhausted") || msg.includes("412")) {
+            throw new Error("AIの利用枚数が上限に達しています。しばらく時間をおいてから再度お試しください。");
+          }
+          throw new Error(`AI所感の生成に失敗しました: ${msg}`);
+        }
         const raw = response.choices?.[0]?.message?.content ?? "";
         const text = typeof raw === "string" ? raw : "";
+        if (!text.trim()) {
+          throw new Error("AIが所感を生成できませんでした。再度お試しください。");
+        }
         return { impression: text.trim() };
       }),
   }),
@@ -1595,7 +1608,11 @@ export const appRouter = router({
           const content = res.choices?.[0]?.message?.content ?? "{}";
           generated = parseCompletionContent(typeof content === "string" ? content : JSON.stringify(content));
         } catch (e) {
+          const errMsg = e instanceof Error ? e.message : String(e);
           console.warn("[reportDraft.generate] LLM生成失敗", e);
+          if (errMsg.includes("usage exhausted") || errMsg.includes("412")) {
+            throw new Error("AIの利用枚数が上限に達しています。しばらく時間をおいてから再度お試しください。");
+          }
           throw new Error("報告書の自動生成に失敗しました。時間をおいて再度お試しください。");
         }
 
