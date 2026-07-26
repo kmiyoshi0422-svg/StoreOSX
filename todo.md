@@ -948,3 +948,12 @@
 
 ## バグ修正: partnerに報告書ボタンが表示されない（ユーザー報告）
 - [x] 現場調査報告書・施工完了報告書ボタンをpartnerにも表示するよう修正（見積書のみ非表示のまま）
+
+## partner制限の修正: プレナス提出見積額のみ非表示に（ユーザー指示）
+- [x] CaseDetail: partnerのタブ非表示を全て解除（見積書・収支・経費タブも表示）
+- [x] CaseDetail: partnerの金額マスクを解除し、plenusQuoteAmountのみ非表示に
+- [x] CasesList: partnerの金額マスクを解除し、plenusQuoteAmountのみ非表示に
+- [x] サーバー: partnerの金額マスクロジックをplenusQuoteAmountのみに変更
+- [x] amountApprovedの金額承認カードUIを削除（不要になった）
+- [x] 経費取込メニューをpartnerにも表示
+- [x] 店舗履歴タブをpartnerにも表示

@@ -270,24 +270,18 @@ export default function CaseDetail({ id }: { id: number }) {
                 {photos.length}
               </Badge>
             </TabsTrigger>
-            {!isPartner && (
-              <TabsTrigger value="estimates" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
-                <Receipt className="h-3.5 w-3.5" />
-                見積書
-              </TabsTrigger>
-            )}
-            {!isPartner && (
-              <TabsTrigger value="profit" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
-                <Wallet className="h-3.5 w-3.5" />
-                収支
-              </TabsTrigger>
-            )}
-            {!isPartner && (
-              <TabsTrigger value="expenses" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
-                <Receipt className="h-3.5 w-3.5" />
-                経費
-              </TabsTrigger>
-            )}
+            <TabsTrigger value="estimates" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
+              <Receipt className="h-3.5 w-3.5" />
+              見積書
+            </TabsTrigger>
+            <TabsTrigger value="profit" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
+              <Wallet className="h-3.5 w-3.5" />
+              収支
+            </TabsTrigger>
+            <TabsTrigger value="expenses" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
+              <Receipt className="h-3.5 w-3.5" />
+              経費
+            </TabsTrigger>
             <TabsTrigger value="schedule" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
               <CalendarDays className="h-3.5 w-3.5" />
               工程
@@ -300,7 +294,7 @@ export default function CaseDetail({ id }: { id: number }) {
               <Clock className="h-3.5 w-3.5" />
               履歴
             </TabsTrigger>
-            {!isPartner && (caseData as any).storeId && (
+            {(caseData as any).storeId && (
               <TabsTrigger value="storeHistory" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
                 <Building2 className="h-3.5 w-3.5" />
                 店舗履歴
@@ -329,23 +323,17 @@ export default function CaseDetail({ id }: { id: number }) {
           />
         </TabsContent>
 
-        {!isPartner && (
-          <TabsContent value="estimates">
-            {activeTab === "estimates" && <EstimatesTab caseId={id} partnerToken={caseData.partnerToken} />}
-          </TabsContent>
-        )}
+        <TabsContent value="estimates">
+          {activeTab === "estimates" && <EstimatesTab caseId={id} partnerToken={caseData.partnerToken} />}
+        </TabsContent>
 
-        {!isPartner && (
-          <TabsContent value="profit">
-            {activeTab === "profit" && <ProfitTab caseData={caseData} onUpdated={() => utils.cases.get.invalidate({ id })} />}
-          </TabsContent>
-        )}
+        <TabsContent value="profit">
+          {activeTab === "profit" && <ProfitTab caseData={caseData} onUpdated={() => utils.cases.get.invalidate({ id })} isPartner={isPartner} />}
+        </TabsContent>
 
-        {!isPartner && (
-          <TabsContent value="expenses">
-            {activeTab === "expenses" && <ExpensesTab caseId={id} />}
-          </TabsContent>
-        )}
+        <TabsContent value="expenses">
+          {activeTab === "expenses" && <ExpensesTab caseId={id} />}
+        </TabsContent>
 
         <TabsContent value="schedule">
           {activeTab === "schedule" && <ScheduleTab caseId={id} caseData={caseData} />}
@@ -366,10 +354,6 @@ export default function CaseDetail({ id }: { id: number }) {
         )}
       </Tabs>
 
-      {/* 金額承認カード（owner/adminのみ） */}
-      {isOwnerOrAdmin && (
-        <AmountApprovalCard caseId={id} approved={caseData.amountApproved} onUpdated={() => utils.cases.get.invalidate({ id })} />
-      )}
     </div>
   );
 }
@@ -2113,7 +2097,7 @@ function EstimateCard({
   );
 }
 
-function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => void }) {
+function ProfitTab({ caseData, onUpdated, isPartner = false }: { caseData: Case; onUpdated: () => void; isPartner?: boolean }) {
   const { data: estimates = [] } = trpc.estimates.listByCase.useQuery({ caseId: caseData.id });
   const { data: expenses = [] } = trpc.expenses.listByCase.useQuery({ caseId: caseData.id });
 
@@ -2220,6 +2204,7 @@ function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => v
           </div>
 
           <div className="grid sm:grid-cols-2 gap-4">
+            {!isPartner && (
             <div className="space-y-1.5">
               <Label className="text-sm font-medium">プレナスへ提出した見積金額・売上</Label>
               <div className="relative">
@@ -2235,6 +2220,7 @@ function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => v
               </div>
               <p className="text-[11px] text-muted-foreground">プレナスへ請求・提出した金額。これが売上になります。</p>
             </div>
+            )}
             <div className="space-y-1.5">
               <Label className="text-sm font-medium">協力業者の見積金額・原価</Label>
               <div className="relative">
@@ -2347,6 +2333,7 @@ function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => v
           </div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {!isPartner && (
             <div className="rounded-md border p-3 bg-blue-50 border-blue-200">
               <div className="text-xs text-blue-700 mb-1">売上・プレナス提出額</div>
               <div className="text-xl font-semibold tracking-tight">{yen(sales)}</div>
@@ -2354,6 +2341,7 @@ function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => v
                 <div className="text-[11px] text-blue-700/80 mt-1">未入力のため協力業者額から想定 ÷0.75</div>
               )}
             </div>
+            )}
             <div className="rounded-md border p-3 bg-emerald-50 border-emerald-200">
               <div className="text-xs text-emerald-700 mb-1">協力業者見積額</div>
               <div className="text-xl font-semibold tracking-tight">{yen(vendorAmount)}</div>
@@ -2370,6 +2358,7 @@ function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => v
                 <div className="text-[11px] text-orange-700/80 mt-1">原価に含まれます</div>
               </div>
             )}
+            {!isPartner && (
             <div className={`rounded-md border p-3 ${grossProfit >= 0 ? "bg-violet-50 border-violet-200" : "bg-red-50 border-red-200"}`}>
               <div className="text-xs mb-1 text-muted-foreground">粗利・売上−原価</div>
               <div className={`text-xl font-semibold tracking-tight ${grossProfit >= 0 ? "text-violet-700" : "text-red-700"}`}>
@@ -2379,6 +2368,7 @@ function ProfitTab({ caseData, onUpdated }: { caseData: Case; onUpdated: () => v
                 粗利率 {(grossMargin * 100).toFixed(1)}%
               </div>
             </div>
+            )}
           </div>
 
           <div className="text-xs text-muted-foreground space-y-1 leading-relaxed pt-2 border-t">

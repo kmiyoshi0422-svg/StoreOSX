@@ -523,12 +523,10 @@ export const appRouter = router({
     listSummary: protectedProcedure.query(async ({ ctx }) => {
       const all = await listCasesSummary();
       if (ctx.user.role === 'partner') {
-        // partnerは金額フィールド非表示（amountApproved=trueの案件のみ金額表示）
+        // partnerはプレナス提出見積額のみ非表示
         return all.map(c => ({
           ...c,
-          plenusQuoteAmount: (c as any).amountApproved ? c.plenusQuoteAmount : null,
-          estimatedCost: (c as any).amountApproved ? c.estimatedCost : null,
-          actualCost: (c as any).amountApproved ? c.actualCost : null,
+          plenusQuoteAmount: null,
         }));
       }
       return all;
@@ -548,25 +546,11 @@ export const appRouter = router({
       const caseData = await getCaseById(input.id);
       if (!caseData) return null;
       if (ctx.user.role === 'partner') {
-        // partnerは全案件閲覧可能だが金額フィールドはamountApproved時のみ
-        if (!caseData.amountApproved) {
-          return {
-            ...caseData,
-            plenusQuoteAmount: null,
-            estimatedCost: null,
-            actualCost: null,
-            estimatedMaterialCost: null,
-            estimatedLaborCost: null,
-            actualMaterialCost: null,
-            actualLaborCost: null,
-            managementFee: null,
-            siteExpense: null,
-            ownSurveyCost: null,
-            partnerSurveyCost: null,
-            transportCost: null,
-            laborCost: null,
-          };
-        }
+        // partnerはプレナス提出見積額のみ非表示
+        return {
+          ...caseData,
+          plenusQuoteAmount: null,
+        };
       }
       return caseData;
     }),
