@@ -749,7 +749,7 @@ function InfoTab({
       </Card>
 
       {/* 協力業者作業メモ欄 */}
-      <PartnerNotesCard caseId={caseData.id} partnerNotes={(caseData as any).partnerNotes ?? ""} isPartner={isPartner} onUpdated={onUpdated} />
+      <PartnerNotesCard caseId={caseData.id} partnerNotes={(caseData as any).partnerNotes ?? ""} partnerNotesUpdatedAt={(caseData as any).partnerNotesUpdatedAt ?? null} partnerNotesUpdatedBy={(caseData as any).partnerNotesUpdatedBy ?? null} isPartner={isPartner} onUpdated={onUpdated} />
 
       <Card>
         <CardContent className="p-5 space-y-4">
@@ -4687,9 +4687,11 @@ function SurveySkipCard({
 // ============================================================
 // Partner Notes Card (協力業者作業メモ)
 // ============================================================
-function PartnerNotesCard({ caseId, partnerNotes, isPartner, onUpdated }: {
+function PartnerNotesCard({ caseId, partnerNotes, partnerNotesUpdatedAt, partnerNotesUpdatedBy, isPartner, onUpdated }: {
   caseId: number;
   partnerNotes: string;
+  partnerNotesUpdatedAt: Date | string | null;
+  partnerNotesUpdatedBy: string | null;
   isPartner: boolean;
   onUpdated: () => void;
 }) {
@@ -4760,11 +4762,19 @@ function PartnerNotesCard({ caseId, partnerNotes, isPartner, onUpdated }: {
           </div>
         )}
 
-        <p className="text-[11px] text-muted-foreground">
-          {isPartner
-            ? "現場の状況や作業内容をここに記録できます。管理者にもリアルタイムで共有されます。"
-            : "協力業者が記録した現場メモです。"}
-        </p>
+        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+          <span>
+            {isPartner
+              ? "現場の状況や作業内容をここに記録できます。管理者にもリアルタイムで共有されます。"
+              : "協力業者が記録した現場メモです。"}
+          </span>
+          {partnerNotesUpdatedAt && (
+            <span className="text-[10px] text-muted-foreground/70">
+              最終更新: {new Date(partnerNotesUpdatedAt).toLocaleString("ja-JP", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+              {partnerNotesUpdatedBy && <> / {partnerNotesUpdatedBy}</>}
+            </span>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

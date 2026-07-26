@@ -107,6 +107,8 @@ export const cases = mysqlTable("cases", {
   amountApproved: boolean("amountApproved").default(false).notNull(), // 金額公開承認（協力業者に見せるか）
   storeId: int("store_id"), // 店舗マスタへの外部キー
   partnerNotes: text("partner_notes"), // 協力業者作業メモ
+  partnerNotesUpdatedAt: timestamp("partner_notes_updated_at"), // 作業メモ最終更新日時
+  partnerNotesUpdatedBy: varchar("partner_notes_updated_by", { length: 128 }), // 作業メモ更新者名
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

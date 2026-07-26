@@ -969,3 +969,8 @@
 - [x] サーバー: cases.updateのpartner許可フィールドにpartnerNotesを追加
 - [x] フロントエンド: 案件詳細InfoTabにPartnerNotesCardコンポーネントを追加
 - [x] owner/adminも閲覧可能（編集はpartnerのみ）で情報共有を実現
+
+## 作業メモに最終更新日時・更新者名を表示（ユーザー指示）
+- [x] DBスキーマ: casesテーブルにpartnerNotesUpdatedAt, partnerNotesUpdatedByカラムを追加
+- [x] サーバー: partnerNotes更新時に自動でupdatedAt/updatedByを記録
+- [x] フロントエンド: PartnerNotesCardに最終更新日時と更新者名を表示

@@ -625,6 +625,11 @@ export const appRouter = router({
             });
           }
         }
+        // partnerNotes更新時はメタデータを自動記録
+        if (data.partnerNotes !== undefined) {
+          (data as any).partnerNotesUpdatedAt = new Date();
+          (data as any).partnerNotesUpdatedBy = ctx.user.name ?? '不明';
+        }
         await updateCase(input.id, data);
                 return { success: true };
       }),
