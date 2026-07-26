@@ -106,6 +106,7 @@ export const cases = mysqlTable("cases", {
   revisitCount: int("revisitCount").default(0).notNull(), // 再訪回数（0=再訪なし）
   amountApproved: boolean("amountApproved").default(false).notNull(), // 金額公開承認（協力業者に見せるか）
   storeId: int("store_id"), // 店舗マスタへの外部キー
+  partnerNotes: text("partner_notes"), // 協力業者作業メモ
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

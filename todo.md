@@ -963,3 +963,9 @@
 - [x] サーバー: cases.updateのpartner許可フィールドにurgencyを追加
 - [x] フロントエンド: PartnerStatusChangerに緊急度変更Selectを追加
 - [x] CasesList.tsxのステータス変更はpartnerでもそのまま動作可能（サーバー側で許可済み）
+
+## 協力業者用の備考・作業メモ欄を追加（ユーザー指示）
+- [x] DBスキーマ: casesテーブルにpartnerNotesカラム（text）を追加
+- [x] サーバー: cases.updateのpartner許可フィールドにpartnerNotesを追加
+- [x] フロントエンド: 案件詳細InfoTabにPartnerNotesCardコンポーネントを追加
+- [x] owner/adminも閲覧可能（編集はpartnerのみ）で情報共有を実現

@@ -42,7 +42,7 @@ import {
   type CaseStatus,
 } from "@shared/stageStatus";
 import { useLocation } from "wouter";
-import { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
 import {
@@ -747,6 +747,9 @@ function InfoTab({
           )}
         </CardContent>
       </Card>
+
+      {/* 協力業者作業メモ欄 */}
+      <PartnerNotesCard caseId={caseData.id} partnerNotes={(caseData as any).partnerNotes ?? ""} isPartner={isPartner} onUpdated={onUpdated} />
 
       <Card>
         <CardContent className="p-5 space-y-4">
@@ -4675,6 +4678,93 @@ function SurveySkipCard({
             </DialogContent>
           </Dialog>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+
+// ============================================================
+// Partner Notes Card (協力業者作業メモ)
+// ============================================================
+function PartnerNotesCard({ caseId, partnerNotes, isPartner, onUpdated }: {
+  caseId: number;
+  partnerNotes: string;
+  isPartner: boolean;
+  onUpdated: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(partnerNotes);
+  const [saving, setSaving] = useState(false);
+
+  // Sync value when partnerNotes changes externally
+  useEffect(() => {
+    if (!editing) setValue(partnerNotes);
+  }, [partnerNotes, editing]);
+
+  const updateMutation = trpc.cases.update.useMutation({
+    onSuccess: () => {
+      toast.success("作業メモを保存しました");
+      setEditing(false);
+      setSaving(false);
+      onUpdated();
+    },
+    onError: () => {
+      toast.error("保存に失敗しました");
+      setSaving(false);
+    },
+  });
+
+  const handleSave = () => {
+    setSaving(true);
+    updateMutation.mutate({ id: caseId, data: { partnerNotes: value || null } as any });
+  };
+
+  return (
+    <Card>
+      <CardContent className="p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-serif-jp font-semibold flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            協力業者 作業メモ
+          </h3>
+          {isPartner && !editing && (
+            <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+              編集
+            </Button>
+          )}
+          {isPartner && editing && (
+            <div className="flex gap-2">
+              <Button size="sm" variant="ghost" onClick={() => { setEditing(false); setValue(partnerNotes); }}>
+                キャンセル
+              </Button>
+              <Button size="sm" onClick={handleSave} disabled={saving}>
+                <Save className="h-3.5 w-3.5 mr-1" />
+                保存
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {editing ? (
+          <Textarea
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="現場の状況や作業内容をメモしてください..."
+            rows={5}
+            className="resize-y"
+          />
+        ) : (
+          <div className="text-sm whitespace-pre-wrap min-h-[40px] p-3 rounded-md bg-muted/30 border">
+            {partnerNotes || <span className="text-muted-foreground italic">メモなし</span>}
+          </div>
+        )}
+
+        <p className="text-[11px] text-muted-foreground">
+          {isPartner
+            ? "現場の状況や作業内容をここに記録できます。管理者にもリアルタイムで共有されます。"
+            : "協力業者が記録した現場メモです。"}
+        </p>
       </CardContent>
     </Card>
   );
