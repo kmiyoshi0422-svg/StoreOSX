@@ -222,26 +222,22 @@ export default function CaseDetail({ id }: { id: number }) {
                 見積書
               </Button>
             )}
-            {!isPartner && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setLocation(`/cases/${id}/survey-report`)}
-              >
-                <PenLine className="h-4 w-4" />
-                現場調査報告書
-              </Button>
-            )}
-            {!isPartner && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setLocation(`/cases/${id}/completion-report`)}
-              >
-                <PenLine className="h-4 w-4" />
-                施工完了報告書
-              </Button>
-            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setLocation(`/cases/${id}/survey-report`)}
+            >
+              <PenLine className="h-4 w-4" />
+              現場調査報告書
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setLocation(`/cases/${id}/completion-report`)}
+            >
+              <PenLine className="h-4 w-4" />
+              施工完了報告書
+            </Button>
             <Button onClick={() => setLocation(`/cases/${id}/ledger`)} size="sm">
               <FileText className="h-4 w-4" />
               写真台帳
