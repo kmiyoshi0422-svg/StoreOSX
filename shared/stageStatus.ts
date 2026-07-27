@@ -127,8 +127,9 @@ export function resolveStageStatus(args: {
   currentStatus: CaseStatus;
   nextStage?: ProgressStage;
   nextStatus?: CaseStatus;
+  force?: boolean; // 手動変更時はtrueで逆行も許可
 }): StageStatusPair {
-  const { currentStage, currentStatus, nextStage, nextStatus } = args;
+  const { currentStage, currentStatus, nextStage, nextStatus, force } = args;
 
   const stageChanged = nextStage != null && nextStage !== currentStage;
   const statusChanged = nextStatus != null && nextStatus !== currentStatus;
@@ -136,6 +137,14 @@ export function resolveStageStatus(args: {
   // 両方指定されている場合はそのまま採用（明示優先）
   if (nextStage != null && nextStatus != null) {
     return { progressStage: nextStage, status: nextStatus };
+  }
+
+  // forceモード：手動でステージを変更する場合、ステータスは変更しない（逆行も許可）
+  if (force && stageChanged && nextStatus == null) {
+    return { progressStage: nextStage as ProgressStage, status: currentStatus };
+  }
+  if (force && statusChanged && nextStage == null) {
+    return { progressStage: currentStage, status: nextStatus as CaseStatus };
   }
 
   // ステージのみ変更 → ステータスを追従

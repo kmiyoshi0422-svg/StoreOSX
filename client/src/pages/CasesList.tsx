@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { calcCaseProfit } from "@shared/profit";
-import { CASE_STATUSES } from "@shared/stageStatus";
+import { CASE_STATUSES, PROGRESS_STAGES } from "@shared/stageStatus";
 import { toast } from "sonner";
 import {
   resolveCasePrefecture,
@@ -146,6 +146,13 @@ export default function CasesList() {
   const handleStatusChange = useCallback(
     (caseId: number, newStatus: string) => {
       updateStatusMutation.mutate({ id: caseId, data: { status: newStatus as any } });
+    },
+    [updateStatusMutation]
+  );
+
+  const handleStageChange = useCallback(
+    (caseId: number, newStage: string) => {
+      updateStatusMutation.mutate({ id: caseId, data: { progressStage: newStage as any }, forceStage: true });
     },
     [updateStatusMutation]
   );
@@ -651,6 +658,24 @@ export default function CasesList() {
                     {c.urgency}
                   </span>
                   <Select
+                    value={(c.progressStage as string) ?? "未対応"}
+                    onValueChange={(v) => handleStageChange(c.id, v)}
+                  >
+                    <SelectTrigger
+                      className={`h-6 w-auto min-w-[60px] px-2 text-[9px] font-medium border ${STAGE_BADGE[(c.progressStage as ProgressStage) ?? "未対応"]} shrink-0`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PROGRESS_STAGES.map((s) => (
+                        <SelectItem key={s} value={s} className="text-xs">
+                          {s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
                     value={c.status}
                     onValueChange={(v) => handleStatusChange(c.id, v)}
                   >
@@ -790,12 +815,42 @@ export default function CasesList() {
                       >
                         {URGENCY_LABEL[c.urgency]}
                       </span>
-                      <Badge variant="outline" className={`text-[10px] ${STAGE_BADGE[stage]}`}>
-                        {stage}
-                      </Badge>
-                      <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[c.status]}`}>
-                        {c.status}
-                      </Badge>
+                      <Select
+                        value={stage}
+                        onValueChange={(v) => { handleStageChange(c.id, v); }}
+                      >
+                        <SelectTrigger
+                          className={`h-5 w-auto min-w-[60px] px-1.5 text-[10px] font-medium border ${STAGE_BADGE[stage]}`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PROGRESS_STAGES.map((s) => (
+                            <SelectItem key={s} value={s} className="text-xs">
+                              {s}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={c.status}
+                        onValueChange={(v) => { handleStatusChange(c.id, v); }}
+                      >
+                        <SelectTrigger
+                          className={`h-5 w-auto min-w-[60px] px-1.5 text-[10px] font-medium border ${STATUS_COLORS[c.status]}`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CASE_STATUSES.map((s) => (
+                            <SelectItem key={s} value={s} className="text-xs">
+                              {s}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <span className="text-[10px] font-mono text-muted-foreground">
                         {c.requestNumber}
                       </span>
@@ -861,9 +916,24 @@ export default function CasesList() {
                         >
                           {URGENCY_LABEL[c.urgency]}
                         </span>
-                        <Badge variant="outline" className={`text-[10px] ${STAGE_BADGE[stage]}`}>
-                          {stage}
-                        </Badge>
+                        <Select
+                          value={stage}
+                          onValueChange={(v) => handleStageChange(c.id, v)}
+                        >
+                          <SelectTrigger
+                            className={`h-6 w-auto min-w-[70px] px-2 text-[10px] font-medium border ${STAGE_BADGE[stage]}`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {PROGRESS_STAGES.map((s) => (
+                              <SelectItem key={s} value={s} className="text-xs">
+                                {s}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         <Select
                           value={c.status}
                           onValueChange={(v) => handleStatusChange(c.id, v)}

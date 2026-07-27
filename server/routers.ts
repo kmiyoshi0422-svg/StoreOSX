@@ -582,7 +582,7 @@ export const appRouter = router({
     }),
 
     update: protectedProcedure
-      .input(z.object({ id: z.number(), data: caseInputSchema.partial() }))
+      .input(z.object({ id: z.number(), data: caseInputSchema.partial(), forceStage: z.boolean().optional() }))
       .mutation(async ({ ctx, input }) => {
         let data = { ...input.data };
         // partnerロールはステータス/進捗ステージ/緊急度の変更のみ許可
@@ -603,6 +603,7 @@ export const appRouter = router({
               currentStatus: (current.status as CaseStatus) ?? "受付",
               nextStage: data.progressStage as ProgressStage | undefined,
               nextStatus: data.status as CaseStatus | undefined,
+              force: input.forceStage,
             });
             data.progressStage = resolved.progressStage;
             data.status = resolved.status;
