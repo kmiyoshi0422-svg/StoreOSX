@@ -674,3 +674,25 @@ export const surveySkipLogs = mysqlTable("survey_skip_logs", {
 }));
 export type SurveySkipLog = typeof surveySkipLogs.$inferSelect;
 export type InsertSurveySkipLog = typeof surveySkipLogs.$inferInsert;
+
+/**
+ * AI生成失敗時の一時保存キュー
+ */
+export const pendingAiTasks = mysqlTable("pending_ai_tasks", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull(),
+  taskType: varchar("task_type", { length: 64 }).notNull(), // 'impression' | 'reportDraft'
+  caseId: int("case_id").notNull(),
+  params: text("params"), // JSONシリアライズされたパラメータ
+  status: mysqlEnum("status", ["pending", "retrying", "resolved", "failed"]).default("pending").notNull(),
+  errorMessage: text("error_message"),
+  retryCount: int("retry_count").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  resolvedAt: timestamp("resolved_at"),
+}, (t) => ({
+  userIdx: index("idx_pending_ai_user").on(t.userId),
+  statusIdx: index("idx_pending_ai_status").on(t.status),
+  caseIdx: index("idx_pending_ai_case").on(t.caseId),
+}));
+export type PendingAiTask = typeof pendingAiTasks.$inferSelect;
+export type InsertPendingAiTask = typeof pendingAiTasks.$inferInsert;

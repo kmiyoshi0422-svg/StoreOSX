@@ -122,6 +122,12 @@ import {
   createSurveySkipLog,
   listSurveySkipLogsByCase,
   getSurveySkipStats,
+  createPendingAiTask,
+  getPendingAiTasksByUser,
+  getPendingAiTasksByCase,
+  resolvePendingAiTask,
+  updatePendingAiTaskRetry,
+  deletePendingAiTask,
 } from "./db";
 import { estimates as estimatesTable, caseSignatures as caseSignaturesTable, routeAssignments as routeAssignmentsTable, cases as casesTable, partners as partnersTable } from "../drizzle/schema";
 import { makeRequest } from "./_core/map";
@@ -1022,8 +1028,9 @@ export const appRouter = router({
         caseId: z.number(),
         tone: z.enum(["polite", "standard", "concise"]).optional().default("standard"),
         length: z.enum(["short", "standard", "long"]).optional().default("standard"),
+        pendingTaskId: z.number().optional(), // 再試行時に渡される
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const c = await getCaseById(input.caseId);
         if (!c) throw new Error("案件が見つかりません");
 
@@ -1062,8 +1069,23 @@ export const appRouter = router({
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : String(err);
           console.error("[generateImpression] LLMエラー:", msg);
-          if (msg.includes("usage exhausted") || msg.includes("412")) {
-            throw new Error("AIの利用枚数が上限に達しています。しばらく時間をおいてから再度お試しください。");
+          const isQuotaError = msg.includes("usage exhausted") || msg.includes("412");
+          // 失敗時に自動で一時保存
+          try {
+            await createPendingAiTask({
+              userId: ctx.user.id,
+              taskType: "impression",
+              caseId: input.caseId,
+              params: JSON.stringify({ tone: input.tone, length: input.length }),
+              status: "pending",
+              errorMessage: isQuotaError ? "AI利用枚数上限" : msg,
+              retryCount: 0,
+            });
+          } catch (saveErr) {
+            console.error("[generateImpression] 一時保存失敗:", saveErr);
+          }
+          if (isQuotaError) {
+            throw new Error("QUOTA_EXCEEDED:AIの利用枚数が上限に達しています。タスクを一時保存しました。後で再試行できます。");
           }
           throw new Error(`AI所感の生成に失敗しました: ${msg}`);
         }
@@ -1071,6 +1093,10 @@ export const appRouter = router({
         const text = typeof raw === "string" ? raw : "";
         if (!text.trim()) {
           throw new Error("AIが所感を生成できませんでした。再度お試しください。");
+        }
+        // 再試行成功時は保留タスクを解決済みに
+        if (input.pendingTaskId) {
+          try { await resolvePendingAiTask(input.pendingTaskId); } catch {}
         }
         return { impression: text.trim() };
       }),
@@ -1610,8 +1636,23 @@ export const appRouter = router({
         } catch (e) {
           const errMsg = e instanceof Error ? e.message : String(e);
           console.warn("[reportDraft.generate] LLM生成失敗", e);
-          if (errMsg.includes("usage exhausted") || errMsg.includes("412")) {
-            throw new Error("AIの利用枚数が上限に達しています。しばらく時間をおいてから再度お試しください。");
+          const isQuotaError = errMsg.includes("usage exhausted") || errMsg.includes("412");
+          // 失敗時に自動で一時保存
+          try {
+            await createPendingAiTask({
+              userId: ctx.user.id,
+              taskType: "reportDraft",
+              caseId: input.caseId,
+              params: JSON.stringify({}),
+              status: "pending",
+              errorMessage: isQuotaError ? "AI利用枚数上限" : errMsg,
+              retryCount: 0,
+            });
+          } catch (saveErr) {
+            console.error("[reportDraft.generate] 一時保存失敗:", saveErr);
+          }
+          if (isQuotaError) {
+            throw new Error("QUOTA_EXCEEDED:AIの利用枚数が上限に達しています。タスクを一時保存しました。後で再試行できます。");
           }
           throw new Error("報告書の自動生成に失敗しました。時間をおいて再度お試しください。");
         }
@@ -4303,6 +4344,49 @@ JSONスキーマに従って回答してください。`,
     stats: protectedProcedure.query(async () => {
       return getSurveySkipStats();
     }),
+  }),
+  // AI生成失敗時の一時保存キュー
+  pendingAiTasks: router({
+    listMine: protectedProcedure.query(async ({ ctx }) => {
+      return getPendingAiTasksByUser(ctx.user.id);
+    }),
+    listByCase: protectedProcedure
+      .input(z.object({ caseId: z.number() }))
+      .query(async ({ input }) => {
+        return getPendingAiTasksByCase(input.caseId);
+      }),
+    retry: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        // 保留タスクを取得して再試行
+        const db = await getDb();
+        if (!db) throw new Error("データベース接続エラー");
+        const { pendingAiTasks: pat } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const [task] = await db.select().from(pat).where(eq(pat.id, input.id));
+        if (!task) throw new Error("タスクが見つかりません");
+        if (task.userId !== ctx.user.id) throw new Error("権限がありません");
+        return { task };
+      }),
+    dismiss: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("データベース接続エラー");
+        const { pendingAiTasks: pat } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const [task] = await db.select().from(pat).where(eq(pat.id, input.id));
+        if (!task) throw new Error("タスクが見つかりません");
+        if (task.userId !== ctx.user.id) throw new Error("権限がありません");
+        await deletePendingAiTask(input.id);
+        return { success: true };
+      }),
+    resolve: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await resolvePendingAiTask(input.id);
+        return { success: true };
+      }),
   }),
 });
 export type AppRouter = typeof appRouter;

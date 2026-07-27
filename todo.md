@@ -989,3 +989,11 @@
 - [x] LLM API使用量超過エラー（412 usage exhausted）のハンドリング改善
 - [x] generateImpressionのエラーメッセージをユーザーに分かりやすく表示
 - [x] reportDraft.generateのエラーメッセージも同様に改善
+
+## AI生成失敗時の一時保存＆再試行機能（ユーザー指示）
+- [x] DBスキーマ: pending_ai_tasksテーブル追加（taskType, caseId, params, status, errorMsg, createdAt）
+- [x] サーバー: 失敗時に自動でpending_ai_tasksに保存するロジック追加
+- [x] サーバー: pending_ai_tasksのCRUD + 再試行プロシージャ追加
+- [x] フロントエンド: 所感生成失敗時に「一時保存しました」トースト表示
+- [x] フロントエンド: 報告書生成失敗時も同様に一時保存
+- [x] フロントエンド: 保留中タスク一覧表示＆再試行ボタンUI

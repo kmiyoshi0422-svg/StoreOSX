@@ -198,6 +198,15 @@ export default function CaseReport({
   const generateImpressionMut = trpc.cases.generateImpression.useMutation();
   const updateCaseMut = trpc.cases.update.useMutation();
 
+  // 保留中のAIタスクを取得
+  const { data: pendingTasks = [], refetch: refetchPending } = trpc.pendingAiTasks.listByCase.useQuery(
+    { caseId: id },
+    { enabled: reportType === "survey" }
+  );
+  const dismissTaskMut = trpc.pendingAiTasks.dismiss.useMutation({
+    onSuccess: () => refetchPending(),
+  });
+
   // 設定からAI生成トーン・文章量を取得
   const { data: impressionConfigData } = trpc.appSettings.get.useQuery({ key: "impression_config" });
   const { data: impressionAuthorsData } = trpc.appSettings.get.useQuery({ key: "impression_authors" });
@@ -205,7 +214,7 @@ export default function CaseReport({
   const { data: impressionTemplatesData } = trpc.appSettings.get.useQuery({ key: "impression_templates" });
   const presetTemplates: string[] = (impressionTemplatesData?.value as string[] | null) ?? [];
 
-  const handleGenerateImpression = async () => {
+  const handleGenerateImpression = async (pendingTaskId?: number) => {
     setGeneratingImpression(true);
     try {
       const cfg = impressionConfigData?.value as { tone?: string; length?: string } | null;
@@ -213,11 +222,19 @@ export default function CaseReport({
         caseId: id,
         tone: (cfg?.tone as "polite" | "standard" | "concise") || "standard",
         length: (cfg?.length as "short" | "standard" | "long") || "standard",
+        pendingTaskId,
       });
       setImpressionText(result.impression);
       toast.success("AIが所感を生成しました。内容を確認・編集して保存してください。");
+      refetchPending();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "AI生成に失敗しました");
+      const errMsg = e instanceof Error ? e.message : "AI生成に失敗しました";
+      if (errMsg.includes("QUOTA_EXCEEDED")) {
+        toast.error("ℹ️ AI利用上限に達したため一時保存しました。後で「再試行」ボタンから実行できます。", { duration: 6000 });
+        refetchPending();
+      } else {
+        toast.error(errMsg.replace("QUOTA_EXCEEDED:", ""));
+      }
     } finally {
       setGeneratingImpression(false);
     }
@@ -871,7 +888,7 @@ export default function CaseReport({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={handleGenerateImpression}
+                  onClick={() => handleGenerateImpression()}
                   disabled={generatingImpression}
                 >
                   {generatingImpression ? (
@@ -901,6 +918,42 @@ export default function CaseReport({
                   </Button>
                 )}
               </div>
+              {/* 保留中AIタスクの再試行UI */}
+              {pendingTasks.length > 0 && (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+                  <div className="flex items-center gap-2 text-amber-800 text-xs font-medium">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    一時保存済みのAIタスクがあります
+                  </div>
+                  {pendingTasks.filter(t => t.taskType === "impression").map((task) => (
+                    <div key={task.id} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-muted-foreground">
+                        {new Date(task.createdAt).toLocaleString("ja-JP", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        {" "}— {task.errorMessage || "AI生成失敗"}
+                      </span>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 px-2 text-xs border-amber-300 hover:bg-amber-100"
+                          onClick={() => handleGenerateImpression(task.id)}
+                          disabled={generatingImpression}
+                        >
+                          {generatingImpression ? <Loader2 className="h-3 w-3 animate-spin" /> : "↻"} 再試行
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
+                          onClick={() => dismissTaskMut.mutate({ id: task.id })}
+                        >
+                          ×
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

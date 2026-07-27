@@ -49,6 +49,8 @@ import {
   InsertStoreMaster,
   surveySkipLogs,
   InsertSurveySkipLog,
+  pendingAiTasks,
+  InsertPendingAiTask,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -1574,4 +1576,63 @@ export async function getSurveySkipStats() {
     skipRate: totalCases > 0 ? Math.round((totalSkips / totalCases) * 100) : 0,
     byReason,
   };
+}
+
+
+// ============================================================
+// Pending AI Tasks (AI生成失敗時の一時保存キュー)
+// ============================================================
+
+export async function createPendingAiTask(data: InsertPendingAiTask) {
+  const db = await getDb();
+  if (!db) return { id: 0 };
+  const [result] = await db.insert(pendingAiTasks).values(data).$returningId();
+  return result;
+}
+
+export async function getPendingAiTasksByUser(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(pendingAiTasks)
+    .where(and(eq(pendingAiTasks.userId, userId), eq(pendingAiTasks.status, "pending")))
+    .orderBy(desc(pendingAiTasks.createdAt));
+}
+
+export async function getPendingAiTasksByCase(caseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(pendingAiTasks)
+    .where(and(eq(pendingAiTasks.caseId, caseId), eq(pendingAiTasks.status, "pending")))
+    .orderBy(desc(pendingAiTasks.createdAt));
+}
+
+export async function resolvePendingAiTask(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(pendingAiTasks)
+    .set({ status: "resolved", resolvedAt: new Date() })
+    .where(eq(pendingAiTasks.id, id));
+}
+
+export async function updatePendingAiTaskRetry(id: number, errorMessage?: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(pendingAiTasks)
+    .set({
+      retryCount: sql`${pendingAiTasks.retryCount} + 1`,
+      errorMessage: errorMessage ?? null,
+    })
+    .where(eq(pendingAiTasks.id, id));
+}
+
+export async function deletePendingAiTask(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(pendingAiTasks).where(eq(pendingAiTasks.id, id));
 }
