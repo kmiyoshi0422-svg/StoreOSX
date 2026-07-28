@@ -1006,3 +1006,6 @@
 ## progressStageタブの手動変更機能（ユーザー指示）
 - [x] 案件一覧/詳細画面からprogressStage（未対応/現調済/見積提出済/承認済）を手動で変更できるUIを追加
 - [x] DBの不整合（対応済みなのに未対応になっている案件）を再修正
+
+## 野口さん（partner）が所感を保存できない問題の修正（ユーザー報告バグ）
+- [x] partnerの許可フィールドにsurveyImpression, surveyImpressionAuthorを追加

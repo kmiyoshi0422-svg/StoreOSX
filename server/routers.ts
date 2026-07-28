@@ -587,7 +587,7 @@ export const appRouter = router({
         let data = { ...input.data };
         // partnerロールはステータス/進捗ステージ/緊急度の変更のみ許可
         if (ctx.user.role === 'partner') {
-          const allowedKeys = ['status', 'progressStage', 'urgency', 'partnerNotes'];
+          const allowedKeys = ['status', 'progressStage', 'urgency', 'partnerNotes', 'surveyImpression', 'surveyImpressionAuthor'];
           const keys = Object.keys(data).filter(k => (data as any)[k] !== undefined);
           const disallowed = keys.filter(k => !allowedKeys.includes(k));
           if (disallowed.length > 0) {
