@@ -282,6 +282,7 @@ export default function CaseReport({
   const cameraRef = useRef<HTMLInputElement>(null);
   const [addType, setAddType] = useState<PhotoTypeTag>(DEFAULT_ADD_TYPE[reportType]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const [perPage, setPerPage] = useState<4 | 6>(4);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
@@ -314,24 +315,40 @@ export default function CaseReport({
 
   const handleAddFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
+    const fileArr = Array.from(files);
     setUploading(true);
+    setUploadProgress({ current: 0, total: fileArr.length });
+    let successCount = 0;
+    let failCount = 0;
     try {
-      for (const file of Array.from(files)) {
-        const { dataUrl, mimeType } = await fileToUprightDataUrl(file);
-        await uploadPhoto.mutateAsync({
-          caseId: id,
-          fileName: file.name,
-          fileBase64: dataUrl,
-          mimeType,
-          photoType: addType,
-        });
+      for (let i = 0; i < fileArr.length; i++) {
+        const file = fileArr[i];
+        setUploadProgress({ current: i + 1, total: fileArr.length });
+        try {
+          const { dataUrl, mimeType } = await fileToUprightDataUrl(file);
+          await uploadPhoto.mutateAsync({
+            caseId: id,
+            fileName: file.name,
+            fileBase64: dataUrl,
+            mimeType,
+            photoType: addType,
+          });
+          successCount++;
+        } catch {
+          failCount++;
+        }
       }
-      toast.success(`${files.length}枚を「${addType}」として追加しました`);
+      if (failCount === 0) {
+        toast.success(`${successCount}枚を「${addType}」として追加しました`);
+      } else {
+        toast.warning(`${successCount}枚追加、${failCount}枚失敗しました`);
+      }
       await refetchPhotos();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "アップロードに失敗しました");
     } finally {
       setUploading(false);
+      setUploadProgress({ current: 0, total: 0 });
       if (fileRef.current) fileRef.current.value = "";
       if (cameraRef.current) cameraRef.current.value = "";
     }
@@ -1126,7 +1143,7 @@ export default function CaseReport({
                 ) : (
                   <ImagePlus className="h-4 w-4" />
                 )}
-                ファイルから追加
+                ファイルから追加（複数可）
               </Button>
               <Button
                 variant="outline"
@@ -1139,6 +1156,24 @@ export default function CaseReport({
                 撮影して追加
               </Button>
             </div>
+            {/* アップロード進捗表示 */}
+            {uploading && uploadProgress.total > 0 && (
+              <div className="flex items-center gap-3 px-3 py-2 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+                <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                <div className="flex-1">
+                  <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300 mb-1">
+                    <span>アップロード中...</span>
+                    <span>{uploadProgress.current} / {uploadProgress.total}枚</span>
+                  </div>
+                  <div className="h-1.5 bg-blue-100 dark:bg-blue-900 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                      style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* 写真一覧（ドラッグ＆ドロップ並び替え） */}
             {reportPhotos.length === 0 ? (
