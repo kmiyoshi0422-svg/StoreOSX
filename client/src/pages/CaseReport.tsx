@@ -21,6 +21,8 @@ import {
   Eye,
   GripVertical,
   LayoutGrid,
+  Grid3x3,
+  List,
 } from "lucide-react";
 import { PdfPreviewModal } from "@/components/PdfPreviewModal";
 import html2canvas from "html2canvas-pro";
@@ -284,6 +286,7 @@ export default function CaseReport({
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const [perPage, setPerPage] = useState<4 | 6>(4);
+  const [photoViewMode, setPhotoViewMode] = useState<"grid" | "card">("grid");
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
   // タッチDnD用state
@@ -1071,6 +1074,33 @@ export default function CaseReport({
                 </Badge>
               </div>
               <div className="flex items-center gap-2">
+                {/* 表示モード切り替え */}
+                <div className="flex items-center rounded-md border border-border/60 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setPhotoViewMode("grid")}
+                    className={`h-8 px-2.5 flex items-center gap-1 text-xs transition-colors ${
+                      photoViewMode === "grid"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-background text-muted-foreground hover:bg-muted"
+                    }`}
+                    title="グリッド表示"
+                  >
+                    <Grid3x3 className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPhotoViewMode("card")}
+                    className={`h-8 px-2.5 flex items-center gap-1 text-xs transition-colors ${
+                      photoViewMode === "card"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-background text-muted-foreground hover:bg-muted"
+                    }`}
+                    title="カード表示（編集）"
+                  >
+                    <List className="h-3.5 w-3.5" />
+                  </button>
+                </div>
                 <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground" />
                 <Label className="text-[11px] text-muted-foreground">
                   1ページの枚数
@@ -1175,12 +1205,46 @@ export default function CaseReport({
               </div>
             )}
 
-            {/* 写真一覧（ドラッグ＆ドロップ並び替え） */}
+            {/* 写真一覧 */}
             {reportPhotos.length === 0 ? (
               <p className="text-xs text-muted-foreground py-6 text-center">
                 この報告書に載る写真はまだありません。上のボタンから追加してください。
               </p>
+            ) : photoViewMode === "grid" ? (
+              /* グリッド表示モード：シンプルなサムネイルギャラリー */
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {reportPhotos.map((photo, index) => (
+                  <div
+                    key={photo.id}
+                    className="relative group aspect-square rounded-lg overflow-hidden border border-border/60 bg-muted cursor-zoom-in hover:ring-2 hover:ring-primary/50 transition-all duration-150"
+                    onClick={() => lightbox.open(index)}
+                  >
+                    <img
+                      src={photo.fileUrl}
+                      alt=""
+                      className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                      style={{
+                        imageOrientation: "from-image",
+                        transform: photo.rotation ? `rotate(${photo.rotation}deg)` : undefined,
+                      }}
+                    />
+                    {/* 番号バッジ */}
+                    <span className="absolute top-1 left-1 z-10 text-[10px] font-bold bg-black/70 text-white rounded px-1.5 py-0.5 backdrop-blur-sm">
+                      {index + 1}
+                    </span>
+                    {/* 区分バッジ */}
+                    <span className="absolute bottom-1 left-1 z-10 text-[9px] font-medium bg-white/90 dark:bg-black/70 text-foreground rounded px-1.5 py-0.5 backdrop-blur-sm truncate max-w-[calc(100%-8px)]">
+                      {photo.photoType}
+                    </span>
+                    {/* ホバー時の拡大アイコン */}
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-150 flex items-center justify-center">
+                      <Eye className="h-6 w-6 text-white opacity-0 group-hover:opacity-80 transition-opacity duration-150 drop-shadow-md" />
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : isCompletion ? (
+              /* カード表示モード（完了報告書：グループ分け） */
               <div className="space-y-4">
                 {(["before", "process", "after"] as PhotoGroupKey[]).map((gkey) => {
                   const items = reportPhotos
@@ -1192,7 +1256,6 @@ export default function CaseReport({
                       onDragOver={(e) => e.preventDefault()}
                       onDrop={(e) => {
                         e.preventDefault();
-                        // グループの空白部へのドロップ：そのグループの末尾へ移動
                         if (dragIndex === null) return;
                         const lastInGroup = items.length
                           ? items[items.length - 1].index
@@ -1236,6 +1299,7 @@ export default function CaseReport({
                 })}
               </div>
             ) : (
+              /* カード表示モード（現調報告書） */
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {reportPhotos.map((photo, index) => renderPhotoCard(photo, index))}
               </div>
