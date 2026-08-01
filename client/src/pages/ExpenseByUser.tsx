@@ -3,6 +3,8 @@ import PageHeader from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -12,10 +14,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { trpc } from "@/lib/trpc";
-import { Wallet, Users, Loader2, FolderKanban, Building2, Download } from "lucide-react";
+import { Wallet, Users, Loader2, FolderKanban, Building2, Download, Filter, X } from "lucide-react";
 import type { UserExpenseAggregate } from "../../../shared/expense-aggregate";
 
-type Period = "thisMonth" | "lastMonth" | "all";
+type Period = "thisMonth" | "lastMonth" | "all" | "custom";
 
 function ExportCsvButton({ range }: { range: { fromMs?: number; toMs?: number } }) {
   const { data: expenses, isLoading } = trpc.expenses.exportAll.useQuery(range);
@@ -55,8 +57,13 @@ function ExportCsvButton({ range }: { range: { fromMs?: number; toMs?: number } 
   );
 }
 
-function periodRange(p: Period): { fromMs?: number; toMs?: number } {
+function periodRange(p: Period, customFrom?: string, customTo?: string): { fromMs?: number; toMs?: number } {
   if (p === "all") return {};
+  if (p === "custom") {
+    const fromMs = customFrom ? new Date(customFrom + "T00:00:00").getTime() : undefined;
+    const toMs = customTo ? new Date(customTo + "T23:59:59.999").getTime() : undefined;
+    return { fromMs, toMs };
+  }
   const now = new Date();
   if (p === "thisMonth") {
     const from = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
@@ -77,17 +84,52 @@ const PERIOD_LABELS: Record<Period, string> = {
   thisMonth: "今月",
   lastMonth: "先月",
   all: "全期間",
+  custom: "カスタム",
 };
+
+const ALL_CATEGORIES = ["材料費", "外注費", "交通費", "消耗品", "車両費", "宿泊費", "接待交際費", "人件費", "現調費", "その他"];
 
 export default function ExpenseByUser() {
   const [period, setPeriod] = useState<Period>("thisMonth");
-  const range = useMemo(() => periodRange(period), [period]);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [filterUser, setFilterUser] = useState<string>("all"); // "all" or userId string
+  const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [showFilters, setShowFilters] = useState(false);
+
+  const range = useMemo(() => periodRange(period, customFrom, customTo), [period, customFrom, customTo]);
   const { data, isLoading } = trpc.expenses.byUser.useQuery(range);
 
   const byUser = data?.byUser ?? [];
   const categories = data?.categories ?? [];
   const grandTotal = data?.grandTotal ?? 0;
   const totalCount = data?.count ?? 0;
+
+  // フィルター適用後のデータ
+  const filteredByUser = useMemo(() => {
+    let result = byUser;
+    if (filterUser !== "all") {
+      result = result.filter((u: UserExpenseAggregate) => String(u.userId) === filterUser);
+    }
+    return result;
+  }, [byUser, filterUser]);
+
+  const filteredGrandTotal = filteredByUser.reduce((s: number, u: UserExpenseAggregate) => {
+    if (filterCategory === "all") return s + u.total;
+    return s + (u.byCategory[filterCategory] ?? 0);
+  }, 0);
+
+  const filteredCount = filteredByUser.reduce((s: number, u: UserExpenseAggregate) => s + u.count, 0);
+
+  const hasActiveFilters = filterUser !== "all" || filterCategory !== "all" || period === "custom";
+
+  const clearFilters = () => {
+    setFilterUser("all");
+    setFilterCategory("all");
+    setPeriod("thisMonth");
+    setCustomFrom("");
+    setCustomTo("");
+  };
 
   return (
     <div className="space-y-5">
@@ -98,26 +140,115 @@ export default function ExpenseByUser() {
         description="経費を立替えた担当者ごとに、使用額・件数・案件/全体の内訳・区分別の内訳を集計します。"
         actions={
           <div className="flex items-center gap-2">
-            <div className="inline-flex rounded-md border p-0.5 bg-muted/40">
-              {(["thisMonth", "lastMonth", "all"] as Period[]).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPeriod(p)}
-                  className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                    period === p
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {PERIOD_LABELS[p]}
-                </button>
-              ))}
-            </div>
+            <Button
+              size="sm"
+              variant={showFilters ? "default" : "outline"}
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              <Filter className="h-3.5 w-3.5 mr-1" />
+              フィルター
+              {hasActiveFilters && (
+                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">ON</Badge>
+              )}
+            </Button>
             <ExportCsvButton range={range} />
           </div>
         }
       />
+
+      {/* フィルターパネル */}
+      {showFilters && (
+        <Card className="border-primary/20 bg-primary/[0.02]">
+          <CardContent className="p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium flex items-center gap-1.5">
+                <Filter className="h-4 w-4 text-primary" />
+                絞り込み条件
+              </h3>
+              {hasActiveFilters && (
+                <Button size="sm" variant="ghost" onClick={clearFilters} className="text-xs h-7">
+                  <X className="h-3 w-3 mr-1" />
+                  クリア
+                </Button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* 期間フィルター */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">期間</Label>
+                <div className="inline-flex rounded-md border p-0.5 bg-muted/40 w-full">
+                  {(["thisMonth", "lastMonth", "all", "custom"] as Period[]).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPeriod(p)}
+                      className={`flex-1 px-2 py-1.5 rounded text-xs font-medium transition-colors ${
+                        period === p
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {PERIOD_LABELS[p]}
+                    </button>
+                  ))}
+                </div>
+                {period === "custom" && (
+                  <div className="flex gap-2 mt-2">
+                    <Input
+                      type="date"
+                      value={customFrom}
+                      onChange={(e) => setCustomFrom(e.target.value)}
+                      className="text-xs h-8"
+                      placeholder="開始日"
+                    />
+                    <span className="text-muted-foreground self-center text-xs">〜</span>
+                    <Input
+                      type="date"
+                      value={customTo}
+                      onChange={(e) => setCustomTo(e.target.value)}
+                      className="text-xs h-8"
+                      placeholder="終了日"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* 入力者フィルター */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">入力者（立替者）</Label>
+                <select
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-background h-9"
+                  value={filterUser}
+                  onChange={(e) => setFilterUser(e.target.value)}
+                >
+                  <option value="all">全員</option>
+                  {byUser.map((u: UserExpenseAggregate) => (
+                    <option key={u.userId ?? "null"} value={String(u.userId)}>
+                      {u.userName}（{u.count}件）
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 区分フィルター */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">区分</Label>
+                <select
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-background h-9"
+                  value={filterCategory}
+                  onChange={(e) => setFilterCategory(e.target.value)}
+                >
+                  <option value="all">全区分</option>
+                  {ALL_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
@@ -139,11 +270,14 @@ export default function ExpenseByUser() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                  合計経費・{PERIOD_LABELS[period]}
+                  {hasActiveFilters ? "フィルター適用後" : `合計経費・${PERIOD_LABELS[period]}`}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold font-mono">{yen(grandTotal)}</div>
+                <div className="text-2xl font-bold font-mono">{yen(filteredGrandTotal)}</div>
+                {hasActiveFilters && filteredGrandTotal !== grandTotal && (
+                  <div className="text-xs text-muted-foreground mt-1">全体: {yen(grandTotal)}</div>
+                )}
               </CardContent>
             </Card>
             <Card>
@@ -153,7 +287,10 @@ export default function ExpenseByUser() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold font-mono">{totalCount}件</div>
+                <div className="text-2xl font-bold font-mono">{filteredCount}件</div>
+                {hasActiveFilters && filteredCount !== totalCount && (
+                  <div className="text-xs text-muted-foreground mt-1">全体: {totalCount}件</div>
+                )}
               </CardContent>
             </Card>
             <Card>
@@ -163,14 +300,14 @@ export default function ExpenseByUser() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold font-mono">{byUser.length}名</div>
+                <div className="text-2xl font-bold font-mono">{filteredByUser.length}名</div>
               </CardContent>
             </Card>
           </div>
 
           {/* 立替者別カード */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {byUser.map((u: UserExpenseAggregate) => {
+            {filteredByUser.map((u: UserExpenseAggregate) => {
               const pct = grandTotal > 0 ? Math.round((u.total / grandTotal) * 100) : 0;
               return (
                 <Card key={u.userId ?? "unknown"} className="overflow-hidden">
@@ -207,9 +344,16 @@ export default function ExpenseByUser() {
                     {/* 区分別内訳（0以外のみ） */}
                     <div className="flex flex-wrap gap-1.5">
                       {categories
-                        .filter((c: string) => (u.byCategory[c] ?? 0) > 0)
+                        .filter((c: string) => {
+                          if (filterCategory !== "all") return c === filterCategory;
+                          return (u.byCategory[c] ?? 0) > 0;
+                        })
                         .map((c: string) => (
-                          <Badge key={c} variant="secondary" className="font-normal">
+                          <Badge
+                            key={c}
+                            variant={filterCategory === c ? "default" : "secondary"}
+                            className="font-normal"
+                          >
                             {c} {yen(u.byCategory[c] ?? 0)}
                           </Badge>
                         ))}
@@ -230,7 +374,7 @@ export default function ExpenseByUser() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="sticky left-0 bg-card">立替者</TableHead>
-                    {categories.map((c: string) => (
+                    {(filterCategory === "all" ? categories : [filterCategory]).map((c: string) => (
                       <TableHead key={c} className="text-right whitespace-nowrap">
                         {c}
                       </TableHead>
@@ -239,18 +383,18 @@ export default function ExpenseByUser() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {byUser.map((u: UserExpenseAggregate) => (
+                  {filteredByUser.map((u: UserExpenseAggregate) => (
                     <TableRow key={u.userId ?? "unknown"}>
                       <TableCell className="font-medium sticky left-0 bg-card whitespace-nowrap">
                         {u.userName}
                       </TableCell>
-                      {categories.map((c: string) => (
+                      {(filterCategory === "all" ? categories : [filterCategory]).map((c: string) => (
                         <TableCell key={c} className="text-right font-mono text-muted-foreground">
                           {(u.byCategory[c] ?? 0) > 0 ? yen(u.byCategory[c] ?? 0) : "—"}
                         </TableCell>
                       ))}
                       <TableCell className="text-right font-mono font-semibold">
-                        {yen(u.total)}
+                        {filterCategory === "all" ? yen(u.total) : yen(u.byCategory[filterCategory] ?? 0)}
                       </TableCell>
                     </TableRow>
                   ))}
