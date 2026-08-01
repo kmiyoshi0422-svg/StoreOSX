@@ -1,4 +1,4 @@
-import { int, bigint, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean, unique, index } from "drizzle-orm/mysql-core";
+import { int, bigint, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean, unique, index, decimal } from "drizzle-orm/mysql-core";
 
 /**
  * ユーザーテーブル（OAuth認証）
@@ -698,3 +698,116 @@ export const pendingAiTasks = mysqlTable("pending_ai_tasks", {
 }));
 export type PendingAiTask = typeof pendingAiTasks.$inferSelect;
 export type InsertPendingAiTask = typeof pendingAiTasks.$inferInsert;
+// ============================================================
+// 店舗設備台帳（グリーストラップ、フード排気、温湿度、雨漏り/漏電歴、分電盤写真）
+// ============================================================
+
+/**
+ * グリーストラップ情報
+ */
+export const storeGreaseTraps = mysqlTable("store_grease_traps", {
+  id: int("id").autoincrement().primaryKey(),
+  storeId: int("store_id").notNull(), // store_master.id
+  location: varchar("location", { length: 128 }), // 設置場所（厨房内、外部等）
+  modelNumber: varchar("model_number", { length: 128 }), // 品番
+  lidSize: varchar("lid_size", { length: 64 }), // 蓋の大きさ（例: 600x600mm）
+  lidMaterial: varchar("lid_material", { length: 64 }), // 蓋の材質（FRP、鉄、ステンレス等）
+  capacity: varchar("capacity", { length: 64 }), // 容量
+  memo: text("memo"),
+  photoFileKey: varchar("photo_file_key", { length: 512 }), // 写真のS3キー
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  storeIdx: index("idx_grease_store").on(t.storeId),
+}));
+export type StoreGreaseTrap = typeof storeGreaseTraps.$inferSelect;
+export type InsertStoreGreaseTrap = typeof storeGreaseTraps.$inferInsert;
+
+/**
+ * フード排気情報
+ */
+export const storeExhaustHoods = mysqlTable("store_exhaust_hoods", {
+  id: int("id").autoincrement().primaryKey(),
+  storeId: int("store_id").notNull(), // store_master.id
+  location: varchar("location", { length: 128 }), // 設置場所
+  hoodType: varchar("hood_type", { length: 128 }), // フードの種類
+  exhaustVolume: varchar("exhaust_volume", { length: 64 }), // 排気量（例: 2000m³/h）
+  motorModel: varchar("motor_model", { length: 128 }), // モーター品番
+  filterSize: varchar("filter_size", { length: 64 }), // フィルターサイズ
+  memo: text("memo"),
+  photoFileKey: varchar("photo_file_key", { length: 512 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  storeIdx: index("idx_exhaust_store").on(t.storeId),
+}));
+export type StoreExhaustHood = typeof storeExhaustHoods.$inferSelect;
+export type InsertStoreExhaustHood = typeof storeExhaustHoods.$inferInsert;
+
+/**
+ * 温湿度記録（天井内・厨房内）
+ */
+export const storeEnvironmentLogs = mysqlTable("store_environment_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  storeId: int("store_id").notNull(), // store_master.id
+  measurementArea: mysqlEnum("measurement_area", ["天井内", "厨房内"]).notNull(),
+  temperature: decimal("temperature", { precision: 5, scale: 1 }), // 温度（℃）
+  humidity: decimal("humidity", { precision: 5, scale: 1 }), // 湿度（%）
+  measuredAt: timestamp("measured_at"), // 計測日時
+  measuredBy: varchar("measured_by", { length: 128 }), // 計測者
+  caseId: int("case_id"), // 関連案件（あれば）
+  memo: text("memo"),
+  photoFileKey: varchar("photo_file_key", { length: 512 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  storeIdx: index("idx_env_store").on(t.storeId),
+  areaIdx: index("idx_env_area").on(t.measurementArea),
+}));
+export type StoreEnvironmentLog = typeof storeEnvironmentLogs.$inferSelect;
+export type InsertStoreEnvironmentLog = typeof storeEnvironmentLogs.$inferInsert;
+
+/**
+ * 雨漏り歴
+ */
+export const storeLeakHistory = mysqlTable("store_leak_history", {
+  id: int("id").autoincrement().primaryKey(),
+  storeId: int("store_id").notNull(), // store_master.id
+  leakType: mysqlEnum("leak_type", ["雨漏り", "漏電"]).notNull(),
+  occurredAt: timestamp("occurred_at"), // 発生日
+  location: varchar("location", { length: 255 }), // 発生箇所
+  severity: mysqlEnum("severity", ["軽微", "中程度", "重大"]).default("中程度"),
+  cause: text("cause"), // 原因
+  repairContent: text("repair_content"), // 修理内容
+  repairDate: timestamp("repair_date"), // 修理日
+  caseId: int("case_id"), // 関連案件
+  memo: text("memo"),
+  photoFileKeys: text("photo_file_keys"), // 写真のS3キー（JSON配列）
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  storeIdx: index("idx_leak_store").on(t.storeId),
+  typeIdx: index("idx_leak_type").on(t.leakType),
+}));
+export type StoreLeakHistory = typeof storeLeakHistory.$inferSelect;
+export type InsertStoreLeakHistory = typeof storeLeakHistory.$inferInsert;
+
+/**
+ * 分電盤写真
+ */
+export const storeDistributionBoards = mysqlTable("store_distribution_boards", {
+  id: int("id").autoincrement().primaryKey(),
+  storeId: int("store_id").notNull(), // store_master.id
+  boardName: varchar("board_name", { length: 128 }), // 分電盤名称（主幹、厨房系統等）
+  location: varchar("location", { length: 255 }), // 設置場所
+  capacity: varchar("capacity", { length: 64 }), // 容量（例: 60A）
+  circuitCount: int("circuit_count"), // 回路数
+  photoFileKey: varchar("photo_file_key", { length: 512 }).notNull(), // 写真のS3キー
+  memo: text("memo"),
+  photographedAt: timestamp("photographed_at"), // 撮影日
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  storeIdx: index("idx_board_store").on(t.storeId),
+}));
+export type StoreDistributionBoard = typeof storeDistributionBoards.$inferSelect;
+export type InsertStoreDistributionBoard = typeof storeDistributionBoards.$inferInsert;

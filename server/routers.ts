@@ -128,6 +128,25 @@ import {
   resolvePendingAiTask,
   updatePendingAiTaskRetry,
   deletePendingAiTask,
+  listGreaseTrapsByStore,
+  createGreaseTrap,
+  updateGreaseTrap,
+  deleteGreaseTrap,
+  listExhaustHoodsByStore,
+  createExhaustHood,
+  updateExhaustHood,
+  deleteExhaustHood,
+  listEnvironmentLogsByStore,
+  createEnvironmentLog,
+  deleteEnvironmentLog,
+  listLeakHistoryByStore,
+  createLeakHistory,
+  updateLeakHistory,
+  deleteLeakHistory,
+  listDistributionBoardsByStore,
+  createDistributionBoard,
+  updateDistributionBoard,
+  deleteDistributionBoard,
 } from "./db";
 import { estimates as estimatesTable, caseSignatures as caseSignaturesTable, routeAssignments as routeAssignmentsTable, cases as casesTable, partners as partnersTable } from "../drizzle/schema";
 import { makeRequest } from "./_core/map";
@@ -4434,12 +4453,250 @@ JSONスキーマに従って回答してください。`,
         await deletePendingAiTask(input.id);
         return { success: true };
       }),
-    resolve: protectedProcedure
+        resolve: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         await resolvePendingAiTask(input.id);
         return { success: true };
       }),
+  }),
+
+  // ============================================================
+  // 店舗設備台帳ルーター
+  // ============================================================
+  storeEquipment: router({
+    // --- グリーストラップ ---
+    greaseTraps: router({
+      list: protectedProcedure
+        .input(z.object({ storeId: z.number() }))
+        .query(async ({ input }) => {
+          return listGreaseTrapsByStore(input.storeId);
+        }),
+      create: protectedProcedure
+        .input(z.object({
+          storeId: z.number(),
+          location: z.string().nullish(),
+          modelNumber: z.string().nullish(),
+          lidSize: z.string().nullish(),
+          lidMaterial: z.string().nullish(),
+          capacity: z.string().nullish(),
+          memo: z.string().nullish(),
+          photoFileKey: z.string().nullish(),
+        }))
+        .mutation(async ({ input }) => {
+          return createGreaseTrap(input);
+        }),
+      update: protectedProcedure
+        .input(z.object({
+          id: z.number(),
+          location: z.string().nullish(),
+          modelNumber: z.string().nullish(),
+          lidSize: z.string().nullish(),
+          lidMaterial: z.string().nullish(),
+          capacity: z.string().nullish(),
+          memo: z.string().nullish(),
+          photoFileKey: z.string().nullish(),
+        }))
+        .mutation(async ({ input }) => {
+          const { id, ...data } = input;
+          await updateGreaseTrap(id, data);
+        }),
+      delete: protectedProcedure
+        .input(z.object({ id: z.number() }))
+        .mutation(async ({ input }) => {
+          await deleteGreaseTrap(input.id);
+        }),
+    }),
+
+    // --- フード排気 ---
+    exhaustHoods: router({
+      list: protectedProcedure
+        .input(z.object({ storeId: z.number() }))
+        .query(async ({ input }) => {
+          return listExhaustHoodsByStore(input.storeId);
+        }),
+      create: protectedProcedure
+        .input(z.object({
+          storeId: z.number(),
+          location: z.string().nullish(),
+          hoodType: z.string().nullish(),
+          exhaustVolume: z.string().nullish(),
+          motorModel: z.string().nullish(),
+          filterSize: z.string().nullish(),
+          memo: z.string().nullish(),
+          photoFileKey: z.string().nullish(),
+        }))
+        .mutation(async ({ input }) => {
+          return createExhaustHood(input);
+        }),
+      update: protectedProcedure
+        .input(z.object({
+          id: z.number(),
+          location: z.string().nullish(),
+          hoodType: z.string().nullish(),
+          exhaustVolume: z.string().nullish(),
+          motorModel: z.string().nullish(),
+          filterSize: z.string().nullish(),
+          memo: z.string().nullish(),
+          photoFileKey: z.string().nullish(),
+        }))
+        .mutation(async ({ input }) => {
+          const { id, ...data } = input;
+          await updateExhaustHood(id, data);
+        }),
+      delete: protectedProcedure
+        .input(z.object({ id: z.number() }))
+        .mutation(async ({ input }) => {
+          await deleteExhaustHood(input.id);
+        }),
+    }),
+
+    // --- 温湿度記録 ---
+    environmentLogs: router({
+      list: protectedProcedure
+        .input(z.object({
+          storeId: z.number(),
+          area: z.enum(["天井内", "厨房内"]).optional(),
+        }))
+        .query(async ({ input }) => {
+          return listEnvironmentLogsByStore(input.storeId, input.area);
+        }),
+      create: protectedProcedure
+        .input(z.object({
+          storeId: z.number(),
+          measurementArea: z.enum(["天井内", "厨房内"]),
+          temperature: z.string().nullish(),
+          humidity: z.string().nullish(),
+          measuredAt: z.string().nullish(),
+          measuredBy: z.string().nullish(),
+          caseId: z.number().nullish(),
+          memo: z.string().nullish(),
+          photoFileKey: z.string().nullish(),
+        }))
+        .mutation(async ({ input }) => {
+          const data = {
+            ...input,
+            measuredAt: input.measuredAt ? new Date(input.measuredAt) : null,
+          };
+          return createEnvironmentLog(data as any);
+        }),
+      delete: protectedProcedure
+        .input(z.object({ id: z.number() }))
+        .mutation(async ({ input }) => {
+          await deleteEnvironmentLog(input.id);
+        }),
+    }),
+
+    // --- 雨漏り・漏電歴 ---
+    leakHistory: router({
+      list: protectedProcedure
+        .input(z.object({
+          storeId: z.number(),
+          leakType: z.enum(["雨漏り", "漏電"]).optional(),
+        }))
+        .query(async ({ input }) => {
+          return listLeakHistoryByStore(input.storeId, input.leakType);
+        }),
+      create: protectedProcedure
+        .input(z.object({
+          storeId: z.number(),
+          leakType: z.enum(["雨漏り", "漏電"]),
+          occurredAt: z.string().nullish(),
+          location: z.string().nullish(),
+          severity: z.enum(["軽微", "中程度", "重大"]).nullish(),
+          cause: z.string().nullish(),
+          repairContent: z.string().nullish(),
+          repairDate: z.string().nullish(),
+          caseId: z.number().nullish(),
+          memo: z.string().nullish(),
+          photoFileKeys: z.string().nullish(),
+        }))
+        .mutation(async ({ input }) => {
+          const data = {
+            ...input,
+            occurredAt: input.occurredAt ? new Date(input.occurredAt) : null,
+            repairDate: input.repairDate ? new Date(input.repairDate) : null,
+          };
+          return createLeakHistory(data as any);
+        }),
+      update: protectedProcedure
+        .input(z.object({
+          id: z.number(),
+          occurredAt: z.string().nullish(),
+          location: z.string().nullish(),
+          severity: z.enum(["軽微", "中程度", "重大"]).nullish(),
+          cause: z.string().nullish(),
+          repairContent: z.string().nullish(),
+          repairDate: z.string().nullish(),
+          memo: z.string().nullish(),
+          photoFileKeys: z.string().nullish(),
+        }))
+        .mutation(async ({ input }) => {
+          const { id, ...rest } = input;
+          const data = {
+            ...rest,
+            occurredAt: rest.occurredAt ? new Date(rest.occurredAt) : undefined,
+            repairDate: rest.repairDate ? new Date(rest.repairDate) : undefined,
+          };
+          await updateLeakHistory(id, data as any);
+        }),
+      delete: protectedProcedure
+        .input(z.object({ id: z.number() }))
+        .mutation(async ({ input }) => {
+          await deleteLeakHistory(input.id);
+        }),
+    }),
+
+    // --- 分電盤写真 ---
+    distributionBoards: router({
+      list: protectedProcedure
+        .input(z.object({ storeId: z.number() }))
+        .query(async ({ input }) => {
+          return listDistributionBoardsByStore(input.storeId);
+        }),
+      create: protectedProcedure
+        .input(z.object({
+          storeId: z.number(),
+          boardName: z.string().nullish(),
+          location: z.string().nullish(),
+          capacity: z.string().nullish(),
+          circuitCount: z.number().nullish(),
+          photoFileKey: z.string(),
+          memo: z.string().nullish(),
+          photographedAt: z.string().nullish(),
+        }))
+        .mutation(async ({ input }) => {
+          const data = {
+            ...input,
+            photographedAt: input.photographedAt ? new Date(input.photographedAt) : null,
+          };
+          return createDistributionBoard(data as any);
+        }),
+      update: protectedProcedure
+        .input(z.object({
+          id: z.number(),
+          boardName: z.string().nullish(),
+          location: z.string().nullish(),
+          capacity: z.string().nullish(),
+          circuitCount: z.number().nullish(),
+          photoFileKey: z.string().nullish(),
+          memo: z.string().nullish(),
+          photographedAt: z.string().nullish(),
+        }))
+        .mutation(async ({ input }) => {
+          const { id, ...rest } = input;
+          const data = {
+            ...rest,
+            photographedAt: rest.photographedAt ? new Date(rest.photographedAt) : undefined,
+          };
+          await updateDistributionBoard(id, data as any);
+        }),
+      delete: protectedProcedure
+        .input(z.object({ id: z.number() }))
+        .mutation(async ({ input }) => {
+          await deleteDistributionBoard(input.id);
+        }),
+    }),
   }),
 });
 export type AppRouter = typeof appRouter;
