@@ -14,10 +14,58 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { trpc } from "@/lib/trpc";
-import { Wallet, Users, Loader2, FolderKanban, Building2, Download, Filter, X } from "lucide-react";
+import { Wallet, Users, Loader2, FolderKanban, Building2, Download, Filter, X, TrendingUp } from "lucide-react";
 import type { UserExpenseAggregate } from "../../../shared/expense-aggregate";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Legend } from "recharts";
 
 type Period = "thisMonth" | "lastMonth" | "all" | "custom";
+
+const CHART_COLORS = ["#3b82f6", "#f59e0b", "#10b981", "#8b5cf6", "#ef4444", "#06b6d4", "#ec4899", "#f97316", "#6366f1", "#14b8a6"];
+
+function MonthlyTrendChart() {
+  const { data: trend, isLoading } = trpc.expenses.monthlyTrend.useQuery({ months: 6 });
+  if (isLoading || !trend || trend.length === 0) return null;
+
+  // 区分別のデータをフラットに
+  const allCats = new Set<string>();
+  trend.forEach((m: any) => Object.keys(m.byCategory).forEach(c => { if (m.byCategory[c] > 0) allCats.add(c); }));
+  const categories = Array.from(allCats);
+
+  const chartData = trend.map((m: any) => {
+    const row: any = { month: m.yearMonth.slice(5) + '月', total: m.total };
+    categories.forEach(c => { row[c] = m.byCategory[c] ?? 0; });
+    return row;
+  });
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <TrendingUp className="h-4 w-4" /> 月次経費推移（過去6ヶ月）
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="h-[280px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+              <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+              <YAxis
+                tickFormatter={(v) => v >= 10000 ? `${Math.round(v / 10000)}万` : String(v)}
+                tick={{ fontSize: 12 }}
+              />
+              <RTooltip formatter={(v: any) => `¥${Number(v).toLocaleString()}`} />
+              <Legend />
+              {categories.map((c, i) => (
+                <Bar key={c} dataKey={c} stackId="a" fill={CHART_COLORS[i % CHART_COLORS.length]} />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function ExportCsvButton({ range }: { range: { fromMs?: number; toMs?: number } }) {
   const { data: expenses, isLoading } = trpc.expenses.exportAll.useQuery(range);
@@ -363,6 +411,9 @@ export default function ExpenseByUser() {
               );
             })}
           </div>
+
+          {/* 月次推移グラフ */}
+          <MonthlyTrendChart />
 
           {/* 区分別マトリクス表 */}
           <Card>

@@ -3023,6 +3023,39 @@ export const appRouter = router({
         }
         return filtered;
       }),
+    // 月次推移データ（過去N月の月別合計・区分別内訳）
+    monthlyTrend: adminProcedure
+      .input(z.object({ months: z.number().int().min(1).max(24).default(6) }).optional())
+      .query(async ({ input }) => {
+        const months = input?.months ?? 6;
+        const all = await listAllExpenses();
+        // 過去N月分の年月リストを生成
+        const now = new Date();
+        const monthLabels: string[] = [];
+        for (let i = months - 1; i >= 0; i--) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          monthLabels.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+        }
+        // 集計
+        const result = monthLabels.map(ym => {
+          const monthExpenses = all.filter(e => {
+            const basis = e.expenseDate ?? e.createdAt;
+            if (!basis) return false;
+            const d = new Date(basis);
+            const eym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            return eym === ym;
+          });
+          const total = monthExpenses.reduce((s, e) => s + (e.amount ?? 0), 0);
+          const count = monthExpenses.length;
+          const byCategory: Record<string, number> = {};
+          monthExpenses.forEach(e => {
+            const cat = (e.category as string) ?? '\u305d\u306e\u4ed6';
+            byCategory[cat] = (byCategory[cat] ?? 0) + (e.amount ?? 0);
+          });
+          return { yearMonth: ym, total, count, byCategory };
+        });
+        return result;
+      }),
   }),
   reports: router({
     monthly: protectedProcedure
