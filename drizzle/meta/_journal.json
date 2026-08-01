@@ -225,6 +225,13 @@
       "when": 1785593853486,
       "tag": "0031_bumpy_giant_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "5",
+      "when": 1785608735518,
+      "tag": "0032_rapid_blink",
+      "breakpoints": true
     }
   ]
 }

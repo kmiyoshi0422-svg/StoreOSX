@@ -2409,6 +2409,7 @@ function ProfitTab({ caseData, onUpdated, isPartner = false }: { caseData: Case;
 function ExpensesTab({ caseId }: { caseId: number }) {
   const utils = trpc.useUtils();
   const { data: expenses = [] } = trpc.expenses.listByCase.useQuery({ caseId });
+  const { data: budgetStatus } = trpc.expenses.budgetStatus.useQuery({ caseId });
   const deleteMutation = trpc.expenses.delete.useMutation({
     onSuccess: () => {
       utils.expenses.listByCase.invalidate({ caseId });
@@ -2456,6 +2457,22 @@ function ExpensesTab({ caseId }: { caseId: number }) {
 
   return (
     <div className="space-y-4">
+      {/* 予算ステータス */}
+      {budgetStatus && budgetStatus.budget !== null && (
+        <div className={`rounded-lg border p-3 text-sm flex items-center justify-between ${budgetStatus.isOverBudget ? 'border-red-300 bg-red-50 dark:bg-red-950/20' : 'border-green-300 bg-green-50 dark:bg-green-950/20'}`}>
+          <div className="flex items-center gap-4">
+            <span className="font-medium">予算: {yen(budgetStatus.budget)}</span>
+            <span>実績: {yen(budgetStatus.totalExpense)}</span>
+            <span className={budgetStatus.isOverBudget ? 'text-red-600 font-bold' : 'text-green-600'}>
+              {budgetStatus.usagePercent}%消化
+            </span>
+          </div>
+          {budgetStatus.isOverBudget && (
+            <span className="text-red-600 font-bold text-xs">⚠️ 予算超過</span>
+          )}
+        </div>
+      )}
+
       {/* 原価手入力フォーム */}
       {showAddForm && (
         <Card>

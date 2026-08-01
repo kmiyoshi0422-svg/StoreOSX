@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,11 @@ import {
   Trash2,
   Check,
   Download,
+  ImageIcon,
+  Eye,
+  CheckCircle2,
+  XCircle,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -61,6 +67,9 @@ export default function ExpenseList() {
     scope: "",
     keyword: "",
   });
+
+  // レシートプレビュー
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   // インライン編集
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -285,6 +294,8 @@ export default function ExpenseList() {
                     <th className="text-left px-3 py-2.5 font-medium">摘要</th>
                     <th className="text-left px-3 py-2.5 font-medium w-[60px]">範囲</th>
                     <th className="text-left px-3 py-2.5 font-medium w-[70px]">案件ID</th>
+                    <th className="text-left px-3 py-2.5 font-medium w-[50px]">レシート</th>
+                    <th className="text-left px-3 py-2.5 font-medium w-[60px]">承認</th>
                     <th className="text-left px-3 py-2.5 font-medium w-[80px]">入力者</th>
                     <th className="text-left px-3 py-2.5 font-medium w-[100px]">入力日時</th>
                     <th className="px-3 py-2.5 w-[80px]"></th>
@@ -348,6 +359,24 @@ export default function ExpenseList() {
                               </Badge>
                             </td>
                             <td className="px-3 py-2 text-xs text-muted-foreground tabular-nums">{e.caseId ?? "—"}</td>
+                            <td className="px-3 py-2">
+                              {e.fileUrl ? (
+                                <button className="text-primary hover:underline flex items-center gap-0.5 text-xs" onClick={() => setPreviewImage(e.fileUrl)}>
+                                  <ImageIcon className="h-3 w-3" />
+                                </button>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">—</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              {e.approvalStatus === "approved" ? (
+                                <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                              ) : e.approvalStatus === "rejected" ? (
+                                <XCircle className="h-3.5 w-3.5 text-red-500" />
+                              ) : (
+                                <Clock className="h-3.5 w-3.5 text-amber-500" />
+                              )}
+                            </td>
                             <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{e.createdByName ?? "—"}</td>
                             <td className="px-3 py-2 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
                               {e.createdAt ? new Date(e.createdAt).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
@@ -379,6 +408,20 @@ export default function ExpenseList() {
           </CardContent>
         </Card>
       )}
+
+      {/* レシート画像プレビュー */}
+      <Dialog open={!!previewImage} onOpenChange={(open) => { if (!open) setPreviewImage(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Eye className="h-4 w-4" /> レシート画像</DialogTitle>
+          </DialogHeader>
+          {previewImage && (
+            <div className="flex justify-center">
+              <img src={previewImage} alt="レシート" className="max-h-[60vh] rounded-md" />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

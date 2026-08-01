@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, FilePlus, ClipboardList, Upload, Wallet, BarChart3, Briefcase, FileSearch, FileText, Users, Building2, Gauge, Receipt, TrendingUp, MapPinned, Images, BookMarked, Sparkles, Droplets, Library, GanttChart, Activity, List } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, FilePlus, ClipboardList, Upload, Wallet, BarChart3, Briefcase, FileSearch, FileText, Users, Building2, Gauge, Receipt, TrendingUp, MapPinned, Images, BookMarked, Sparkles, Droplets, Library, GanttChart, Activity, List, SendHorizontal, CheckCircle2 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -46,6 +46,8 @@ const menuItems: MenuItem[] = [
   { icon: Briefcase, label: "協力会社", path: "/partners", hideForPartner: true },
   { icon: Users, label: "協力会社取込", path: "/partners/import", hideForPartner: true },
   { icon: Receipt, label: "経費取込", path: "/expenses/import" },
+  { icon: SendHorizontal, label: "経費申請", path: "/expenses/submit" },
+  { icon: CheckCircle2, label: "経費承認", path: "/expenses/approve", adminOnly: true },
   { icon: List, label: "経費明細一覧", path: "/expenses/list", adminOnly: true },
   { icon: Wallet, label: "立替者別経費", path: "/expenses/by-user", adminOnly: true },
   { icon: Wallet, label: "予実管理", path: "/budget", adminOnly: true },

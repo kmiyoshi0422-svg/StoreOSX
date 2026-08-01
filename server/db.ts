@@ -1636,3 +1636,80 @@ export async function deletePendingAiTask(id: number) {
   if (!db) return;
   await db.delete(pendingAiTasks).where(eq(pendingAiTasks.id, id));
 }
+
+
+// ============================================================
+// Expense Approval Workflow
+// ============================================================
+
+/** 経費を承認する */
+export async function approveExpense(id: number, userId: number, userName: string) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.update(expenses).set({
+    approvalStatus: "approved",
+    approvedBy: userId,
+    approvedByName: userName,
+    approvedAt: new Date(),
+    rejectionReason: null,
+  }).where(eq(expenses.id, id));
+}
+
+/** 経費を却下する */
+export async function rejectExpense(id: number, userId: number, userName: string, reason: string) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.update(expenses).set({
+    approvalStatus: "rejected",
+    approvedBy: userId,
+    approvedByName: userName,
+    approvedAt: new Date(),
+    rejectionReason: reason,
+  }).where(eq(expenses.id, id));
+}
+
+/** 未承認経費一覧（pending のみ） */
+export async function listPendingExpenses() {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(expenses)
+    .where(eq(expenses.approvalStatus, "pending"))
+    .orderBy(desc(expenses.createdAt));
+}
+
+/** 案件の予算ステータスを取得（予算上限・現在経費合計・超過状態） */
+export async function getCaseBudgetStatus(caseId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const caseRows = await db.select().from(cases).where(eq(cases.id, caseId)).limit(1);
+  if (caseRows.length === 0) return null;
+  const c = caseRows[0];
+  const expRows = await db
+    .select()
+    .from(expenses)
+    .where(and(eq(expenses.caseId, caseId), eq(expenses.scope, "案件")));
+  const totalExpense = expRows.reduce((s, e) => s + (e.amount ?? 0), 0);
+  const budget = c.expenseBudget ?? null;
+  const isOverBudget = budget !== null && totalExpense > budget;
+  const usagePercent = budget && budget > 0 ? Math.round((totalExpense / budget) * 100) : null;
+  return { budget, totalExpense, isOverBudget, usagePercent, count: expRows.length };
+}
+
+/** 予算超過時にオーナーへ通知 */
+export async function checkBudgetAlert(caseId: number) {
+  const db = await getDb();
+  if (!db) return;
+  const status = await getCaseBudgetStatus(caseId);
+  if (!status || !status.isOverBudget) return;
+  const caseRows = await db.select().from(cases).where(eq(cases.id, caseId)).limit(1);
+  if (caseRows.length === 0) return;
+  const c = caseRows[0];
+  // 通知を送信
+  const { notifyOwner } = await import("./_core/notification");
+  await notifyOwner({
+    title: `⚠️ 経費予算超過: ${c.storeName ?? '案件'} #${c.requestNumber ?? caseId}`,
+    content: `案件「${c.storeName ?? ''}」の経費合計が予算上限を超過しました。\n予算: ¥${(status.budget ?? 0).toLocaleString()}\n実績: ¥${status.totalExpense.toLocaleString()}\n超過額: ¥${(status.totalExpense - (status.budget ?? 0)).toLocaleString()}`,
+  });
+}

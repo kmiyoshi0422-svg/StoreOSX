@@ -28,6 +28,8 @@ const EstimateOcrExcel = lazy(() => import("./pages/EstimateOcrExcel"));
 const ExpenseImport = lazy(() => import("./pages/ExpenseImport"));
 const ExpenseByUser = lazy(() => import("./pages/ExpenseByUser"));
 const ExpenseList = lazy(() => import("./pages/ExpenseList"));
+const ExpenseSubmit = lazy(() => import("./pages/ExpenseSubmit"));
+const ExpenseApprove = lazy(() => import("./pages/ExpenseApprove"));
 const Reports = lazy(() => import("./pages/Reports"));
 const BudgetActual = lazy(() => import("./pages/BudgetActual"));
 const MonthlyReport = lazy(() => import("./pages/MonthlyReport"));
@@ -76,6 +78,12 @@ function Router() {
                 <Route path={"/estimates/import"} component={EstimateImport} />
                 <Route path={"/estimates/ocr-excel"} component={EstimateOcrExcel} />
                 <Route path={"/expenses/import"} component={ExpenseImport} />
+                <Route path={"/expenses/submit"} component={ExpenseSubmit} />
+                <Route path={"/expenses/approve"}>
+                  <AdminOnly>
+                    <ExpenseApprove />
+                  </AdminOnly>
+                </Route>
                 <Route path={"/expenses/list"}>
                   <AdminOnly>
                     <ExpenseList />

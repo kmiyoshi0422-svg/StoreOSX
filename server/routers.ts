@@ -128,6 +128,11 @@ import {
   resolvePendingAiTask,
   updatePendingAiTaskRetry,
   deletePendingAiTask,
+  approveExpense,
+  rejectExpense,
+  listPendingExpenses,
+  getCaseBudgetStatus,
+  checkBudgetAlert,
 } from "./db";
 import { estimates as estimatesTable, caseSignatures as caseSignaturesTable, routeAssignments as routeAssignmentsTable, cases as casesTable, partners as partnersTable } from "../drizzle/schema";
 import { makeRequest } from "./_core/map";
@@ -3055,6 +3060,70 @@ export const appRouter = router({
           return { yearMonth: ym, total, count, byCategory };
         });
         return result;
+      }),
+    // 経費申請（レシート画像付き）
+    submit: protectedProcedure
+      .input(z.object({
+        caseId: z.number().int().nullish(),
+        scope: z.enum(['案件', '全体']).default('案件'),
+        vendorName: z.string().nullish(),
+        amount: z.number().int().min(1),
+        taxAmount: z.number().int().nullish(),
+        expenseDate: z.string().nullish(),
+        category: EXPENSE_CATEGORY,
+        note: z.string().nullish(),
+        fileKey: z.string().nullish(),
+        fileUrl: z.string().nullish(),
+        fileName: z.string().nullish(),
+        mimeType: z.string().nullish(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const id = await createExpense({
+          caseId: input.caseId ?? null,
+          scope: input.scope,
+          vendorName: input.vendorName ?? null,
+          amount: input.amount,
+          taxAmount: input.taxAmount ?? null,
+          expenseDate: input.expenseDate ? new Date(input.expenseDate) : null,
+          category: input.category,
+          note: input.note ?? null,
+          uploadedBy: ctx.user.id,
+          createdByName: ctx.user.name ?? '不明',
+          fileKey: input.fileKey ?? null,
+          fileUrl: input.fileUrl ?? null,
+          fileName: input.fileName ?? null,
+          mimeType: input.mimeType ?? null,
+        });
+        // 予算超過チェック
+        if (input.caseId) {
+          await syncCaseActualCost(input.caseId);
+          await checkBudgetAlert(input.caseId);
+        }
+        return { id };
+      }),
+    // 承認（管理者のみ）
+    approve: adminProcedure
+      .input(z.object({ id: z.number().int() }))
+      .mutation(async ({ input, ctx }) => {
+        await approveExpense(input.id, ctx.user.id, ctx.user.name ?? '不明');
+        return { ok: true };
+      }),
+    // 却下（管理者のみ）
+    reject: adminProcedure
+      .input(z.object({ id: z.number().int(), reason: z.string().min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        await rejectExpense(input.id, ctx.user.id, ctx.user.name ?? '不明', input.reason);
+        return { ok: true };
+      }),
+    // 未承認経費一覧（管理者用）
+    listPending: adminProcedure.query(async () => {
+      return await listPendingExpenses();
+    }),
+    // 案件の予算ステータス取得
+    budgetStatus: protectedProcedure
+      .input(z.object({ caseId: z.number().int() }))
+      .query(async ({ input }) => {
+        return await getCaseBudgetStatus(input.caseId);
       }),
   }),
   reports: router({

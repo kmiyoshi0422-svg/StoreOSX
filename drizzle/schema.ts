@@ -89,6 +89,7 @@ export const cases = mysqlTable("cases", {
   laborCost: int("laborCost"), // 人件費（円）
   // 実績
   actualCost: int("actualCost"), // 実績金額合計（円）
+  expenseBudget: int("expenseBudget"), // 経費予算上限（円）
   actualMaterialCost: int("actualMaterialCost"), // 実績：材料費
   actualLaborCost: int("actualLaborCost"), // 実績：作業費
   invoiceNumber: varchar("invoiceNumber", { length: 64 }), // 請求書番号
@@ -353,6 +354,12 @@ export const expenses = mysqlTable("expenses", {
   uploadedBy: int("uploadedBy"),
   createdByName: varchar("createdByName", { length: 128 }), // 入力者名
   updatedByName: varchar("updatedByName", { length: 128 }), // 最終更新者名
+  // 承認ワークフロー
+  approvalStatus: mysqlEnum("approvalStatus", ["pending", "approved", "rejected"]).default("pending").notNull(),
+  approvedBy: int("approvedBy"), // 承認者 users.id
+  approvedByName: varchar("approvedByName", { length: 128 }),
+  approvedAt: timestamp("approvedAt"),
+  rejectionReason: text("rejectionReason"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (t) => ({
