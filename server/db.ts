@@ -51,6 +51,16 @@ import {
   InsertSurveySkipLog,
   pendingAiTasks,
   InsertPendingAiTask,
+  storeGreaseTraps,
+  InsertStoreGreaseTrap,
+  storeExhaustHoods,
+  InsertStoreExhaustHood,
+  storeEnvironmentLogs,
+  InsertStoreEnvironmentLog,
+  storeLeakHistory,
+  InsertStoreLeakHistory,
+  storeDistributionBoards,
+  InsertStoreDistributionBoard,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -1712,4 +1722,136 @@ export async function checkBudgetAlert(caseId: number) {
     title: `⚠️ 経費予算超過: ${c.storeName ?? '案件'} #${c.requestNumber ?? caseId}`,
     content: `案件「${c.storeName ?? ''}」の経費合計が予算上限を超過しました。\n予算: ¥${(status.budget ?? 0).toLocaleString()}\n実績: ¥${status.totalExpense.toLocaleString()}\n超過額: ¥${(status.totalExpense - (status.budget ?? 0)).toLocaleString()}`,
   });
+}
+
+// ============================================================
+// 店舗設備台帳 CRUD
+// ============================================================
+
+// --- グリーストラップ ---
+export async function listGreaseTrapsByStore(storeId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(storeGreaseTraps).where(eq(storeGreaseTraps.storeId, storeId)).orderBy(asc(storeGreaseTraps.id));
+}
+
+export async function createGreaseTrap(data: InsertStoreGreaseTrap) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(storeGreaseTraps).values(data);
+  return result.insertId;
+}
+
+export async function updateGreaseTrap(id: number, data: Partial<InsertStoreGreaseTrap>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(storeGreaseTraps).set(data).where(eq(storeGreaseTraps.id, id));
+}
+
+export async function deleteGreaseTrap(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(storeGreaseTraps).where(eq(storeGreaseTraps.id, id));
+}
+
+// --- フード排気 ---
+export async function listExhaustHoodsByStore(storeId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(storeExhaustHoods).where(eq(storeExhaustHoods.storeId, storeId)).orderBy(asc(storeExhaustHoods.id));
+}
+
+export async function createExhaustHood(data: InsertStoreExhaustHood) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(storeExhaustHoods).values(data);
+  return result.insertId;
+}
+
+export async function updateExhaustHood(id: number, data: Partial<InsertStoreExhaustHood>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(storeExhaustHoods).set(data).where(eq(storeExhaustHoods.id, id));
+}
+
+export async function deleteExhaustHood(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(storeExhaustHoods).where(eq(storeExhaustHoods.id, id));
+}
+
+// --- 温湿度記録 ---
+export async function listEnvironmentLogsByStore(storeId: number, area?: "天井内" | "厨房内") {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(storeEnvironmentLogs.storeId, storeId)];
+  if (area) conditions.push(eq(storeEnvironmentLogs.measurementArea, area));
+  return db.select().from(storeEnvironmentLogs).where(and(...conditions)).orderBy(desc(storeEnvironmentLogs.createdAt));
+}
+
+export async function createEnvironmentLog(data: InsertStoreEnvironmentLog) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(storeEnvironmentLogs).values(data);
+  return result.insertId;
+}
+
+export async function deleteEnvironmentLog(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(storeEnvironmentLogs).where(eq(storeEnvironmentLogs.id, id));
+}
+
+// --- 雨漏り・漏電歴 ---
+export async function listLeakHistoryByStore(storeId: number, leakType?: "雨漏り" | "漏電") {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(storeLeakHistory.storeId, storeId)];
+  if (leakType) conditions.push(eq(storeLeakHistory.leakType, leakType));
+  return db.select().from(storeLeakHistory).where(and(...conditions)).orderBy(desc(storeLeakHistory.createdAt));
+}
+
+export async function createLeakHistory(data: InsertStoreLeakHistory) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(storeLeakHistory).values(data);
+  return result.insertId;
+}
+
+export async function updateLeakHistory(id: number, data: Partial<InsertStoreLeakHistory>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(storeLeakHistory).set(data).where(eq(storeLeakHistory.id, id));
+}
+
+export async function deleteLeakHistory(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(storeLeakHistory).where(eq(storeLeakHistory.id, id));
+}
+
+// --- 分電盤写真 ---
+export async function listDistributionBoardsByStore(storeId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(storeDistributionBoards).where(eq(storeDistributionBoards.storeId, storeId)).orderBy(asc(storeDistributionBoards.id));
+}
+
+export async function createDistributionBoard(data: InsertStoreDistributionBoard) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(storeDistributionBoards).values(data);
+  return result.insertId;
+}
+
+export async function updateDistributionBoard(id: number, data: Partial<InsertStoreDistributionBoard>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(storeDistributionBoards).set(data).where(eq(storeDistributionBoards.id, id));
+}
+
+export async function deleteDistributionBoard(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(storeDistributionBoards).where(eq(storeDistributionBoards.id, id));
 }

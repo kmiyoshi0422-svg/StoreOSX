@@ -101,6 +101,7 @@ import {
 } from "../../../shared/checklist-template";
 import type { Case, ChecklistItem, Photo } from "../../../drizzle/schema";
 import { PREFECTURES, detectPrefecture } from "@shared/prefecture";
+import { StoreEquipmentPanel } from "./StoreEquipmentPanel";
 
 const STATUS_COLORS: Record<string, string> = {
   受付: "bg-slate-100 text-slate-700 border-slate-200",
@@ -4544,6 +4545,9 @@ function StoreHistoryTab({ storeId, currentCaseId }: { storeId: number; currentC
         onClose={lightbox.close}
         onIndexChange={lightbox.setIndex}
       />
+
+      {/* 設備台帳パネル */}
+      <StoreEquipmentPanel storeId={storeId} />
     </div>
   );
 }
