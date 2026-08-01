@@ -351,6 +351,8 @@ export const expenses = mysqlTable("expenses", {
   ]).default("その他").notNull(),
   note: text("note"),
   uploadedBy: int("uploadedBy"),
+  createdByName: varchar("createdByName", { length: 128 }), // 入力者名
+  updatedByName: varchar("updatedByName", { length: 128 }), // 最終更新者名
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (t) => ({

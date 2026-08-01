@@ -2899,6 +2899,7 @@ export const appRouter = router({
             category: item.category,
             note: item.note ?? null,
             uploadedBy: ctx.user.id,
+            createdByName: ctx.user.name ?? '不明',
           });
           ids.push(id);
           touchedCases.add(item.caseId);
@@ -2945,6 +2946,7 @@ export const appRouter = router({
             category: item.category,
             note: item.note ?? null,
             uploadedBy: ctx.user.id,
+            createdByName: ctx.user.name ?? '不明',
           });
           ids.push(id);
         }
@@ -2982,12 +2984,13 @@ export const appRouter = router({
           }),
         }),
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const before = await getExpenseById(input.id);
         const patch: any = { ...input.patch };
         if (patch.expenseDate !== undefined) {
           patch.expenseDate = patch.expenseDate ? new Date(patch.expenseDate) : null;
         }
+        patch.updatedByName = ctx.user.name ?? '不明';
         await updateExpense(input.id, patch);
         const after = await getExpenseById(input.id);
         const cids = new Set<number>();
@@ -3003,6 +3006,22 @@ export const appRouter = router({
         await deleteExpense(input.id);
         if (before?.caseId) await syncCaseActualCost(before.caseId);
         return { ok: true };
+      }),
+    // CSVエクスポート用: 全経費データを返す
+    exportAll: protectedProcedure
+      .input(z.object({ fromMs: z.number().int().nullish(), toMs: z.number().int().nullish() }).optional())
+      .query(async ({ input }) => {
+        const all = await listAllExpenses();
+        let filtered = all;
+        if (input?.fromMs || input?.toMs) {
+          filtered = all.filter((e) => {
+            const ts = e.createdAt ? new Date(e.createdAt).getTime() : 0;
+            if (input.fromMs && ts < input.fromMs) return false;
+            if (input.toMs && ts > input.toMs) return false;
+            return true;
+          });
+        }
+        return filtered;
       }),
   }),
   reports: router({

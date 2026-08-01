@@ -218,6 +218,13 @@
       "when": 1785117719135,
       "tag": "0030_milky_stark_industries",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "5",
+      "when": 1785593853486,
+      "tag": "0031_bumpy_giant_girl",
+      "breakpoints": true
     }
   ]
 }

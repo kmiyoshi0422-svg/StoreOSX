@@ -12,10 +12,48 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { trpc } from "@/lib/trpc";
-import { Wallet, Users, Loader2, FolderKanban, Building2 } from "lucide-react";
+import { Wallet, Users, Loader2, FolderKanban, Building2, Download } from "lucide-react";
 import type { UserExpenseAggregate } from "../../../shared/expense-aggregate";
 
 type Period = "thisMonth" | "lastMonth" | "all";
+
+function ExportCsvButton({ range }: { range: { fromMs?: number; toMs?: number } }) {
+  const { data: expenses, isLoading } = trpc.expenses.exportAll.useQuery(range);
+  const handleExport = () => {
+    if (!expenses || expenses.length === 0) return;
+    const BOM = "\uFEFF";
+    const headers = ["ID", "日付", "業者名", "区分", "金額(税込)", "消費税", "摘要", "スコープ", "案件ID", "入力者", "入力日時", "更新者", "更新日時"];
+    const rows = expenses.map((e: any) => [
+      e.id,
+      e.expenseDate ? new Date(e.expenseDate).toLocaleDateString("ja-JP") : "",
+      e.vendorName ?? "",
+      e.category ?? "",
+      e.amount ?? 0,
+      e.taxAmount ?? "",
+      (e.note ?? "").replace(/[\r\n]+/g, " "),
+      e.scope ?? "",
+      e.caseId ?? "",
+      e.createdByName ?? "",
+      e.createdAt ? new Date(e.createdAt).toLocaleString("ja-JP") : "",
+      e.updatedByName ?? "",
+      e.updatedAt ? new Date(e.updatedAt).toLocaleString("ja-JP") : "",
+    ]);
+    const csv = BOM + [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `経費データ_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  return (
+    <Button size="sm" variant="outline" onClick={handleExport} disabled={isLoading || !expenses?.length}>
+      <Download className="h-3.5 w-3.5 mr-1" />
+      CSVエクスポート
+    </Button>
+  );
+}
 
 function periodRange(p: Period): { fromMs?: number; toMs?: number } {
   if (p === "all") return {};
@@ -59,21 +97,24 @@ export default function ExpenseByUser() {
         icon={<Wallet className="h-7 w-7 text-primary" />}
         description="経費を立替えた担当者ごとに、使用額・件数・案件/全体の内訳・区分別の内訳を集計します。"
         actions={
-          <div className="inline-flex rounded-md border p-0.5 bg-muted/40">
-            {(["thisMonth", "lastMonth", "all"] as Period[]).map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setPeriod(p)}
-                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                  period === p
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {PERIOD_LABELS[p]}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <div className="inline-flex rounded-md border p-0.5 bg-muted/40">
+              {(["thisMonth", "lastMonth", "all"] as Period[]).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPeriod(p)}
+                  className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                    period === p
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {PERIOD_LABELS[p]}
+                </button>
+              ))}
+            </div>
+            <ExportCsvButton range={range} />
           </div>
         }
       />

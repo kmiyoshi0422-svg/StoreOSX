@@ -2544,6 +2544,8 @@ function ExpensesTab({ caseId }: { caseId: number }) {
                     <th className="text-left px-3 py-2 font-medium">区分</th>
                     <th className="text-right px-3 py-2 font-medium">金額・税込</th>
                     <th className="text-left px-3 py-2 font-medium">摘要</th>
+                    <th className="text-left px-3 py-2 font-medium">入力者</th>
+                    <th className="text-left px-3 py-2 font-medium">入力日時</th>
                     <th className="px-3 py-2"></th>
                   </tr>
                 </thead>
@@ -2564,6 +2566,14 @@ function ExpensesTab({ caseId }: { caseId: number }) {
                       </td>
                       <td className="px-3 py-2 text-muted-foreground truncate max-w-[260px]">
                         {e.note ?? "—"}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
+                        {(e as any).createdByName ?? "—"}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                        {e.createdAt
+                          ? new Date(e.createdAt as any).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                          : "—"}
                       </td>
                       <td className="px-3 py-2 text-right">
                         <Button
