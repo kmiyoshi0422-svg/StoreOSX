@@ -38,6 +38,18 @@ async function startServer() {
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   registerCalendarFeedRoutes(app);
+
+  // Scheduled tasks (Heartbeat callbacks)
+  app.post("/api/scheduled/monthly-expense-report", async (_req, res) => {
+    try {
+      const { generateMonthlyExpenseReport } = await import("../scheduledTasks");
+      await generateMonthlyExpenseReport();
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Monthly expense report failed:", err);
+      res.status(500).json({ ok: false, error: String(err) });
+    }
+  });
   // tRPC API
   app.use(
     "/api/trpc",

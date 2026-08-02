@@ -2411,6 +2411,17 @@ function ExpensesTab({ caseId }: { caseId: number }) {
   const utils = trpc.useUtils();
   const { data: expenses = [] } = trpc.expenses.listByCase.useQuery({ caseId });
   const { data: budgetStatus } = trpc.expenses.budgetStatus.useQuery({ caseId });
+  const [showBudgetForm, setShowBudgetForm] = useState(false);
+  const [budgetInput, setBudgetInput] = useState("");
+  const updateCaseMutation = trpc.cases.update.useMutation({
+    onSuccess: () => {
+      utils.expenses.budgetStatus.invalidate({ caseId });
+      utils.cases.get.invalidate({ id: caseId });
+      toast.success("予算を設定しました");
+      setShowBudgetForm(false);
+    },
+    onError: (e) => toast.error(e.message),
+  });
   const deleteMutation = trpc.expenses.delete.useMutation({
     onSuccess: () => {
       utils.expenses.listByCase.invalidate({ caseId });
@@ -2468,9 +2479,36 @@ function ExpensesTab({ caseId }: { caseId: number }) {
               {budgetStatus.usagePercent}%消化
             </span>
           </div>
-          {budgetStatus.isOverBudget && (
-            <span className="text-red-600 font-bold text-xs">⚠️ 予算超過</span>
-          )}
+          <div className="flex items-center gap-2">
+            {budgetStatus.isOverBudget && (
+              <span className="text-red-600 font-bold text-xs">⚠️ 予算超過</span>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => { setBudgetInput(String(budgetStatus.budget ?? '')); setShowBudgetForm(true); }}>編集</Button>
+          </div>
+        </div>
+      )}
+      {/* 予算設定ボタン（未設定時） */}
+      {budgetStatus && budgetStatus.budget === null && !showBudgetForm && (
+        <Button variant="outline" size="sm" onClick={() => setShowBudgetForm(true)}>経費予算を設定</Button>
+      )}
+      {/* 予算設定フォーム */}
+      {showBudgetForm && (
+        <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/50">
+          <span className="text-sm font-medium">予算上限:</span>
+          <span className="text-sm">¥</span>
+          <Input
+            type="number"
+            placeholder="例: 500000"
+            value={budgetInput}
+            onChange={(e) => setBudgetInput(e.target.value)}
+            className="w-40"
+          />
+          <Button size="sm" onClick={() => {
+            const val = Number(budgetInput);
+            if (!Number.isFinite(val) || val < 0) { toast.error("正しい金額を入力してください"); return; }
+            updateCaseMutation.mutate({ id: caseId, data: { expenseBudget: val || null } });
+          }} disabled={updateCaseMutation.isPending}>保存</Button>
+          <Button variant="ghost" size="sm" onClick={() => setShowBudgetForm(false)}>キャンセル</Button>
         </div>
       )}
 

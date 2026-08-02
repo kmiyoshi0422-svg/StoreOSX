@@ -277,6 +277,7 @@ const caseInputSchema = z.object({
   surveyImpressionAuthor: z.string().nullish(),
   revisitCount: z.number().int().min(0).default(0),
   partnerNotes: z.string().nullish(),
+  expenseBudget: z.number().int().nullish(),
 });
 
 // ============================================================
@@ -3118,6 +3119,12 @@ export const appRouter = router({
           await syncCaseActualCost(input.caseId);
           await checkBudgetAlert(input.caseId);
         }
+        // 管理者へ新規申請通知
+        const { notifyOwner } = await import("./_core/notification");
+        await notifyOwner({
+          title: `💰 経費申請: ¥${input.amount.toLocaleString()} (${input.category})`,
+          content: `${ctx.user.name ?? '不明'}さんが経費を申請しました。\n金額: ¥${input.amount.toLocaleString()}\n区分: ${input.category}\n支払先: ${input.vendorName ?? '未記入'}\n範囲: ${input.scope}${input.caseId ? ` (案件#${input.caseId})` : ''}\n\n承認管理画面から承認/却下してください。`,
+        }).catch(() => {/* 通知失敗は無視 */});
         return { id };
       }),
     // 承認（管理者のみ）
