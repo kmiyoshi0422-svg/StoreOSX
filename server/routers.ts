@@ -204,6 +204,21 @@ async function filterCasesForPartner<T>(cases: T[], userId: number): Promise<T[]
   });
 }
 
+/** partnerに見せてはいけない金額フィールドをnullにする */
+function stripFinancialFields<T>(caseData: T): T {
+  const HIDDEN_FIELDS = [
+    'estimatedCost', 'plenusQuoteAmount', 'estimatedMaterialCost', 'estimatedLaborCost',
+    'is10mYen', 'managementFee', 'siteExpense', 'ownSurveyCost', 'partnerSurveyCost',
+    'transportCost', 'laborCost', 'actualCost', 'actualMaterialCost', 'actualLaborCost',
+    'expenseBudget', 'invoiceNumber', 'invoiceDate',
+  ];
+  const result = { ...caseData } as any;
+  for (const f of HIDDEN_FIELDS) {
+    if (f in result) result[f] = null;
+  }
+  return result;
+}
+
 // ============================================================
 // Zod schemas
 // ============================================================
@@ -522,7 +537,7 @@ export const appRouter = router({
     // 協力会社の発注履歴・累計金額
     history: protectedProcedure
       .input(z.object({ partnerId: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const partner = await getPartnerById(input.partnerId);
         const list = await listCasesByPartner(input.partnerId);
         const totalCases = list.length;
@@ -550,24 +565,34 @@ export const appRouter = router({
 
   cases: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      return listCases();
+      const all = await listCases();
+      if (ctx.user.role === 'partner') {
+        const filtered = await filterCasesForPartner(all, ctx.user.id);
+        return filtered.map(stripFinancialFields);
+      }
+      return all;
     }),
     listSummary: protectedProcedure.query(async ({ ctx }) => {
       const all = await listCasesSummary();
       if (ctx.user.role === 'partner') {
-        // partnerはプレナス提出見積額のみ非表示
-        return all.map(c => ({
-          ...c,
-          plenusQuoteAmount: null,
-        }));
+        const filtered = await filterCasesForPartner(all, ctx.user.id);
+        return filtered.map(stripFinancialFields);
       }
       return all;
     }),
     listForMap: protectedProcedure.query(async ({ ctx }) => {
-      return listCasesForMap();
+      const all = await listCasesForMap();
+      if (ctx.user.role === 'partner') {
+        return filterCasesForPartner(all, ctx.user.id);
+      }
+      return all;
     }),
     listMinimal: protectedProcedure.query(async ({ ctx }) => {
-      return listCasesMinimal();
+      const all = await listCasesMinimal();
+      if (ctx.user.role === 'partner') {
+        return filterCasesForPartner(all, ctx.user.id);
+      }
+      return all;
     }),
     listForBudget: protectedProcedure.query(async ({ ctx }) => {
       if (ctx.user.role === 'partner') return []; // partner cannot see budget view
@@ -578,11 +603,12 @@ export const appRouter = router({
       const caseData = await getCaseById(input.id);
       if (!caseData) return null;
       if (ctx.user.role === 'partner') {
-        // partnerはプレナス提出見積額のみ非表示
-        return {
-          ...caseData,
-          plenusQuoteAmount: null,
-        };
+        // partnerは担当案件のみ閲覧可能 + 全金額情報を非表示
+        const filtered = await filterCasesForPartner([caseData], ctx.user.id);
+        if (filtered.length === 0) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'この案件へのアクセス権がありません' });
+        }
+        return stripFinancialFields(caseData);
       }
       return caseData;
     }),
@@ -711,7 +737,7 @@ export const appRouter = router({
       }),
     listRevisitLogs: protectedProcedure
       .input(z.object({ caseId: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
         const { eq, desc } = await import("drizzle-orm");
@@ -1249,7 +1275,7 @@ export const appRouter = router({
     // 複数案件の写真+案件情報を一括取得（一括写真台帳PDF用）
     listByCases: protectedProcedure
       .input(z.object({ caseIds: z.array(z.number()).min(1).max(100) }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const [photoRows, caseRows] = await Promise.all([
           getPhotosByCaseIds(input.caseIds),
           getCasesByIds(input.caseIds),
@@ -1457,7 +1483,7 @@ export const appRouter = router({
     // 案件の完了報告書ドラフトを取得（無ければ空のcontentを返す）
     get: protectedProcedure
       .input(z.object({ caseId: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const row = await getReportDraft(input.caseId);
         return {
           content: parseCompletionContent(row?.content),
@@ -2269,7 +2295,7 @@ export const appRouter = router({
   partnerView: router({
     getByToken: publicProcedure
       .input(z.object({ token: z.string().min(8) }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const c = await getCaseByPartnerToken(input.token);
         if (!c) throw new Error("リンクが無効です");
         // 金額情報は自社スタッフのみ閲覧可能。協力会社には返さない
@@ -2292,7 +2318,7 @@ export const appRouter = router({
       }),
     getDocuments: publicProcedure
       .input(z.object({ token: z.string().min(8) }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const c = await getCaseByPartnerToken(input.token);
         if (!c) throw new Error("リンクが無効です");
         // ロック済みドキュメントは除外して返す
@@ -2365,7 +2391,7 @@ export const appRouter = router({
 
     list: protectedProcedure
       .input(z.object({ start: z.string(), end: z.string() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const items = await listRouteAssignmentsByDateRange(input.start, input.end);
         return items;
       }),
@@ -2459,7 +2485,7 @@ export const appRouter = router({
 
   // チーム設定（v13）
   teamSettings: router({
-    list: protectedProcedure.query(async () => {
+    list: protectedProcedure.query(async ({ ctx }) => {
       const items = await listTeamSettings();
       const allMembers = await listTeamMembers();
       const memberIds = (team: "A" | "B") =>
@@ -2513,7 +2539,7 @@ export const appRouter = router({
   // v11: 店舗一覧集計ルーター
   // ============================================================
   stores: router({
-    list: protectedProcedure.query(async () => {
+    list: protectedProcedure.query(async ({ ctx }) => {
       const allCases = await listCases();
 
       function storeKey(c: { storeCode: string | null; storeName: string }) {
@@ -2596,7 +2622,7 @@ export const appRouter = router({
           end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         }),
       )
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const assignments = await listRouteAssignmentsByDateRange(
           input.start,
           input.end,
@@ -2748,16 +2774,22 @@ export const appRouter = router({
       }),
   }),
   expenses: router({
-    list: protectedProcedure.query(async () => {
-      const rows = await listAllExpenses();
+    list: protectedProcedure.query(async ({ ctx }) => {
+      let rows = await listAllExpenses();
+      if (ctx.user.role === 'partner') { rows = rows.filter(r => r.uploadedBy === ctx.user.id); }
       return rows;
     }),
     listByCase: protectedProcedure
       .input(z.object({ caseId: z.number().int() }))
-      .query(async ({ input }) => {
-        return await listExpensesByCase(input.caseId);
+      .query(async ({ input, ctx }) => {
+        let rows = await listExpensesByCase(input.caseId);
+        if (ctx.user.role === 'partner') {
+          rows = rows.filter(r => r.uploadedBy === ctx.user.id);
+        }
+        return rows;
       }),
-    listUnmatched: protectedProcedure.query(async () => {
+    listUnmatched: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role === 'partner') return [];
       return await listUnmatchedExpenses();
     }),
     uploadFile: protectedProcedure
@@ -2984,7 +3016,7 @@ export const appRouter = router({
           .object({ fromMs: z.number().int().nullish(), toMs: z.number().int().nullish() })
           .optional(),
       )
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const rows = await listExpensesForAggregation(
           input?.fromMs ?? undefined,
           input?.toMs ?? undefined,
@@ -3035,11 +3067,13 @@ export const appRouter = router({
     // CSVエクスポート用: 全経費データを返す
     exportAll: protectedProcedure
       .input(z.object({ fromMs: z.number().int().nullish(), toMs: z.number().int().nullish() }).optional())
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const all = await listAllExpenses();
-        let filtered = all;
+        let filtered = ctx.user.role === 'partner'
+          ? all.filter(r => r.uploadedBy === ctx.user.id)
+          : all;
         if (input?.fromMs || input?.toMs) {
-          filtered = all.filter((e) => {
+          filtered = filtered.filter((e) => {
             const ts = e.createdAt ? new Date(e.createdAt).getTime() : 0;
             if (input.fromMs && ts < input.fromMs) return false;
             if (input.toMs && ts > input.toMs) return false;
@@ -3051,7 +3085,7 @@ export const appRouter = router({
     // 月次推移データ（過去N月の月別合計・区分別内訳）
     monthlyTrend: adminProcedure
       .input(z.object({ months: z.number().int().min(1).max(24).default(6) }).optional())
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const months = input?.months ?? 6;
         const all = await listAllExpenses();
         // 過去N月分の年月リストを生成
@@ -3148,7 +3182,8 @@ export const appRouter = router({
     // 案件の予算ステータス取得
     budgetStatus: protectedProcedure
       .input(z.object({ caseId: z.number().int() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
+        if (ctx.user.role === 'partner') return null;
         return await getCaseBudgetStatus(input.caseId);
       }),
   }),
@@ -3161,7 +3196,7 @@ export const appRouter = router({
           })
           .optional(),
       )
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const months = input?.months ?? 6;
         const allCases = await listCases();
         const allExpenses = await listAllExpenses();
@@ -3287,7 +3322,7 @@ export const appRouter = router({
     // 効果測定ダッシュボード用集計
     effectiveness: protectedProcedure
       .input(z.object({ months: z.number().int().min(1).max(24).default(12) }).optional())
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const months = input?.months ?? 12;
         const allCases = await listCases();
         const users = await getAllUsers();
@@ -3635,7 +3670,7 @@ export const appRouter = router({
   appSettings: router({
     get: protectedProcedure
       .input(z.object({ key: z.string() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const val = await getAppSetting(input.key);
         return { key: input.key, value: val };
       }),
@@ -3742,7 +3777,7 @@ export const appRouter = router({
     // ICSフィードトークン取得（案件別）
     getCaseCalendarFeedToken: protectedProcedure
       .input(z.object({ caseId: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const tokens = await getAppSetting<Record<string, string>>("calendarFeedTokens") ?? {};
         return { token: tokens[String(input.caseId)] ?? null };
       }),
@@ -3874,7 +3909,7 @@ JSONスキーマに従って回答してください。`,
   }),
   // 工程テンプレート
   scheduleTemplates: router({
-    list: protectedProcedure.query(async () => {
+    list: protectedProcedure.query(async ({ ctx }) => {
       return listScheduleTemplates();
     }),
 
@@ -3979,7 +4014,7 @@ JSONスキーマに従って回答してください。`,
     // 案件の雨漏り調査を取得（なければテンプレートで新規作成）
     getByCaseId: protectedProcedure
       .input(z.object({ caseId: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const inspection = await getRainLeakInspectionByCaseId(input.caseId);
         if (!inspection) return null;
         const items = await getRainLeakCheckItems(inspection.id);
@@ -4096,7 +4131,7 @@ JSONスキーマに従って回答してください。`,
   documents: router({
     list: protectedProcedure
       .input(z.object({ caseId: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         return listDocumentsByCase(input.caseId);
       }),
 
@@ -4108,13 +4143,13 @@ JSONスキーマに従って回答してください。`,
         offset: z.number().optional(),
         scope: z.enum(["case", "shared", "all"]).optional(),
       }).optional())
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         return listAllDocuments(input || {});
       }),
 
     listSharedByTag: protectedProcedure
       .input(z.object({ tag: z.string() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         return listSharedDocumentsByTag(input.tag);
       }),
 
@@ -4186,12 +4221,12 @@ JSONスキーマに従って回答してください。`,
 
   // プロジェクトフォルダ
   projectFolders: router({
-    list: protectedProcedure.query(async () => {
+    list: protectedProcedure.query(async ({ ctx }) => {
       return listProjectFolders();
     }),
     get: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const folder = await getProjectFolder(input.id);
         if (!folder) throw new TRPCError({ code: "NOT_FOUND" });
         const [folderCases, folderDocs] = await Promise.all([
@@ -4244,12 +4279,12 @@ JSONスキーマに従って回答してください。`,
       }),
     listByCaseId: protectedProcedure
       .input(z.object({ caseId: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         return listFoldersByCaseId(input.caseId);
       }),
     listDocumentsByFolders: protectedProcedure
       .input(z.object({ folderIds: z.array(z.number()) }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         return listDocumentsByFolderIds(input.folderIds);
       }),
   }),
@@ -4257,7 +4292,7 @@ JSONスキーマに従って回答してください。`,
   documentVersions: router({
     list: protectedProcedure
       .input(z.object({ documentId: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         return listDocumentVersions(input.documentId);
       }),
     create: protectedProcedure
@@ -4283,7 +4318,7 @@ JSONスキーマに従って回答してください。`,
   documentSearch: router({
     search: protectedProcedure
       .input(z.object({ query: z.string().min(1), scope: z.enum(["case", "shared", "all"]).optional(), limit: z.number().optional() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         return searchDocuments(input.query, { scope: input.scope || "all", limit: input.limit });
       }),
   }),
@@ -4291,7 +4326,7 @@ JSONスキーマに従って回答してください。`,
   crossSchedule: router({
     list: protectedProcedure
       .input(z.object({ rangeStart: z.string().optional(), rangeEnd: z.string().optional() }).optional())
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const rangeStart = input?.rangeStart;
         const rangeEnd = input?.rangeEnd;
         const [schedules, routes] = await Promise.all([
@@ -4305,7 +4340,7 @@ JSONスキーマに従って回答してください。`,
   statusLogs: router({
     listByCase: protectedProcedure
       .input(z.object({ caseId: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         return listStatusLogsByCase(input.caseId);
       }),
     create: protectedProcedure
@@ -4385,17 +4420,17 @@ JSONスキーマに従って回答してください。`,
   // Store Master (店舗マスタ)
   // ============================================================
   storeMaster: router({
-    list: protectedProcedure.query(async () => {
+    list: protectedProcedure.query(async ({ ctx }) => {
       return listStoreMaster();
     }),
     get: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         return getStoreMasterById(input.id);
       }),
     getByCode: protectedProcedure
       .input(z.object({ storeCode: z.string() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         return getStoreMasterByCode(input.storeCode);
       }),
     create: protectedProcedure
@@ -4448,12 +4483,12 @@ JSONスキーマに従って回答してください。`,
       }),
     pastCases: protectedProcedure
       .input(z.object({ storeId: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         return listCasesByStoreId(input.storeId);
       }),
     pastPhotos: protectedProcedure
       .input(z.object({ storeId: z.number(), limit: z.number().int().optional() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         return listPhotosByStoreId(input.storeId, input.limit ?? 50);
       }),
   }),
@@ -4486,7 +4521,7 @@ JSONスキーマに従って回答してください。`,
       }),
     listByCase: protectedProcedure
       .input(z.object({ caseId: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         return listSurveySkipLogsByCase(input.caseId);
       }),
     stats: protectedProcedure.query(async () => {
@@ -4500,7 +4535,7 @@ JSONスキーマに従って回答してください。`,
     }),
     listByCase: protectedProcedure
       .input(z.object({ caseId: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         return getPendingAiTasksByCase(input.caseId);
       }),
     retry: protectedProcedure
@@ -4545,7 +4580,7 @@ JSONスキーマに従って回答してください。`,
     greaseTraps: router({
       list: protectedProcedure
         .input(z.object({ storeId: z.number() }))
-        .query(async ({ input }) => {
+        .query(async ({ input, ctx }) => {
           return listGreaseTrapsByStore(input.storeId);
         }),
       create: protectedProcedure
@@ -4588,7 +4623,7 @@ JSONスキーマに従って回答してください。`,
     exhaustHoods: router({
       list: protectedProcedure
         .input(z.object({ storeId: z.number() }))
-        .query(async ({ input }) => {
+        .query(async ({ input, ctx }) => {
           return listExhaustHoodsByStore(input.storeId);
         }),
       create: protectedProcedure
@@ -4634,7 +4669,7 @@ JSONスキーマに従って回答してください。`,
           storeId: z.number(),
           area: z.enum(["天井内", "厨房内"]).optional(),
         }))
-        .query(async ({ input }) => {
+        .query(async ({ input, ctx }) => {
           return listEnvironmentLogsByStore(input.storeId, input.area);
         }),
       create: protectedProcedure
@@ -4670,7 +4705,7 @@ JSONスキーマに従って回答してください。`,
           storeId: z.number(),
           leakType: z.enum(["雨漏り", "漏電"]).optional(),
         }))
-        .query(async ({ input }) => {
+        .query(async ({ input, ctx }) => {
           return listLeakHistoryByStore(input.storeId, input.leakType);
         }),
       create: protectedProcedure
@@ -4727,7 +4762,7 @@ JSONスキーマに従って回答してください。`,
     distributionBoards: router({
       list: protectedProcedure
         .input(z.object({ storeId: z.number() }))
-        .query(async ({ input }) => {
+        .query(async ({ input, ctx }) => {
           return listDistributionBoardsByStore(input.storeId);
         }),
       create: protectedProcedure

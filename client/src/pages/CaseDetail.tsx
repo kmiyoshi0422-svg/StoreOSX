@@ -271,18 +271,24 @@ export default function CaseDetail({ id }: { id: number }) {
                 {photos.length}
               </Badge>
             </TabsTrigger>
-            <TabsTrigger value="estimates" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
-              <Receipt className="h-3.5 w-3.5" />
-              見積書
-            </TabsTrigger>
-            <TabsTrigger value="profit" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
-              <Wallet className="h-3.5 w-3.5" />
-              収支
-            </TabsTrigger>
-            <TabsTrigger value="expenses" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
-              <Receipt className="h-3.5 w-3.5" />
-              経費
-            </TabsTrigger>
+            {!isPartner && (
+              <TabsTrigger value="estimates" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
+                <Receipt className="h-3.5 w-3.5" />
+                見積書
+              </TabsTrigger>
+            )}
+            {!isPartner && (
+              <TabsTrigger value="profit" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
+                <Wallet className="h-3.5 w-3.5" />
+                収支
+              </TabsTrigger>
+            )}
+            {!isPartner && (
+              <TabsTrigger value="expenses" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
+                <Receipt className="h-3.5 w-3.5" />
+                経費
+              </TabsTrigger>
+            )}
             <TabsTrigger value="schedule" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
               <CalendarDays className="h-3.5 w-3.5" />
               工程
