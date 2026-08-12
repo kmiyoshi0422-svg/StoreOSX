@@ -1074,6 +1074,20 @@ export const appRouter = router({
         .sort((a, b) => b.actual - a.actual);
             return { monthly: monthlyArr, byStore: storeArr, budgetRatio: BUDGET_RATIO };
     }),
+    // 報告書を「作成完了」にする
+    markReportComplete: protectedProcedure
+      .input(z.object({ caseId: z.number(), reportType: z.enum(["survey", "completion"]) }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        const { eq } = await import("drizzle-orm");
+        await db.update(casesTable).set({
+          reportStatus: "completed",
+          reportCompletedAt: new Date(),
+          reportCompletedBy: ctx.user.name ?? "不明",
+        }).where(eq(casesTable.id, input.caseId));
+        return { success: true };
+      }),
     // 現調報告書の所感をAIで生成
     generateImpression: protectedProcedure
       .input(z.object({

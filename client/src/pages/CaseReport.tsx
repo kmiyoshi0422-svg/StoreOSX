@@ -23,6 +23,7 @@ import {
   LayoutGrid,
   Grid3x3,
   List,
+  CheckCircle2,
 } from "lucide-react";
 import { PdfPreviewModal } from "@/components/PdfPreviewModal";
 import html2canvas from "html2canvas-pro";
@@ -173,6 +174,7 @@ export default function CaseReport({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [signerName, setSignerName] = useState("");
   const [editingSig, setEditingSig] = useState(false);
+  const [confirmComplete, setConfirmComplete] = useState(false);
 
   const saveSig = trpc.signatures.save.useMutation({
     onSuccess: () => {
@@ -199,6 +201,16 @@ export default function CaseReport({
   const [savingImpression, setSavingImpression] = useState(false);
   const generateImpressionMut = trpc.cases.generateImpression.useMutation();
   const updateCaseMut = trpc.cases.update.useMutation();
+
+  // 報告書完了mutation
+  const markCompleteMut = trpc.cases.markReportComplete.useMutation({
+    onSuccess: () => {
+      toast.success("報告書を「作成完了」にしました。夜間にPDFが自動生成され管理者に通知されます。");
+      utils.cases.get.invalidate({ id });
+      setConfirmComplete(false);
+    },
+    onError: (e: any) => toast.error(e.message || "完了処理に失敗しました"),
+  });
 
   // 保留中のAIタスクを取得
   const { data: pendingTasks = [], refetch: refetchPending } = trpc.pendingAiTasks.listByCase.useQuery(
@@ -833,9 +845,54 @@ export default function CaseReport({
               {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {generating ? (pdfProgress || "PDF生成中...") : "PDFダウンロード"}
             </Button>
+            {caseData.reportStatus !== "completed" ? (
+              <Button
+                variant="default"
+                className="bg-emerald-600 hover:bg-emerald-700"
+                onClick={() => setConfirmComplete(true)}
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                作成完了
+              </Button>
+            ) : (
+              <Badge variant="outline" className="border-emerald-500 text-emerald-700 bg-emerald-50 px-3 py-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                完了済み
+                {caseData.reportPdfUrl && (
+                  <a href={caseData.reportPdfUrl} target="_blank" rel="noopener noreferrer" className="ml-2 underline text-xs">
+                    PDF
+                  </a>
+                )}
+              </Badge>
+            )}
           </div>
         </div>
       </div>
+
+      {/* 作成完了確認ダイアログ */}
+      {confirmComplete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg p-6 max-w-md mx-4 shadow-xl">
+            <h3 className="font-semibold text-lg mb-2">報告書を「作成完了」にしますか？</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              完了にすると、夜間（2〜5時）にPDFが自動生成され、管理者全員にアプリ内通知が送信されます。
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setConfirmComplete(false)}>
+                キャンセル
+              </Button>
+              <Button
+                className="bg-emerald-600 hover:bg-emerald-700"
+                onClick={() => markCompleteMut.mutate({ caseId: id, reportType })}
+                disabled={markCompleteMut.isPending}
+              >
+                {markCompleteMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                完了にする
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 所感入力セクション（現調報告書のみ） */}
       {reportType === "survey" && (

@@ -1,6 +1,6 @@
 import { getDb } from "./db";
-import { expenses } from "../drizzle/schema";
-import { sql, gte, lte, and } from "drizzle-orm";
+import { expenses, cases as casesTable } from "../drizzle/schema";
+import { sql, gte, lte, and, eq, isNull } from "drizzle-orm";
 import { notifyOwner } from "./_core/notification";
 
 /**
@@ -92,4 +92,69 @@ export async function generateMonthlyExpenseReport() {
     title: `📊 月次経費レポート: ${monthLabel} (¥${totalAmount.toLocaleString()})`,
     content,
   });
+}
+
+/**
+ * 報告書PDF生成＆管理者通知
+ * 夜間（2〜5時）に実行。reportStatus="completed" かつ reportPdfUrl=null の案件を対象に
+ * PDFダウンロードリンクを管理者に通知する。
+ * 
+ * NOTE: サーバーサイドでのhtml2canvas/jsPDFはブラウザ環境が必要なため、
+ * ここでは「完了した報告書がある」ことを管理者に通知し、
+ * PDFはフロントエンドからダウンロードしてもらう方式とする。
+ * 将来的にPuppeteer等でサーバーサイドPDF生成を実装する場合はここを拡張する。
+ */
+export async function generateReportPdfs() {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+
+  // reportStatus="completed" かつ reportPdfGeneratedAt=null の案件を取得
+  const pendingReports = await db
+    .select({
+      id: casesTable.id,
+      storeName: casesTable.storeName,
+      requestNumber: casesTable.requestNumber,
+      reportCompletedBy: casesTable.reportCompletedBy,
+      reportCompletedAt: casesTable.reportCompletedAt,
+    })
+    .from(casesTable)
+    .where(
+      and(
+        eq(casesTable.reportStatus, "completed"),
+        isNull(casesTable.reportPdfGeneratedAt)
+      )
+    );
+
+  if (pendingReports.length === 0) {
+    return; // 通知不要
+  }
+
+  // 各案件の報告書完了を管理者に通知
+  let content = `【報告書作成完了通知】\n\n`;
+  content += `以下の ${pendingReports.length} 件の報告書が作成完了しました。\n`;
+  content += `アプリからPDFをダウンロードしてください。\n\n`;
+
+  for (const report of pendingReports) {
+    const completedDate = report.reportCompletedAt
+      ? new Date(report.reportCompletedAt).toLocaleDateString("ja-JP")
+      : "不明";
+    content += `━━━━━━━━━━━━━━━━━━━━\n`;
+    content += `📋 ${report.storeName} (${report.requestNumber})\n`;
+    content += `   完了者: ${report.reportCompletedBy ?? "不明"}\n`;
+    content += `   完了日: ${completedDate}\n`;
+    content += `   URL: /cases/${report.id}/survey-report\n\n`;
+  }
+
+  // 管理者に通知
+  await notifyOwner({
+    title: `📋 報告書完了通知: ${pendingReports.length}件の報告書が作成完了`,
+    content,
+  });
+
+  // 通知済みとしてマーク（reportPdfGeneratedAtを更新）
+  for (const report of pendingReports) {
+    await db.update(casesTable).set({
+      reportPdfGeneratedAt: new Date(),
+    }).where(eq(casesTable.id, report.id));
+  }
 }

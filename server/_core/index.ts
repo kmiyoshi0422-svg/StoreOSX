@@ -50,6 +50,17 @@ async function startServer() {
       res.status(500).json({ ok: false, error: String(err) });
     }
   });
+  // 夜間報告書PDF生成＆管理者通知
+  app.post("/api/scheduled/generate-report-pdfs", async (_req, res) => {
+    try {
+      const { generateReportPdfs } = await import("../scheduledTasks");
+      await generateReportPdfs();
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Report PDF generation failed:", err);
+      res.status(500).json({ ok: false, error: String(err) });
+    }
+  });
   // tRPC API
   app.use(
     "/api/trpc",

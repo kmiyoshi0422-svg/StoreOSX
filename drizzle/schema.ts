@@ -110,6 +110,12 @@ export const cases = mysqlTable("cases", {
   partnerNotes: text("partner_notes"), // 協力業者作業メモ
   partnerNotesUpdatedAt: timestamp("partner_notes_updated_at"), // 作業メモ最終更新日時
   partnerNotesUpdatedBy: varchar("partner_notes_updated_by", { length: 128 }), // 作業メモ更新者名
+  // 報告書完了ステータス
+  reportStatus: mysqlEnum("reportStatus", ["draft", "completed"]).default("draft").notNull(), // 報告書作成ステータス
+  reportCompletedAt: timestamp("reportCompletedAt"), // 報告書完了日時
+  reportCompletedBy: varchar("reportCompletedBy", { length: 128 }), // 報告書完了操作者名
+  reportPdfUrl: varchar("reportPdfUrl", { length: 1000 }), // 生成済みPDFのURL
+  reportPdfGeneratedAt: timestamp("reportPdfGeneratedAt"), // PDF生成日時
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

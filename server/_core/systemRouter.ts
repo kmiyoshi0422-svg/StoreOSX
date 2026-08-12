@@ -44,6 +44,22 @@ export const systemRouter = router({
       return { taskUid: result.taskUid, nextExecutionAt: result.nextExecutionAt };
     }),
 
+  // Heartbeat: 夜間報告書完了通知の定期タスク登録
+  registerNightlyReportNotify: adminProcedure
+    .mutation(async ({ ctx }) => {
+      const result = await createHeartbeatJob(
+        {
+          name: "nightly-report-pdf-notify",
+          cron: "0 0 17 * * *", // 毎日 17:00 UTC (JST 2:00)
+          path: "/api/scheduled/generate-report-pdfs",
+          method: "POST",
+          description: "夜間報告書完了通知（JST 2:00実行）",
+        },
+        "" // owner session
+      );
+      return { taskUid: result.taskUid, nextExecutionAt: result.nextExecutionAt };
+    }),
+
   listScheduledJobs: adminProcedure
     .query(async () => {
       const result = await listHeartbeatJobs("");

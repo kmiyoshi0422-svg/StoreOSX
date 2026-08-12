@@ -232,6 +232,13 @@
       "when": 1785608735518,
       "tag": "0032_rapid_blink",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "5",
+      "when": 1786532938476,
+      "tag": "0033_cuddly_black_tarantula",
+      "breakpoints": true
     }
   ]
 }
