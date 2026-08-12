@@ -44,6 +44,7 @@ const RainLeakInspection = lazy(() => import("./pages/RainLeakInspection"));
 const DocumentLibrary = lazy(() => import("./pages/DocumentLibrary"));
 const CrossSchedule = lazy(() => import("./pages/CrossSchedule"));
 const Effectiveness = lazy(() => import("./pages/Effectiveness"));
+const CompletedReports = lazy(() => import("./pages/CompletedReports"));
 
 // ─── Loading fallback ─────────────────────────────────────
 function PageLoader() {
@@ -102,6 +103,9 @@ function Router() {
                 </Route>
                 <Route path={"/reports/monthly"}>
                   <AdminOnly><MonthlyReport /></AdminOnly>
+                </Route>
+                <Route path={"/reports/completed"}>
+                  <AdminOnly><CompletedReports /></AdminOnly>
                 </Route>
                 <Route path={"/stores"} component={StoresList} />
                 <Route path={"/workload"} component={Workload} />

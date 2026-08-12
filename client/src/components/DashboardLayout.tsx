@@ -36,6 +36,7 @@ const menuItems: MenuItem[] = [
   { icon: Images, label: "写真台帳・一括PDF", path: "/photo-ledger/batch", hideForPartner: true },
   { icon: Gauge, label: "ワークロード", path: "/workload", adminOnly: true },
   { icon: GanttChart, label: "横断工程表", path: "/cross-schedule" },
+  { icon: ClipboardList, label: "完了報告書一覧", path: "/reports/completed", adminOnly: true },
   { icon: FilePlus, label: "案件登録", path: "/cases/new", hideForPartner: true },
   { icon: FileSearch, label: "PDFから案件登録", path: "/cases/import-pdf", hideForPartner: true },
   { icon: Library, label: "資料DB庫", path: "/document-library" },

@@ -1088,6 +1088,32 @@ export const appRouter = router({
         }).where(eq(casesTable.id, input.caseId));
         return { success: true };
       }),
+    // 完了済み報告書一覧（管理者向け）
+    listCompletedReports: protectedProcedure
+      .query(async ({ ctx }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        const { eq } = await import("drizzle-orm");
+        const rows = await db
+          .select({
+            id: casesTable.id,
+            storeName: casesTable.storeName,
+            requestNumber: casesTable.requestNumber,
+            brand: casesTable.brand,
+            status: casesTable.status,
+            reportStatus: casesTable.reportStatus,
+            reportCompletedAt: casesTable.reportCompletedAt,
+            reportCompletedBy: casesTable.reportCompletedBy,
+            reportPdfUrl: casesTable.reportPdfUrl,
+            reportPdfGeneratedAt: casesTable.reportPdfGeneratedAt,
+            surveyDate: casesTable.surveyDate,
+            constructionDate: casesTable.constructionDate,
+            completedAt: casesTable.completedAt,
+          })
+          .from(casesTable)
+          .where(eq(casesTable.reportStatus, "completed"));
+        return rows;
+      }),
     // 現調報告書の所感をAIで生成
     generateImpression: protectedProcedure
       .input(z.object({
