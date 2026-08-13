@@ -239,6 +239,13 @@
       "when": 1786532938476,
       "tag": "0033_cuddly_black_tarantula",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "5",
+      "when": 1786611748687,
+      "tag": "0034_sweet_mephisto",
+      "breakpoints": true
     }
   ]
 }

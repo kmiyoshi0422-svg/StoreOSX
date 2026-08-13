@@ -1106,6 +1106,9 @@ export const appRouter = router({
             reportCompletedBy: casesTable.reportCompletedBy,
             reportPdfUrl: casesTable.reportPdfUrl,
             reportPdfGeneratedAt: casesTable.reportPdfGeneratedAt,
+            reportRejectComment: casesTable.reportRejectComment,
+            reportRejectedAt: casesTable.reportRejectedAt,
+            reportRejectedBy: casesTable.reportRejectedBy,
             surveyDate: casesTable.surveyDate,
             constructionDate: casesTable.constructionDate,
             completedAt: casesTable.completedAt,
@@ -1113,6 +1116,28 @@ export const appRouter = router({
           .from(casesTable)
           .where(eq(casesTable.reportStatus, "completed"));
         return rows;
+      }),
+    // 報告書を差し戻す（管理者のみ）
+    rejectReport: protectedProcedure
+      .input(z.object({
+        caseId: z.number(),
+        comment: z.string().min(1, "差し戻しコメントを入力してください"),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        if (ctx.user.role !== "admin") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "管理者のみ差し戻し可能です" });
+        }
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        const { eq } = await import("drizzle-orm");
+        await db.update(casesTable).set({
+          reportStatus: "draft",
+          reportRejectComment: input.comment,
+          reportRejectedAt: new Date(),
+          reportRejectedBy: ctx.user.name ?? "管理者",
+          reportPdfGeneratedAt: null,
+        }).where(eq(casesTable.id, input.caseId));
+        return { success: true };
       }),
     // 現調報告書の所感をAIで生成
     generateImpression: protectedProcedure

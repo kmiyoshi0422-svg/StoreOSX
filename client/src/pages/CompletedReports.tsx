@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
+import { toast } from "sonner";
+import { Textarea } from "@/components/ui/textarea";
 import {
   FileText,
   Download,
@@ -12,13 +14,28 @@ import {
   Clock,
   Filter,
   Loader2,
+  Undo2,
+  MessageSquare,
 } from "lucide-react";
 
 export default function CompletedReports() {
   const [, setLocation] = useLocation();
+  const utils = trpc.useUtils();
   const { data: reports = [], isLoading } = trpc.cases.listCompletedReports.useQuery();
   const [filterBrand, setFilterBrand] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"completedAt" | "storeName">("completedAt");
+  const [rejectTarget, setRejectTarget] = useState<{ id: number; storeName: string | null } | null>(null);
+  const [rejectComment, setRejectComment] = useState("");
+
+  const rejectMut = trpc.cases.rejectReport.useMutation({
+    onSuccess: () => {
+      toast.success("報告書を差し戻しました");
+      setRejectTarget(null);
+      setRejectComment("");
+      utils.cases.listCompletedReports.invalidate();
+    },
+    onError: (e: any) => toast.error(e.message || "差し戻しに失敗しました"),
+  });
 
   // ブランド一覧を抽出
   const brands = useMemo(() => {
@@ -172,6 +189,14 @@ export default function CompletedReports() {
                           <Download className="h-3.5 w-3.5" />
                           PDF
                         </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => setRejectTarget({ id: report.id, storeName: report.storeName })}
+                        >
+                          <Undo2 className="h-3.5 w-3.5" />
+                          差し戻し
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -207,7 +232,44 @@ export default function CompletedReports() {
           </CardContent>
         </Card>
       </div>
+
+      {/* 差し戻しダイアログ */}
+      {rejectTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg p-6 max-w-md mx-4 shadow-xl w-full">
+            <h3 className="font-semibold text-lg mb-2 flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-destructive" />
+              報告書を差し戻す
+            </h3>
+            <p className="text-sm text-muted-foreground mb-1">
+              <span className="font-medium text-foreground">{rejectTarget.storeName}</span> の報告書を差し戻します。
+            </p>
+            <p className="text-sm text-muted-foreground mb-4">
+              修正依頼のコメントを入力してください。
+            </p>
+            <Textarea
+              placeholder="例：写真の順番を修正してください / 所感の内容を追記してください"
+              value={rejectComment}
+              onChange={(e) => setRejectComment(e.target.value)}
+              rows={3}
+              className="mb-4"
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setRejectTarget(null); setRejectComment(""); }}>
+                キャンセル
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => rejectMut.mutate({ caseId: rejectTarget.id, comment: rejectComment })}
+                disabled={!rejectComment.trim() || rejectMut.isPending}
+              >
+                {rejectMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Undo2 className="h-4 w-4" />}
+                差し戻す
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-

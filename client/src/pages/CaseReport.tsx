@@ -869,6 +869,22 @@ export default function CaseReport({
         </div>
       </div>
 
+      {/* 差し戻しコメント表示 */}
+      {caseData.reportRejectComment && caseData.reportStatus === "draft" && (
+        <div className="no-print max-w-[800px] mx-auto mb-4">
+          <div className="border border-red-300 bg-red-50 rounded-lg p-4">
+            <div className="flex items-start gap-2">
+              <span className="text-red-600 font-semibold text-sm">⚠️ 差し戻しコメント</span>
+            </div>
+            <p className="text-sm text-red-800 mt-1 whitespace-pre-wrap">{caseData.reportRejectComment}</p>
+            <p className="text-xs text-red-500 mt-2">
+              {caseData.reportRejectedBy && `差し戻し者: ${caseData.reportRejectedBy}`}
+              {caseData.reportRejectedAt && ` / ${new Date(caseData.reportRejectedAt).toLocaleDateString("ja-JP")}`}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* 作成完了確認ダイアログ */}
       {confirmComplete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">

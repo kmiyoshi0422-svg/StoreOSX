@@ -116,6 +116,9 @@ export const cases = mysqlTable("cases", {
   reportCompletedBy: varchar("reportCompletedBy", { length: 128 }), // 報告書完了操作者名
   reportPdfUrl: varchar("reportPdfUrl", { length: 1000 }), // 生成済みPDFのURL
   reportPdfGeneratedAt: timestamp("reportPdfGeneratedAt"), // PDF生成日時
+  reportRejectComment: text("reportRejectComment"), // 差し戻しコメント
+  reportRejectedAt: timestamp("reportRejectedAt"), // 差し戻し日時
+  reportRejectedBy: varchar("reportRejectedBy", { length: 128 }), // 差し戻し操作者名
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
