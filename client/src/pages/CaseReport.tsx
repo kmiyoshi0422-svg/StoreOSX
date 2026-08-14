@@ -775,8 +775,12 @@ export default function CaseReport({
       const pdfHeight = pdf.internal.pageSize.getHeight();
       const pages = containerRef.current.querySelectorAll<HTMLElement>(".report-page");
       const totalPages = pages.length;
-      // 写真が多い場合はscaleを下げて高速化（10ページ以上で1.5、5ページ以上で1.8）
-      const renderScale = totalPages > 10 ? 1.5 : totalPages > 5 ? 1.8 : 2;
+      // 写真が多い場合はscaleを下げて高速化
+      // 印刷品質を維持しつつ速度を優先: 1.5で十分な品質（A4 300dpi相当）
+      const renderScale = totalPages > 15 ? 1.2 : totalPages > 8 ? 1.4 : totalPages > 4 ? 1.6 : 1.8;
+      // JPEG品質: ページ数が多い場合は品質を下げて高速化
+      const jpegQuality = totalPages > 10 ? 0.72 : totalPages > 5 ? 0.78 : 0.85;
+
       for (let i = 0; i < totalPages; i++) {
         setPdfProgress(`ページ ${i + 1} / ${totalPages} を処理中...`);
         // UIを更新するためにイベントループに制御を戻す
@@ -788,10 +792,15 @@ export default function CaseReport({
           backgroundColor: "#ffffff",
           logging: false,
           windowWidth: 800,
+          imageTimeout: 5000,
+          removeContainer: true,
         });
-        const imgData = canvas.toDataURL("image/jpeg", 0.85);
+        const imgData = canvas.toDataURL("image/jpeg", jpegQuality);
         if (i > 0) pdf.addPage();
         pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
+        // メモリ解放: 大きなcanvasを即座にGC対象にする
+        canvas.width = 0;
+        canvas.height = 0;
       }
       setPdfProgress("PDFを保存中...");
       const safe = `${caseData.requestNumber}_${caseData.storeName}`.replace(

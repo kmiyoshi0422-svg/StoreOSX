@@ -7,6 +7,9 @@
 // そのため credentials は付けない（同一オリジンのプロキシなので不要）。
 // 念のため、直fetchが失敗した場合はサーバー側の base64 化APIにフォールバックする。
 
+// ─── キャッシュ: 同一セッション中に同じ画像を何度もfetchしない ───
+const dataUrlCache = new Map<string, string>();
+
 /** 取得失敗画像用の軽量プレースホルダ（淡いグレー / No Image） */
 export const PLACEHOLDER_DATA_URL =
   "data:image/svg+xml;base64," +
@@ -43,39 +46,75 @@ async function fetchDataUrlViaServer(src: string): Promise<string> {
 /** 画像URLをfetchしてPNG/JPEG等の dataURL に変換する（直fetch→サーバーの順で試行） */
 export async function toDataUrl(src: string): Promise<string> {
   if (src.startsWith("data:")) return src;
+  // キャッシュヒット
+  const cached = dataUrlCache.get(src);
+  if (cached) return cached;
   try {
-    return await fetchDataUrlDirect(src);
+    const result = await fetchDataUrlDirect(src);
+    dataUrlCache.set(src, result);
+    return result;
   } catch {
     // 直fetchが失敗（CORS/リダイレクト等）した場合はサーバー側で取得する
-    return await fetchDataUrlViaServer(src);
+    const result = await fetchDataUrlViaServer(src);
+    dataUrlCache.set(src, result);
+    return result;
   }
+}
+
+/**
+ * 並列度を制限して複数の非同期タスクを実行するヘルパー
+ */
+async function parallelLimit<T>(tasks: (() => Promise<T>)[], limit: number): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let idx = 0;
+  async function worker() {
+    while (idx < tasks.length) {
+      const i = idx++;
+      results[i] = await tasks[i]();
+    }
+  }
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
 }
 
 /**
  * 指定コンテナ内のすべての <img> を dataURL 化して差し替える。
  * 戻り値として「復元関数」を返す。
  * 取得失敗時はプレースホルダに差し替えて生成を継続する。
+ * 並列度6で画像を取得し、高速化を実現。
  */
 export async function inlineImages(container: HTMLElement): Promise<() => void> {
   const imgs = Array.from(container.querySelectorAll<HTMLImageElement>("img"));
   const originalSrcs = imgs.map((img) => img.getAttribute("src") ?? "");
+
+  // 並列度6で画像を取得（ブラウザの同一オリジン接続数上限を考慮）
+  const tasks = imgs.map((img, idx) => async () => {
+    const src = originalSrcs[idx];
+    if (!src || src.startsWith("data:")) return;
+    try {
+      const dataUrl = await toDataUrl(src);
+      img.src = dataUrl;
+      img.removeAttribute("srcset");
+    } catch {
+      img.src = PLACEHOLDER_DATA_URL;
+      img.removeAttribute("srcset");
+    }
+  });
+
+  await parallelLimit(tasks, 6);
+
+  // 全画像のdecodeを並列実行
   await Promise.all(
-    imgs.map(async (img, idx) => {
-      const src = originalSrcs[idx];
+    imgs.map(async (img) => {
+      const src = img.getAttribute("src") ?? "";
       if (!src || src.startsWith("data:")) return;
-      try {
-        const dataUrl = await toDataUrl(src);
-        img.src = dataUrl;
-        img.removeAttribute("srcset");
-        if (typeof img.decode === "function") {
-          await img.decode().catch(() => undefined);
-        }
-      } catch {
-        img.src = PLACEHOLDER_DATA_URL;
-        img.removeAttribute("srcset");
+      if (typeof img.decode === "function") {
+        await img.decode().catch(() => undefined);
       }
     }),
   );
+
   // 復元関数
   return () => {
     imgs.forEach((img, idx) => {
