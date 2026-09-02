@@ -102,6 +102,7 @@ import {
 import type { Case, ChecklistItem, Photo } from "../../../drizzle/schema";
 import { PREFECTURES, detectPrefecture } from "@shared/prefecture";
 import { StoreEquipmentPanel } from "./StoreEquipmentPanel";
+import { StoreMasterLinkPanel } from "./StoreMasterLinkPanel";
 
 const STATUS_COLORS: Record<string, string> = {
   受付: "bg-slate-100 text-slate-700 border-slate-200",
@@ -247,6 +248,23 @@ export default function CaseDetail({ id }: { id: number }) {
         </div>
       </div>
 
+      {!isPartner && (
+        <StoreMasterLinkPanel
+          caseId={id}
+          currentStoreId={(caseData as any).storeId ?? null}
+          caseStoreName={caseData.storeName}
+          caseStoreCode={(caseData as any).storeCode ?? null}
+          caseBrand={caseData.brand}
+          casePrefecture={caseData.prefecture ?? null}
+          caseAddress={caseData.address ?? null}
+          casePhone={caseData.storePhone ?? null}
+          caseBusinessHours={(caseData as any).businessHours ?? null}
+          onUpdated={() => utils.cases.get.invalidate({ id })}
+          onOpenHistory={() => setActiveTab("storeHistory")}
+          onUnlinked={() => setActiveTab("info")}
+        />
+      )}
+
       {/* Tabs */}
       <Tabs defaultValue="info" value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <div className="relative w-full">
@@ -301,7 +319,7 @@ export default function CaseDetail({ id }: { id: number }) {
               <Clock className="h-3.5 w-3.5" />
               履歴
             </TabsTrigger>
-            {(caseData as any).storeId && (
+            {!isPartner && (caseData as any).storeId && (
               <TabsTrigger value="storeHistory" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
                 <Building2 className="h-3.5 w-3.5" />
                 店舗履歴
