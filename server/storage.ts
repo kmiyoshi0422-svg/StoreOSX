@@ -21,6 +21,37 @@ function normalizeKey(relKey: string): string {
   return relKey.replace(/^\/+/, "");
 }
 
+/**
+ * Build a stable read URL for persisted files.
+ *
+ * Older rows may contain an expired absolute signed URL in fileUrl. Newer rows
+ * contain a stable /manus-storage/ URL. Prefer the stable URL when present;
+ * otherwise rebuild it from fileKey so the storage proxy can issue a fresh
+ * signed redirect on every access.
+ */
+export function storageUrlForRead(
+  fileKey: string | null | undefined,
+  fileUrl: string | null | undefined,
+): string {
+  if (fileUrl) {
+    try {
+      const parsed = new URL(fileUrl, "https://store-osx.invalid");
+      if (parsed.pathname.startsWith("/manus-storage/")) {
+        return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+      }
+    } catch {
+      // Fall through to fileKey/legacy URL handling.
+    }
+  }
+
+  if (fileKey) {
+    const normalized = normalizeKey(fileKey).replace(/^manus-storage\//, "");
+    return `/manus-storage/${normalized}`;
+  }
+
+  return fileUrl || "";
+}
+
 function appendHashSuffix(relKey: string): string {
   const hash = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
   const lastDot = relKey.lastIndexOf(".");

@@ -117,7 +117,9 @@ import {
   createStoreMaster,
   updateStoreMaster,
   deleteStoreMaster,
+  linkMatchingCasesToStoreMaster,
   listCasesByStoreId,
+  listDocumentsByStoreId,
   listPhotosByStoreId,
   createSurveySkipLog,
   listSurveySkipLogsByCase,
@@ -160,7 +162,7 @@ import {
   type PlannerCase,
 } from "../shared/route-planner";
 import { getSessionCookieOptions } from "./_core/cookies";
-import { storagePut, storageGetSignedUrl } from "./storage";
+import { storagePut, storageGetSignedUrl, storageUrlForRead } from "./storage";
 import { systemRouter } from "./_core/systemRouter";
 import { TRPCError } from "@trpc/server";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -182,6 +184,15 @@ import {
   parseCompletionContent,
   type CompletionReportContent,
 } from "../shared/completionReport";
+
+function withReadableFileUrl<
+  T extends { fileKey?: string | null; fileUrl?: string | null },
+>(file: T): T & { fileUrl: string } {
+  return {
+    ...file,
+    fileUrl: storageUrlForRead(file.fileKey, file.fileUrl),
+  };
+}
 
 // ============================================================
 // Helper: partner access control
@@ -2391,7 +2402,7 @@ export const appRouter = router({
         return docs.map((d) => ({
           id: d.id,
           fileName: d.fileName,
-          fileUrl: d.fileUrl,
+          fileUrl: storageUrlForRead(d.fileKey, d.fileUrl),
           mimeType: d.mimeType,
           fileSize: d.fileSize,
           category: d.category,
@@ -4197,7 +4208,8 @@ JSONスキーマに従って回答してください。`,
     list: protectedProcedure
       .input(z.object({ caseId: z.number() }))
       .query(async ({ input, ctx }) => {
-        return listDocumentsByCase(input.caseId);
+        const items = await listDocumentsByCase(input.caseId);
+        return items.map(withReadableFileUrl);
       }),
 
     listAll: protectedProcedure
@@ -4209,13 +4221,18 @@ JSONスキーマに従って回答してください。`,
         scope: z.enum(["case", "shared", "all"]).optional(),
       }).optional())
       .query(async ({ input, ctx }) => {
-        return listAllDocuments(input || {});
+        const result = await listAllDocuments(input || {});
+        return {
+          ...result,
+          items: result.items.map(withReadableFileUrl),
+        };
       }),
 
     listSharedByTag: protectedProcedure
       .input(z.object({ tag: z.string() }))
       .query(async ({ input, ctx }) => {
-        return listSharedDocumentsByTag(input.tag);
+        const items = await listSharedDocumentsByTag(input.tag);
+        return items.map(withReadableFileUrl);
       }),
 
     upload: protectedProcedure
@@ -4235,13 +4252,13 @@ JSONスキーマに従って回答してください。`,
         const folder = input.caseId ? `documents/${input.caseId}` : "documents/shared";
         const key = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
         const buf = Buffer.from(input.fileData, "base64");
-        const { url } = await storagePut(key, buf, input.mimeType || "application/octet-stream");
+        const { url, key: storedKey } = await storagePut(key, buf, input.mimeType || "application/octet-stream");
 
-        // Save to DB
+        // Save the actual key returned by storagePut. It adds a unique suffix.
         const id = await createDocument({
           caseId: input.caseId || null,
           fileName: input.fileName,
-          fileKey: key,
+          fileKey: storedKey,
           fileUrl: url,
           mimeType: input.mimeType || null,
           fileSize: input.fileSize || buf.length,
@@ -4298,7 +4315,11 @@ JSONスキーマに従って回答してください。`,
           listFolderCases(input.id),
           listFolderDocuments(input.id),
         ]);
-        return { ...folder, cases: folderCases, documents: folderDocs };
+        return {
+          ...folder,
+          cases: folderCases,
+          documents: folderDocs.map(withReadableFileUrl),
+        };
       }),
     create: protectedProcedure
       .input(z.object({ name: z.string().min(1), description: z.string().nullable().optional() }))
@@ -4350,7 +4371,8 @@ JSONスキーマに従って回答してください。`,
     listDocumentsByFolders: protectedProcedure
       .input(z.object({ folderIds: z.array(z.number()) }))
       .query(async ({ input, ctx }) => {
-        return listDocumentsByFolderIds(input.folderIds);
+        const items = await listDocumentsByFolderIds(input.folderIds);
+        return items.map(withReadableFileUrl);
       }),
   }),
   // ドキュメントバージョン管理
@@ -4358,7 +4380,8 @@ JSONスキーマに従って回答してください。`,
     list: protectedProcedure
       .input(z.object({ documentId: z.number() }))
       .query(async ({ input, ctx }) => {
-        return listDocumentVersions(input.documentId);
+        const items = await listDocumentVersions(input.documentId);
+        return items.map(withReadableFileUrl);
       }),
     create: protectedProcedure
       .input(z.object({
@@ -4384,7 +4407,11 @@ JSONスキーマに従って回答してください。`,
     search: protectedProcedure
       .input(z.object({ query: z.string().min(1), scope: z.enum(["case", "shared", "all"]).optional(), limit: z.number().optional() }))
       .query(async ({ input, ctx }) => {
-        return searchDocuments(input.query, { scope: input.scope || "all", limit: input.limit });
+        const items = await searchDocuments(input.query, {
+          scope: input.scope || "all",
+          limit: input.limit,
+        });
+        return items.map(withReadableFileUrl);
       }),
   }),
   // 横断工程表（各業者のスケジュール横断可視化）
@@ -4514,6 +4541,7 @@ JSONスキーマに従って回答してください。`,
       }))
       .mutation(async ({ input }) => {
         const id = await createStoreMaster(input);
+        await linkMatchingCasesToStoreMaster(id, input.storeCode, input.storeName);
         return { id };
       }),
     update: protectedProcedure
@@ -4546,15 +4574,39 @@ JSONスキーマに従って回答してください。`,
         await deleteStoreMaster(input.id);
         return { success: true };
       }),
+    linkMatchingCases: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const store = await getStoreMasterById(input.id);
+        if (!store) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "店舗が見つかりません" });
+        }
+        await linkMatchingCasesToStoreMaster(
+          store.id,
+          store.storeCode,
+          store.storeName,
+        );
+        return { success: true };
+      }),
     pastCases: protectedProcedure
       .input(z.object({ storeId: z.number() }))
       .query(async ({ input, ctx }) => {
         return listCasesByStoreId(input.storeId);
       }),
+    pastDocuments: protectedProcedure
+      .input(z.object({ storeId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const items = await listDocumentsByStoreId(input.storeId);
+        return items.map(withReadableFileUrl);
+      }),
     pastPhotos: protectedProcedure
       .input(z.object({ storeId: z.number(), limit: z.number().int().optional() }))
       .query(async ({ input, ctx }) => {
-        return listPhotosByStoreId(input.storeId, input.limit ?? 50);
+        const items = await listPhotosByStoreId(input.storeId, input.limit ?? 50);
+        return items.map((photo) => ({
+          ...photo,
+          fileUrl: storageUrlForRead(photo.fileKey, null),
+        }));
       }),
   }),
   // ============================================================

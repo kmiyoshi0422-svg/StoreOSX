@@ -1290,6 +1290,7 @@ export async function listFolderDocuments(folderId: number) {
     .select({
       id: documents.id,
       fileName: documents.fileName,
+      fileKey: documents.fileKey,
       fileUrl: documents.fileUrl,
       fileSize: documents.fileSize,
       category: documents.category,
@@ -1343,6 +1344,7 @@ export async function listDocumentsByFolderIds(folderIds: number[]) {
     .select({
       id: documents.id,
       fileName: documents.fileName,
+      fileKey: documents.fileKey,
       fileUrl: documents.fileUrl,
       fileSize: documents.fileSize,
       category: documents.category,
@@ -1402,6 +1404,7 @@ export async function searchDocuments(query: string, opts?: { scope?: "case" | "
       id: documents.id,
       caseId: documents.caseId,
       fileName: documents.fileName,
+      fileKey: documents.fileKey,
       fileUrl: documents.fileUrl,
       fileSize: documents.fileSize,
       category: documents.category,
@@ -1491,6 +1494,26 @@ export async function deleteStoreMaster(id: number) {
 // ============================================================
 // 過去案件・写真取得（同一店舗の履歴参照）
 // ============================================================
+export async function linkMatchingCasesToStoreMaster(
+  storeId: number,
+  storeCode: string | null | undefined,
+  storeName: string,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const normalizedCode = storeCode?.trim();
+  const normalizedName = storeName.trim();
+  const matchCondition = normalizedCode
+    ? or(eq(cases.storeCode, normalizedCode), eq(cases.storeName, normalizedName))
+    : eq(cases.storeName, normalizedName);
+
+  await db
+    .update(cases)
+    .set({ storeId })
+    .where(and(isNull(cases.storeId), matchCondition));
+}
+
 export async function listCasesByStoreId(storeId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -1512,6 +1535,31 @@ export async function listCasesByStoreId(storeId: number) {
     .from(cases)
     .where(eq(cases.storeId, storeId))
     .orderBy(desc(cases.createdAt));
+}
+
+export async function listDocumentsByStoreId(storeId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db
+    .select({
+      id: documents.id,
+      caseId: documents.caseId,
+      fileName: documents.fileName,
+      fileKey: documents.fileKey,
+      fileUrl: documents.fileUrl,
+      mimeType: documents.mimeType,
+      fileSize: documents.fileSize,
+      category: documents.category,
+      memo: documents.memo,
+      createdAt: documents.createdAt,
+      requestNumber: cases.requestNumber,
+      requestContent: cases.requestContent,
+    })
+    .from(documents)
+    .innerJoin(cases, eq(documents.caseId, cases.id))
+    .where(eq(cases.storeId, storeId))
+    .orderBy(desc(documents.createdAt));
 }
 
 export async function listPhotosByStoreId(storeId: number, limit = 50) {
