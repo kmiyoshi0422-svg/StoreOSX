@@ -140,7 +140,7 @@ export default function StoreHistoryTab({ storeId, currentCaseId }: { storeId: n
   const lightbox = useLightbox();
   const lightboxItems = useMemo(
     () => pastPhotos.map((p) => ({
-      url: `/api/storage/${p.fileKey}`,
+      url: p.fileUrl,
       title: [p.photoType, p.workItem].filter(Boolean).join(" / "),
       subtitle: p.memo ?? undefined,
     })),
@@ -275,7 +275,7 @@ export default function StoreHistoryTab({ storeId, currentCaseId }: { storeId: n
                   onClick={() => lightbox.open(idx)}
                 >
                   <img
-                    src={`/api/storage/${photo.fileKey}`}
+                    src={photo.fileUrl}
                     alt={photo.memo || photo.photoType || "写真"}
                     className="w-full h-full object-cover"
                     loading="lazy"
@@ -304,4 +304,3 @@ export default function StoreHistoryTab({ storeId, currentCaseId }: { storeId: n
     </div>
   );
 }
-

@@ -1742,7 +1742,10 @@ export const appRouter = router({
   photos: router({
     listByCase: protectedProcedure
       .input(z.object({ caseId: z.number() }))
-      .query(({ input }) => getPhotosByCaseId(input.caseId)),
+      .query(async ({ input }) => {
+        const photoRows = await getPhotosByCaseId(input.caseId);
+        return photoRows.map(withReadableFileUrl);
+      }),
 
     // 複数案件の写真+案件情報を一括取得（一括写真台帳PDF用）
     listByCases: protectedProcedure
@@ -1752,7 +1755,7 @@ export const appRouter = router({
           getPhotosByCaseIds(input.caseIds),
           getCasesByIds(input.caseIds),
         ]);
-        return { photos: photoRows, cases: caseRows };
+        return { photos: photoRows.map(withReadableFileUrl), cases: caseRows };
       }),
 
     upload: protectedProcedure

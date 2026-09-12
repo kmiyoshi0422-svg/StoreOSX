@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { ENV } from "./env";
 
 export function registerStorageProxy(app: Express) {
-  app.get("/manus-storage/*", async (req, res) => {
+  const handleStorageRead = async (req: any, res: any) => {
     const key = (req.params as Record<string, string>)[0];
     if (!key) {
       res.status(400).send("Missing storage key");
@@ -51,5 +51,9 @@ export function registerStorageProxy(app: Express) {
       console.error("[StorageProxy] failed:", err);
       res.status(502).send("Storage proxy error");
     }
-  });
+  };
+
+  app.get("/manus-storage/*", handleStorageRead);
+  // 旧版の店舗履歴画面が使用していたURL。キャッシュ済み画面や既存リンクを壊さない。
+  app.get("/api/storage/*", handleStorageRead);
 }
