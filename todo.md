@@ -1126,16 +1126,17 @@
 - [x] ダッシュボード全体のPDFエクスポートを追加
 - [x] KPIグラフクリック時の詳細内訳ドリルダウンを追加
 - [x] partner権限では金額KPI・内訳・エクスポートを非表示またはマスク
-- [ ] Vitest・型チェック・本番ビルド・画面操作を完走
+- [x] Vitest・型チェック・本番ビルドを完走（26ファイル・301テストPASS）
+- [ ] 管理者画面でPDF・CSV・ドリルダウンを最終確認
 - [ ] GitHub接続復旧後に既存公開ドメインへ反映
 
 ## GitHub接続先を旧plenus-checkbookからStoreOSXへ安全移行（接続障害対応）
 - [x] 未公開の報告書修正・ダッシュボード変更・stashをローカルコミットで保全
 - [x] 切替前に全Vitest・型チェック・本番ビルドを再確認
-- [ ] 誤って接続したkmiyoshi0422-svg/Store-OSXをManus設定から解除
+- [x] 誤って接続したkmiyoshi0422-svg/Store-OSXをManus設定から解除
 - [x] CLIからkmiyoshi0422-svg/StoreOSX mainへの管理権限と共通祖先を確認
 - [x] StoreOSX mainの最新12コミットを既存変更を保持して統合
-- [ ] 正しいStoreOSX mainへCLIで反映
+- [x] 正しいStoreOSX mainへCLIで反映（670a32e）
 - [ ] 既存公開ドメインへ反映して画面確認
 
 ## 協力業者向けダッシュボード（ユーザー指示）
