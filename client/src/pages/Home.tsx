@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -55,6 +56,10 @@ import {
   FileCheck,
   ChevronRight,
   CalendarDays,
+  BellRing,
+  Pencil,
+  CalendarX,
+  ListChecks,
 } from "lucide-react";
 import { usePdfHistoryRecorder } from "@/hooks/usePdfHistoryRecorder";
 import { applyRootSeoMetadata, ROOT_SEO } from "@/lib/seo";
@@ -115,6 +120,7 @@ type DashboardCase = {
   categorySmall?: string | null;
   requestContent?: string | null;
   contractorName?: string | null;
+  partnerId?: number | null;
 };
 
 type AttentionCase = DashboardCase & {
@@ -155,6 +161,16 @@ function formatDate(value: Date | string | null | undefined) {
 function formatScheduleDate(value: Date | string | null | undefined) {
   if (!value) return "未設定";
   return new Date(value).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric", weekday: "short" });
+}
+
+function toDateInputValue(value: Date | string | null | undefined) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function csvCell(value: unknown) {
@@ -677,8 +693,11 @@ function AttentionCases({
   const [constructionDate, setConstructionDate] = useState("");
   const [partnerId, setPartnerId] = useState("");
   const [partnerSearch, setPartnerSearch] = useState("");
+  const [selectedCaseIds, setSelectedCaseIds] = useState<number[]>([]);
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const activeMeta = ATTENTION_GROUPS.find((group) => group.key === activeGroup) ?? ATTENTION_GROUPS[0];
   const rows = groups[activeGroup] ?? [];
+  const selectableCaseIds = useMemo(() => rows.filter((row) => !row.constructionDate).map((row) => row.id), [rows]);
   const utils = trpc.useUtils();
   const { data: partnerOptions = [], isLoading: partnerOptionsLoading } = trpc.dashboard.schedulingOptions.useQuery(undefined, {
     enabled: canEditSchedule,
@@ -697,6 +716,7 @@ function AttentionCases({
       setConstructionDate("");
       setPartnerId("");
       setPartnerSearch("");
+      setSelectedCaseIds([]);
       await Promise.all([
         utils.dashboard.overview.invalidate(),
         utils.crossSchedule.list.invalidate(),
@@ -707,16 +727,86 @@ function AttentionCases({
       toast.error(mutationError.message || "施工予定を保存できませんでした");
     },
   });
+  const bulkScheduleCases = trpc.dashboard.bulkScheduleCases.useMutation({
+    onSuccess: async (result) => {
+      toast.success(`${result.successCount}件の施工予定を一括設定しました${result.failedCount ? `（${result.failedCount}件失敗）` : ""}`);
+      setBulkDialogOpen(false);
+      setSelectedCaseIds([]);
+      setConstructionDate("");
+      setPartnerId("");
+      setPartnerSearch("");
+      await Promise.all([
+        utils.dashboard.overview.invalidate(),
+        utils.crossSchedule.list.invalidate(),
+        utils.cases.listSummary.invalidate(),
+      ]);
+    },
+    onError: (mutationError) => toast.error(mutationError.message || "一括設定できませんでした"),
+  });
+  const clearScheduleCase = trpc.dashboard.clearScheduleCase.useMutation({
+    onSuccess: async () => {
+      toast.success("施工予定日と施工業者を解除しました");
+      await Promise.all([
+        utils.dashboard.overview.invalidate(),
+        utils.crossSchedule.list.invalidate(),
+        utils.cases.listSummary.invalidate(),
+      ]);
+    },
+    onError: (mutationError) => toast.error(mutationError.message || "解除できませんでした"),
+  });
 
   const openScheduleDialog = (row: AttentionCase) => {
     setEditingRow(row);
+    setBulkDialogOpen(false);
+    setSelectedCaseIds([]);
+    setConstructionDate(toDateInputValue(row.constructionDate));
+    setPartnerId(row.partnerId ? String(row.partnerId) : "");
+    setPartnerSearch("");
+  };
+
+  const openBulkScheduleDialog = () => {
+    if (selectedCaseIds.length === 0) return;
+    setEditingRow(null);
+    setBulkDialogOpen(true);
     setConstructionDate("");
     setPartnerId("");
     setPartnerSearch("");
   };
 
+  const closeScheduleDialog = () => {
+    setEditingRow(null);
+    setBulkDialogOpen(false);
+    setConstructionDate("");
+    setPartnerId("");
+    setPartnerSearch("");
+  };
+
+  const toggleCaseSelection = (caseId: number, checked: boolean) => {
+    setSelectedCaseIds((current) => checked
+      ? Array.from(new Set([...current, caseId]))
+      : current.filter((id) => id !== caseId));
+  };
+
+  const toggleAllVisible = (checked: boolean) => {
+    setSelectedCaseIds(checked ? selectableCaseIds : []);
+  };
+
+  const requestClearSchedule = (row: AttentionCase) => {
+    if (!window.confirm(`${row.requestNumber} / ${row.storeName} の施工予定日と施工業者を解除しますか？`)) return;
+    clearScheduleCase.mutate({ caseId: row.id });
+  };
+
   const saveSchedule = () => {
-    if (!editingRow || !constructionDate || !partnerId) return;
+    if (!constructionDate || !partnerId) return;
+    if (bulkDialogOpen) {
+      bulkScheduleCases.mutate({
+        caseIds: selectedCaseIds,
+        constructionDate,
+        partnerId: Number(partnerId),
+      });
+      return;
+    }
+    if (!editingRow) return;
     scheduleCase.mutate({
       caseId: editingRow.id,
       constructionDate,
@@ -748,7 +838,10 @@ function AttentionCases({
                   variant="outline"
                   role="tab"
                   aria-selected={selected}
-                  onClick={() => setActiveGroup(group.key)}
+                  onClick={() => {
+                    setActiveGroup(group.key);
+                    setSelectedCaseIds([]);
+                  }}
                   className={`justify-between ${selected ? group.activeClass : "bg-white"}`}
                 >
                   <span className="flex items-center gap-2">{group.key === "leakageRelated" && <Zap className="h-4 w-4" />}{group.label}</span>
@@ -758,6 +851,21 @@ function AttentionCases({
             })}
           </div>
           <p className="text-xs text-muted-foreground mt-3">{activeMeta.description}</p>
+          {canEditSchedule && selectableCaseIds.length > 0 && (
+            <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50/70 px-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id={`select-all-${activeGroup}`}
+                  checked={selectableCaseIds.every((id) => selectedCaseIds.includes(id))}
+                  onCheckedChange={(checked) => toggleAllVisible(checked === true)}
+                />
+                <label htmlFor={`select-all-${activeGroup}`} className="text-sm font-medium cursor-pointer">未設定をすべて選択（{selectableCaseIds.length}件）</label>
+              </div>
+              <Button type="button" size="sm" onClick={openBulkScheduleDialog} disabled={selectedCaseIds.length === 0}>
+                <ListChecks className="h-4 w-4 mr-1.5" />選択した{selectedCaseIds.length}件を一括設定
+              </Button>
+            </div>
+          )}
         </div>
         {rows.length === 0 ? (
           <div className="py-8 px-5 text-center text-sm text-muted-foreground">対象案件はありません</div>
@@ -766,19 +874,43 @@ function AttentionCases({
             {rows.map((row) => (
               <div
                 key={row.id}
-                className="w-full text-left px-5 py-4 grid gap-3 md:grid-cols-[minmax(0,1.4fr)_120px_120px_minmax(190px,0.9fr)_20px] md:items-center hover:bg-slate-50 transition-colors"
+                className={`w-full text-left px-5 py-4 grid gap-3 md:grid-cols-[minmax(0,1.4fr)_120px_120px_minmax(220px,0.9fr)_20px] md:items-center hover:bg-slate-50 transition-colors ${selectedCaseIds.includes(row.id) ? "bg-blue-50/70" : ""}`}
               >
-                <button type="button" onClick={() => setLocation(`/cases/${row.id}`)} className="min-w-0 text-left group">
-                  <div className="flex items-center gap-2 mb-1"><span className="font-mono text-[11px] text-muted-foreground">{row.requestNumber}</span><Badge variant="outline" className={STATUS_COLORS[row.status]}>{row.status}</Badge></div>
-                  <p className="font-semibold truncate group-hover:text-primary">{row.storeName}</p>
-                  <p className="text-xs text-muted-foreground mt-1 truncate">{row.requestContent || "依頼内容未記入"}</p>
-                </button>
+                <div className="min-w-0 flex items-start gap-3">
+                  {canEditSchedule && !row.constructionDate && (
+                    <Checkbox
+                      aria-label={`${row.storeName}を一括設定対象に選択`}
+                      checked={selectedCaseIds.includes(row.id)}
+                      onCheckedChange={(checked) => toggleCaseSelection(row.id, checked === true)}
+                      className="mt-1"
+                    />
+                  )}
+                  <button type="button" onClick={() => setLocation(`/cases/${row.id}`)} className="min-w-0 text-left group flex-1">
+                    <div className="flex items-center gap-2 mb-1"><span className="font-mono text-[11px] text-muted-foreground">{row.requestNumber}</span><Badge variant="outline" className={STATUS_COLORS[row.status]}>{row.status}</Badge></div>
+                    <p className="font-semibold truncate group-hover:text-primary">{row.storeName}</p>
+                    <p className="text-xs text-muted-foreground mt-1 truncate">{row.requestContent || "依頼内容未記入"}</p>
+                  </button>
+                </div>
                 <div><p className="text-[10px] text-muted-foreground">依頼日</p><p className="text-sm font-medium mt-1">{formatDate(row.requestDate)}</p></div>
                 <div><p className="text-[10px] text-muted-foreground">経過日数</p><p className="text-lg font-bold text-slate-800 mt-0.5">{row.daysElapsed}日</p></div>
                 <div>
                   <p className="text-[10px] text-muted-foreground">施工予定日（予定週）</p>
                   {row.constructionDate ? (
-                    <><p className="text-sm font-semibold mt-1">{formatScheduleDate(row.constructionDate)}</p><p className="text-xs text-muted-foreground mt-0.5">{formatScheduleDate(row.constructionWeekStart)}〜{formatScheduleDate(row.constructionWeekEnd)}</p>{row.contractorName && <p className="text-xs font-medium text-slate-700 mt-1">施工業者：{row.contractorName}</p>}</>
+                    <>
+                      <p className="text-sm font-semibold mt-1">{formatScheduleDate(row.constructionDate)}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{formatScheduleDate(row.constructionWeekStart)}〜{formatScheduleDate(row.constructionWeekEnd)}</p>
+                      {row.contractorName && <p className="text-xs font-medium text-slate-700 mt-1">施工業者：{row.contractorName}</p>}
+                      {canEditSchedule && (
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          <Button type="button" size="sm" variant="outline" onClick={() => openScheduleDialog(row)}>
+                            <Pencil className="h-3.5 w-3.5 mr-1" />変更
+                          </Button>
+                          <Button type="button" size="sm" variant="outline" className="border-red-200 text-red-700 hover:bg-red-50" onClick={() => requestClearSchedule(row)} disabled={clearScheduleCase.isPending}>
+                            <CalendarX className="h-3.5 w-3.5 mr-1" />解除
+                          </Button>
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div className="mt-1 flex flex-col items-start gap-2">
                       <Badge variant="outline" className="border-red-300 bg-red-50 text-red-700">施工予定日 未設定</Badge>
@@ -797,12 +929,15 @@ function AttentionCases({
         )}
       </CardContent>
     </Card>
-    <Dialog open={Boolean(editingRow)} onOpenChange={(open) => !open && setEditingRow(null)}>
+    <Dialog open={Boolean(editingRow) || bulkDialogOpen} onOpenChange={(open) => !open && closeScheduleDialog()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>施工予定日・施工業者を設定</DialogTitle>
+          <DialogTitle>{bulkDialogOpen ? `${selectedCaseIds.length}件の施工予定を一括設定` : editingRow?.constructionDate ? "施工予定日・施工業者を変更" : "施工予定日・施工業者を設定"}</DialogTitle>
           <DialogDescription>
-            {editingRow ? `${editingRow.requestNumber} / ${editingRow.storeName}` : "対象案件"}の施工予定を登録します。保存後、予定週と横断工程表にも反映されます。
+            {bulkDialogOpen
+              ? `選択した${selectedCaseIds.length}件へ同じ施工予定日と施工業者を設定します。`
+              : `${editingRow ? `${editingRow.requestNumber} / ${editingRow.storeName}` : "対象案件"}の施工予定を登録します。`}
+            保存後、予定週と横断工程表にも反映されます。
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 pt-2">
@@ -827,9 +962,9 @@ function AttentionCases({
             {!partnerOptionsLoading && partnerOptions.length > 0 && filteredPartnerOptions.length === 0 && <p className="text-xs text-muted-foreground mt-1.5">検索条件に一致する業者がありません。</p>}
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={() => setEditingRow(null)} disabled={scheduleCase.isPending}>キャンセル</Button>
-            <Button type="button" onClick={saveSchedule} disabled={!constructionDate || !partnerId || scheduleCase.isPending}>
-              {scheduleCase.isPending && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}保存する
+            <Button type="button" variant="outline" onClick={closeScheduleDialog} disabled={scheduleCase.isPending || bulkScheduleCases.isPending}>キャンセル</Button>
+            <Button type="button" onClick={saveSchedule} disabled={!constructionDate || !partnerId || scheduleCase.isPending || bulkScheduleCases.isPending}>
+              {(scheduleCase.isPending || bulkScheduleCases.isPending) && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}{bulkDialogOpen ? "一括設定する" : editingRow?.constructionDate ? "変更を保存" : "保存する"}
             </Button>
           </div>
         </div>
@@ -886,6 +1021,59 @@ function RevisitZeroCard({ cases }: { cases: any[] }) {
   );
 }
 
+function PartnerAssignmentNotifications({ setLocation }: { setLocation: (path: string) => void }) {
+  const utils = trpc.useUtils();
+  const { data, isLoading } = trpc.dashboard.partnerNotifications.useQuery(undefined, { refetchInterval: 60_000 });
+  const markRead = trpc.dashboard.markPartnerNotificationRead.useMutation({
+    onSuccess: () => utils.dashboard.partnerNotifications.invalidate(),
+  });
+  const markAllRead = trpc.dashboard.markAllPartnerNotificationsRead.useMutation({
+    onSuccess: () => utils.dashboard.partnerNotifications.invalidate(),
+    onError: (error) => toast.error(error.message || "既読にできませんでした"),
+  });
+  const items = data?.items ?? [];
+
+  const openNotification = (item: (typeof items)[number]) => {
+    if (!item.readAt) markRead.mutate({ id: item.id });
+    if (item.notificationType !== "cancelled") setLocation(`/cases/${item.caseId}`);
+  };
+
+  return (
+    <Card className="border-blue-200 bg-blue-50/30">
+      <CardContent className="p-0">
+        <div className="p-4 border-b border-blue-100 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <BellRing className="h-5 w-5 text-blue-700" />
+            <div><h2 className="font-semibold">新しい担当案件のお知らせ</h2><p className="text-xs text-muted-foreground">新規割当・予定変更・解除をお知らせします</p></div>
+            {(data?.unreadCount ?? 0) > 0 && <Badge className="bg-blue-700">未読 {data?.unreadCount}件</Badge>}
+          </div>
+          {(data?.unreadCount ?? 0) > 0 && <Button type="button" size="sm" variant="outline" onClick={() => markAllRead.mutate()} disabled={markAllRead.isPending}>すべて既読</Button>}
+        </div>
+        {isLoading ? (
+          <div className="p-5 text-sm text-muted-foreground">通知を読み込み中です</div>
+        ) : items.length === 0 ? (
+          <div className="p-5 text-sm text-muted-foreground">新しい担当案件の通知はありません</div>
+        ) : (
+          <div className="divide-y divide-blue-100 max-h-[300px] overflow-auto">
+            {items.map((item) => (
+              <button key={item.id} type="button" onClick={() => openNotification(item)} className={`w-full p-4 text-left flex items-start gap-3 hover:bg-blue-50 ${item.readAt ? "opacity-70" : "bg-white"}`}>
+                <span className={`mt-1 h-2.5 w-2.5 rounded-full shrink-0 ${item.readAt ? "bg-slate-300" : item.notificationType === "cancelled" ? "bg-red-500" : "bg-blue-600"}`} />
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-2"><strong className="text-sm">{item.title}</strong><span className="font-mono text-[11px] text-muted-foreground">{item.requestNumber}</span></span>
+                  <span className="block text-sm mt-1">{item.storeName}</span>
+                  {item.message && <span className="block text-xs text-muted-foreground mt-1">{item.message}</span>}
+                  <span className="block text-[10px] text-muted-foreground mt-1.5">{new Date(item.createdAt).toLocaleString("ja-JP")}</span>
+                </span>
+                {item.notificationType !== "cancelled" && <ChevronRight className="h-4 w-4 text-muted-foreground mt-1" />}
+              </button>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Partner Dashboard ─────────────────────────────────────────
 function PartnerDashboard({
   cases,
@@ -930,6 +1118,8 @@ function PartnerDashboard({
           担当案件の進捗状況を確認できます
         </p>
       </div>
+
+      <PartnerAssignmentNotifications setLocation={setLocation} />
 
       {/* KPIカード */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

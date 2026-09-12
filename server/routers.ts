@@ -42,6 +42,7 @@ import {
   getExpenseById,
   syncCaseActualCost,
   listRouteAssignmentsByDateRange,
+  listRouteAssignmentsForCase,
   createRouteAssignment,
   updateRouteAssignment,
   deleteRouteAssignment,
@@ -63,6 +64,10 @@ import {
   updateCase,
   updateChecklistItem,
   updatePartner,
+  createPartnerAssignmentNotification,
+  listPartnerAssignmentNotificationsByUser,
+  markPartnerAssignmentNotificationRead,
+  markAllPartnerAssignmentNotificationsRead,
   updatePhoto,
   getAppSetting,
   setAppSetting,
@@ -321,6 +326,107 @@ const caseInputSchema = z.object({
   expenseBudget: z.number().int().nullish(),
 });
 
+const dashboardConstructionDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "施工予定日を選択してください");
+
+function parseDashboardConstructionDate(value: string) {
+  const date = new Date(`${value}T12:00:00+09:00`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "施工予定日が正しくありません" });
+  }
+  return date;
+}
+
+async function saveDashboardConstructionAssignment(input: {
+  caseId: number;
+  constructionDate: string;
+  partnerId: number;
+  createdBy: number;
+}) {
+  const [caseData, partner] = await Promise.all([
+    getCaseById(input.caseId),
+    getPartnerById(input.partnerId),
+  ]);
+  if (!caseData) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+  }
+  if (!partner || !partner.isActive || partner.name.includes("テスト")) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "有効な施工業者を選択してください" });
+  }
+
+  const constructionDate = parseDashboardConstructionDate(input.constructionDate);
+  const previousPartnerId = caseData.partnerId;
+  await updateCase(input.caseId, {
+    constructionDate,
+    partnerId: partner.id,
+    contractorName: partner.name,
+    contractorPic: partner.pic ?? null,
+    contractorPhone: partner.picPhone ?? partner.phone ?? null,
+  });
+
+  const [schedules, routes] = await Promise.all([
+    listSchedulesByCase(input.caseId),
+    listRouteAssignmentsForCase(input.caseId),
+  ]);
+  const constructionSchedule = schedules.find((schedule) => schedule.title === "施工");
+  if (constructionSchedule) {
+    await updateSchedule(constructionSchedule.id, {
+      startDate: input.constructionDate,
+      endDate: input.constructionDate,
+      status: "予定",
+      color: "#f97316",
+      memo: "ダッシュボードから施工予定日を設定",
+    });
+  } else {
+    await createSchedule({
+      caseId: input.caseId,
+      title: "施工",
+      startDate: input.constructionDate,
+      endDate: input.constructionDate,
+      status: "予定",
+      color: "#f97316",
+      memo: "ダッシュボードから施工予定日を設定",
+      progress: 0,
+      orderNo: schedules.length,
+      createdBy: input.createdBy,
+    });
+  }
+  await Promise.all(routes
+    .filter((route) => route.taskType === "construction")
+    .map((route) => updateRouteAssignment(route.id, { scheduledDate: input.constructionDate })));
+
+  const notificationType = previousPartnerId === partner.id ? "changed" : "assigned";
+  if (previousPartnerId && previousPartnerId !== partner.id) {
+    await createPartnerAssignmentNotification({
+      partnerId: previousPartnerId,
+      caseId: input.caseId,
+      notificationType: "cancelled",
+      title: "担当案件の割り当てが解除されました",
+      message: `${caseData.requestNumber} / ${caseData.storeName}`,
+      constructionDate: null,
+      createdBy: input.createdBy,
+    });
+  }
+  await createPartnerAssignmentNotification({
+    partnerId: partner.id,
+    caseId: input.caseId,
+    notificationType,
+    title: notificationType === "assigned" ? "新しい担当案件が割り当てられました" : "担当案件の施工予定が変更されました",
+    message: `${caseData.requestNumber} / ${caseData.storeName} / 施工予定日 ${input.constructionDate}`,
+    constructionDate,
+    createdBy: input.createdBy,
+  });
+
+  return {
+    success: true as const,
+    caseId: input.caseId,
+    constructionDate,
+    partner: { id: partner.id, name: partner.name },
+    notificationType,
+  };
+}
+
 // ============================================================
 // Routers
 // ============================================================
@@ -395,69 +501,110 @@ export const appRouter = router({
     scheduleCase: protectedProcedure
       .input(z.object({
         caseId: z.number().int().positive(),
-        constructionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "施工予定日を選択してください"),
+        constructionDate: dashboardConstructionDateSchema,
         partnerId: z.number().int().positive(),
       }))
       .mutation(async ({ ctx, input }) => {
         if (ctx.user.role === "partner") {
           throw new TRPCError({ code: "FORBIDDEN", message: "施工予定の設定権限がありません" });
         }
-        const [caseData, partner] = await Promise.all([
-          getCaseById(input.caseId),
-          getPartnerById(input.partnerId),
-        ]);
+        return saveDashboardConstructionAssignment({ ...input, createdBy: ctx.user.id });
+      }),
+    clearScheduleCase: protectedProcedure
+      .input(z.object({ caseId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role === "partner") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "施工予定の解除権限がありません" });
+        }
+        const caseData = await getCaseById(input.caseId);
         if (!caseData) {
           throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
         }
-        if (!partner || !partner.isActive) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "有効な施工業者を選択してください" });
-        }
-
-        const constructionDate = new Date(`${input.constructionDate}T12:00:00+09:00`);
-        if (Number.isNaN(constructionDate.getTime()) || constructionDate.toISOString().slice(0, 10) !== input.constructionDate) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "施工予定日が正しくありません" });
-        }
-
+        const [schedules, routes] = await Promise.all([
+          listSchedulesByCase(input.caseId),
+          listRouteAssignmentsForCase(input.caseId),
+        ]);
         await updateCase(input.caseId, {
-          constructionDate,
-          partnerId: partner.id,
-          contractorName: partner.name,
-          contractorPic: partner.pic ?? null,
-          contractorPhone: partner.picPhone ?? partner.phone ?? null,
+          constructionDate: null,
+          partnerId: null,
+          contractorName: null,
+          contractorPic: null,
+          contractorPhone: null,
         });
-
-        const schedules = await listSchedulesByCase(input.caseId);
-        const constructionSchedule = schedules.find((schedule) => schedule.title === "施工");
-        if (constructionSchedule) {
-          await updateSchedule(constructionSchedule.id, {
-            startDate: input.constructionDate,
-            endDate: input.constructionDate,
-            status: "予定",
-            color: "#f97316",
-            memo: "ダッシュボードから施工予定日を設定",
-          });
-        } else {
-          await createSchedule({
+        await Promise.all([
+          ...schedules.filter((schedule) => schedule.title === "施工").map((schedule) => deleteSchedule(schedule.id)),
+          ...routes.filter((route) => route.taskType === "construction").map((route) => deleteRouteAssignment(route.id)),
+        ]);
+        if (caseData.partnerId) {
+          await createPartnerAssignmentNotification({
+            partnerId: caseData.partnerId,
             caseId: input.caseId,
-            title: "施工",
-            startDate: input.constructionDate,
-            endDate: input.constructionDate,
-            status: "予定",
-            color: "#f97316",
-            memo: "ダッシュボードから施工予定日を設定",
-            progress: 0,
-            orderNo: schedules.length,
+            notificationType: "cancelled",
+            title: "担当案件の割り当てが解除されました",
+            message: `${caseData.requestNumber} / ${caseData.storeName}`,
+            constructionDate: null,
             createdBy: ctx.user.id,
           });
         }
-
-        return {
-          success: true,
-          caseId: input.caseId,
-          constructionDate,
-          partner: { id: partner.id, name: partner.name },
-        };
+        return { success: true as const, caseId: input.caseId };
       }),
+    bulkScheduleCases: protectedProcedure
+      .input(z.object({
+        caseIds: z.array(z.number().int().positive()).min(1).max(100),
+        constructionDate: dashboardConstructionDateSchema,
+        partnerId: z.number().int().positive(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role === "partner") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "施工予定の一括設定権限がありません" });
+        }
+        const caseIds = Array.from(new Set(input.caseIds));
+        const succeeded: number[] = [];
+        const failed: Array<{ caseId: number; message: string }> = [];
+        for (const caseId of caseIds) {
+          try {
+            await saveDashboardConstructionAssignment({
+              caseId,
+              constructionDate: input.constructionDate,
+              partnerId: input.partnerId,
+              createdBy: ctx.user.id,
+            });
+            succeeded.push(caseId);
+          } catch (error) {
+            failed.push({
+              caseId,
+              message: error instanceof Error ? error.message : "設定できませんでした",
+            });
+          }
+        }
+        return { successCount: succeeded.length, failedCount: failed.length, succeeded, failed };
+      }),
+    partnerNotifications: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== "partner") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "協力業者向け通知です" });
+      }
+      const items = await listPartnerAssignmentNotificationsByUser(ctx.user.id, 30);
+      return {
+        items,
+        unreadCount: items.filter((item) => !item.readAt).length,
+      };
+    }),
+    markPartnerNotificationRead: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "partner") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "協力業者向け通知です" });
+        }
+        const success = await markPartnerAssignmentNotificationRead(input.id, ctx.user.id);
+        return { success };
+      }),
+    markAllPartnerNotificationsRead: protectedProcedure.mutation(async ({ ctx }) => {
+      if (ctx.user.role !== "partner") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "協力業者向け通知です" });
+      }
+      const updated = await markAllPartnerAssignmentNotificationsRead(ctx.user.id);
+      return { success: true as const, updated };
+    }),
   }),
 
   pdfHistory: router({

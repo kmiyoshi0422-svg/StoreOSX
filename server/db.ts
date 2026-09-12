@@ -27,6 +27,8 @@ import {
   InsertUser,
   teamMembers,
   partners,
+  partnerAssignmentNotifications,
+  InsertPartnerAssignmentNotification,
   photos,
   routeAssignments,
   teamSettings,
@@ -551,6 +553,69 @@ export async function updatePartner(id: number, data: Partial<InsertPartner>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(partners).set(data).where(eq(partners.id, id));
+}
+
+export async function createPartnerAssignmentNotification(data: InsertPartnerAssignmentNotification) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(partnerAssignmentNotifications).values(data).$returningId();
+  return result[0].id;
+}
+
+export async function listPartnerAssignmentNotificationsByUser(userId: number, limit = 30) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: partnerAssignmentNotifications.id,
+      partnerId: partnerAssignmentNotifications.partnerId,
+      caseId: partnerAssignmentNotifications.caseId,
+      notificationType: partnerAssignmentNotifications.notificationType,
+      title: partnerAssignmentNotifications.title,
+      message: partnerAssignmentNotifications.message,
+      constructionDate: partnerAssignmentNotifications.constructionDate,
+      readAt: partnerAssignmentNotifications.readAt,
+      createdAt: partnerAssignmentNotifications.createdAt,
+      requestNumber: cases.requestNumber,
+      storeName: cases.storeName,
+      status: cases.status,
+    })
+    .from(partnerAssignmentNotifications)
+    .innerJoin(partners, and(
+      eq(partnerAssignmentNotifications.partnerId, partners.id),
+      eq(partners.userId, userId),
+    ))
+    .innerJoin(cases, eq(partnerAssignmentNotifications.caseId, cases.id))
+    .orderBy(desc(partnerAssignmentNotifications.createdAt))
+    .limit(limit);
+}
+
+export async function markPartnerAssignmentNotificationRead(id: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const partnerRows = await db.select({ id: partners.id }).from(partners).where(eq(partners.userId, userId));
+  if (partnerRows.length === 0) return false;
+  await db.update(partnerAssignmentNotifications)
+    .set({ readAt: new Date() })
+    .where(and(
+      eq(partnerAssignmentNotifications.id, id),
+      inArray(partnerAssignmentNotifications.partnerId, partnerRows.map((partner) => partner.id)),
+    ));
+  return true;
+}
+
+export async function markAllPartnerAssignmentNotificationsRead(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const partnerRows = await db.select({ id: partners.id }).from(partners).where(eq(partners.userId, userId));
+  if (partnerRows.length === 0) return 0;
+  await db.update(partnerAssignmentNotifications)
+    .set({ readAt: new Date() })
+    .where(and(
+      inArray(partnerAssignmentNotifications.partnerId, partnerRows.map((partner) => partner.id)),
+      isNull(partnerAssignmentNotifications.readAt),
+    ));
+  return partnerRows.length;
 }
 
 export async function deletePartner(id: number) {

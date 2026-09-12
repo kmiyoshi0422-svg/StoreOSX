@@ -6,9 +6,17 @@ const dbMocks = vi.hoisted(() => ({
   getPartnerById: vi.fn(),
   listPartners: vi.fn(),
   listSchedulesByCase: vi.fn(),
+  listRouteAssignmentsForCase: vi.fn(),
   updateCase: vi.fn(),
   createSchedule: vi.fn(),
   updateSchedule: vi.fn(),
+  deleteSchedule: vi.fn(),
+  updateRouteAssignment: vi.fn(),
+  deleteRouteAssignment: vi.fn(),
+  createPartnerAssignmentNotification: vi.fn(),
+  listPartnerAssignmentNotificationsByUser: vi.fn(),
+  markPartnerAssignmentNotificationRead: vi.fn(),
+  markAllPartnerAssignmentNotificationsRead: vi.fn(),
 }));
 
 vi.mock("./db", async (importOriginal) => {
@@ -42,7 +50,7 @@ function createContext(role: Role): TrpcContext {
 describe("dashboard.scheduleCase", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    dbMocks.getCaseById.mockResolvedValue({ id: 101, storeName: "テスト店舗" });
+    dbMocks.getCaseById.mockResolvedValue({ id: 101, requestNumber: "REQ-101", storeName: "テスト店舗", partnerId: null });
     dbMocks.getPartnerById.mockResolvedValue({
       id: 5,
       name: "施工業者A",
@@ -53,9 +61,14 @@ describe("dashboard.scheduleCase", () => {
       phone: "03-0000-0000",
     });
     dbMocks.listSchedulesByCase.mockResolvedValue([]);
+    dbMocks.listRouteAssignmentsForCase.mockResolvedValue([]);
     dbMocks.updateCase.mockResolvedValue(undefined);
     dbMocks.createSchedule.mockResolvedValue({ id: 77 });
     dbMocks.updateSchedule.mockResolvedValue(undefined);
+    dbMocks.deleteSchedule.mockResolvedValue(undefined);
+    dbMocks.updateRouteAssignment.mockResolvedValue(undefined);
+    dbMocks.deleteRouteAssignment.mockResolvedValue(undefined);
+    dbMocks.createPartnerAssignmentNotification.mockResolvedValue(1);
     dbMocks.listPartners.mockResolvedValue([]);
   });
 
@@ -86,6 +99,11 @@ describe("dashboard.scheduleCase", () => {
       endDate: "2026-10-20",
       createdBy: 10,
     }));
+    expect(dbMocks.createPartnerAssignmentNotification).toHaveBeenCalledWith(expect.objectContaining({
+      partnerId: 5,
+      caseId: 101,
+      notificationType: "assigned",
+    }));
   });
 
   it("既存の施工工程があれば日付を更新して重複作成しない", async () => {
@@ -106,6 +124,21 @@ describe("dashboard.scheduleCase", () => {
     expect(dbMocks.createSchedule).not.toHaveBeenCalled();
   });
 
+  it("施工業者を変更すると旧業者へ解除、新業者へ割当を通知する", async () => {
+    dbMocks.getCaseById.mockResolvedValue({ id: 101, requestNumber: "REQ-101", storeName: "変更対象店", partnerId: 4 });
+    const caller = appRouter.createCaller(createContext("admin"));
+    await caller.dashboard.scheduleCase({ caseId: 101, constructionDate: "2026-11-06", partnerId: 5 });
+
+    expect(dbMocks.createPartnerAssignmentNotification).toHaveBeenCalledWith(expect.objectContaining({
+      partnerId: 4,
+      notificationType: "cancelled",
+    }));
+    expect(dbMocks.createPartnerAssignmentNotification).toHaveBeenCalledWith(expect.objectContaining({
+      partnerId: 5,
+      notificationType: "assigned",
+    }));
+  });
+
   it("協力業者は施工予定を保存できない", async () => {
     const caller = appRouter.createCaller(createContext("partner"));
 
@@ -115,6 +148,133 @@ describe("dashboard.scheduleCase", () => {
       partnerId: 5,
     })).rejects.toMatchObject({ code: "FORBIDDEN" });
     expect(dbMocks.updateCase).not.toHaveBeenCalled();
+  });
+});
+
+describe("dashboard.clearScheduleCase", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dbMocks.getCaseById.mockResolvedValue({
+      id: 101,
+      requestNumber: "REQ-101",
+      storeName: "解除対象店",
+      partnerId: 5,
+    });
+    dbMocks.listSchedulesByCase.mockResolvedValue([{ id: 33, title: "施工" }, { id: 34, title: "現調" }]);
+    dbMocks.listRouteAssignmentsForCase.mockResolvedValue([{ id: 44, taskType: "construction" }, { id: 45, taskType: "survey" }]);
+    dbMocks.updateCase.mockResolvedValue(undefined);
+    dbMocks.deleteSchedule.mockResolvedValue(undefined);
+    dbMocks.deleteRouteAssignment.mockResolvedValue(undefined);
+    dbMocks.createPartnerAssignmentNotification.mockResolvedValue(1);
+  });
+
+  it("社員は施工予定・業者を解除し、施工工程だけ削除できる", async () => {
+    const caller = appRouter.createCaller(createContext("user"));
+    await expect(caller.dashboard.clearScheduleCase({ caseId: 101 })).resolves.toEqual({ success: true, caseId: 101 });
+
+    expect(dbMocks.updateCase).toHaveBeenCalledWith(101, {
+      constructionDate: null,
+      partnerId: null,
+      contractorName: null,
+      contractorPic: null,
+      contractorPhone: null,
+    });
+    expect(dbMocks.deleteSchedule).toHaveBeenCalledWith(33);
+    expect(dbMocks.deleteSchedule).not.toHaveBeenCalledWith(34);
+    expect(dbMocks.deleteRouteAssignment).toHaveBeenCalledWith(44);
+    expect(dbMocks.deleteRouteAssignment).not.toHaveBeenCalledWith(45);
+    expect(dbMocks.createPartnerAssignmentNotification).toHaveBeenCalledWith(expect.objectContaining({
+      partnerId: 5,
+      notificationType: "cancelled",
+    }));
+  });
+
+  it("協力業者は解除できない", async () => {
+    const caller = appRouter.createCaller(createContext("partner"));
+    await expect(caller.dashboard.clearScheduleCase({ caseId: 101 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(dbMocks.updateCase).not.toHaveBeenCalled();
+  });
+});
+
+describe("dashboard.bulkScheduleCases", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dbMocks.getCaseById.mockImplementation(async (id: number) => ({
+      id,
+      requestNumber: `REQ-${id}`,
+      storeName: `店舗${id}`,
+      partnerId: null,
+    }));
+    dbMocks.getPartnerById.mockResolvedValue({
+      id: 5,
+      name: "施工業者A",
+      category: "電気",
+      isActive: true,
+      pic: null,
+      picPhone: null,
+      phone: null,
+    });
+    dbMocks.listSchedulesByCase.mockResolvedValue([]);
+    dbMocks.listRouteAssignmentsForCase.mockResolvedValue([]);
+    dbMocks.updateCase.mockResolvedValue(undefined);
+    dbMocks.createSchedule.mockResolvedValue({ id: 77 });
+    dbMocks.createPartnerAssignmentNotification.mockResolvedValue(1);
+  });
+
+  it("重複を除いた複数案件へ同じ予定日と業者を設定する", async () => {
+    const caller = appRouter.createCaller(createContext("admin"));
+    const result = await caller.dashboard.bulkScheduleCases({
+      caseIds: [101, 102, 101],
+      constructionDate: "2026-12-01",
+      partnerId: 5,
+    });
+    expect(result).toMatchObject({ successCount: 2, failedCount: 0, succeeded: [101, 102] });
+    expect(dbMocks.updateCase).toHaveBeenCalledTimes(2);
+    expect(dbMocks.createPartnerAssignmentNotification).toHaveBeenCalledTimes(2);
+  });
+
+  it("協力業者は一括設定できない", async () => {
+    const caller = appRouter.createCaller(createContext("partner"));
+    await expect(caller.dashboard.bulkScheduleCases({
+      caseIds: [101],
+      constructionDate: "2026-12-01",
+      partnerId: 5,
+    })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(dbMocks.updateCase).not.toHaveBeenCalled();
+  });
+});
+
+describe("dashboard partner assignment notifications", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dbMocks.listPartnerAssignmentNotificationsByUser.mockResolvedValue([
+      { id: 1, caseId: 101, title: "新しい担当案件", readAt: null },
+      { id: 2, caseId: 102, title: "予定変更", readAt: new Date("2026-09-12T12:00:00+09:00") },
+    ]);
+    dbMocks.markPartnerAssignmentNotificationRead.mockResolvedValue(true);
+    dbMocks.markAllPartnerAssignmentNotificationsRead.mockResolvedValue(1);
+  });
+
+  it("協力業者本人へ通知一覧と未読件数を返す", async () => {
+    const caller = appRouter.createCaller(createContext("partner"));
+    await expect(caller.dashboard.partnerNotifications()).resolves.toMatchObject({
+      unreadCount: 1,
+      items: [{ id: 1 }, { id: 2 }],
+    });
+    expect(dbMocks.listPartnerAssignmentNotificationsByUser).toHaveBeenCalledWith(90, 30);
+  });
+
+  it("社員は協力業者向け通知を取得できない", async () => {
+    const caller = appRouter.createCaller(createContext("user"));
+    await expect(caller.dashboard.partnerNotifications()).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("協力業者は個別・一括既読にできる", async () => {
+    const caller = appRouter.createCaller(createContext("partner"));
+    await expect(caller.dashboard.markPartnerNotificationRead({ id: 1 })).resolves.toEqual({ success: true });
+    await expect(caller.dashboard.markAllPartnerNotificationsRead()).resolves.toEqual({ success: true, updated: 1 });
+    expect(dbMocks.markPartnerAssignmentNotificationRead).toHaveBeenCalledWith(1, 90);
+    expect(dbMocks.markAllPartnerAssignmentNotificationsRead).toHaveBeenCalledWith(90);
   });
 });
 

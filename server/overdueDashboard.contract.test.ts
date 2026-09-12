@@ -40,4 +40,21 @@ describe("経過案件3区分ダッシュボード", () => {
     expect(routerSource).toContain('ctx.user.role === "partner"');
     expect(routerSource).toContain("施工予定の設定権限がありません");
   });
+
+  it("設定済み案件を変更・解除し、未設定案件を一括設定できる", () => {
+    expect(homeSource).toContain("変更を保存");
+    expect(homeSource).toContain("施工予定日と施工業者を解除しますか");
+    expect(homeSource).toContain("未設定をすべて選択");
+    expect(homeSource).toContain("一括設定する");
+    expect(routerSource).toContain("clearScheduleCase: protectedProcedure");
+    expect(routerSource).toContain("bulkScheduleCases: protectedProcedure");
+  });
+
+  it("協力業者ダッシュボードへ本人宛ての担当案件通知を表示する", () => {
+    expect(homeSource).toContain("新しい担当案件のお知らせ");
+    expect(homeSource).toContain("trpc.dashboard.partnerNotifications.useQuery");
+    expect(homeSource).toContain("すべて既読");
+    expect(routerSource).toContain("partnerNotifications: protectedProcedure");
+    expect(routerSource).toContain("markPartnerNotificationRead: protectedProcedure");
+  });
 });

@@ -300,6 +300,29 @@ export type RouteAssignment = typeof routeAssignments.$inferSelect;
 export type InsertRouteAssignment = typeof routeAssignments.$inferInsert;
 
 /**
+ * 協力業者向け担当案件通知
+ */
+export const partnerAssignmentNotifications = mysqlTable("partner_assignment_notifications", {
+  id: int("id").autoincrement().primaryKey(),
+  partnerId: int("partnerId").notNull(),
+  caseId: int("caseId").notNull(),
+  notificationType: mysqlEnum("notificationType", ["assigned", "changed", "cancelled"]).default("assigned").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message"),
+  constructionDate: timestamp("constructionDate"),
+  createdBy: int("createdBy"),
+  readAt: timestamp("readAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  partnerCreatedIdx: index("idx_partner_assignment_notifications_partner_created").on(t.partnerId, t.createdAt),
+  partnerReadIdx: index("idx_partner_assignment_notifications_partner_read").on(t.partnerId, t.readAt),
+  caseIdx: index("idx_partner_assignment_notifications_case").on(t.caseId),
+}));
+
+export type PartnerAssignmentNotification = typeof partnerAssignmentNotifications.$inferSelect;
+export type InsertPartnerAssignmentNotification = typeof partnerAssignmentNotifications.$inferInsert;
+
+/**
  * チーム設定（v13: チームA/Bの担当者割り振り）
  * 全システムで全グローバルシングルトンとして保持（1行/チーム）
  */
