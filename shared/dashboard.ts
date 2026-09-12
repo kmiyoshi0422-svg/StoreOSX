@@ -24,6 +24,7 @@ export type DashboardCaseInput = {
   urgency: string;
   requestDate?: Date | string | null;
   createdAt?: Date | string | null;
+  constructionDate?: Date | string | null;
   surveyDate?: Date | string | null;
   revisitCount?: number | null;
   assigneeId?: number | null;
@@ -38,16 +39,66 @@ export type DashboardBreakdownRow = {
   value: number;
 };
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function startOfDay(value: Date | string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function constructionWeek(value?: Date | string | null) {
+  if (!value) return { constructionDate: null, constructionWeekStart: null, constructionWeekEnd: null };
+  const date = startOfDay(value);
+  if (!date) return { constructionDate: null, constructionWeekStart: null, constructionWeekEnd: null };
+  const mondayOffset = (date.getDay() + 6) % 7;
+  const weekStart = new Date(date);
+  weekStart.setDate(date.getDate() - mondayOffset);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+  return { constructionDate: date, constructionWeekStart: weekStart, constructionWeekEnd: weekEnd };
+}
+
+export function selectPreferredConstructionDate(
+  values: Array<Date | string | null | undefined>,
+  now: Date = new Date(),
+) {
+  const today = startOfDay(now) ?? new Date();
+  const dates = values
+    .map((value) => value ? startOfDay(value) : null)
+    .filter((value): value is Date => Boolean(value))
+    .sort((a, b) => a.getTime() - b.getTime());
+  return dates.find((date) => date.getTime() >= today.getTime()) ?? dates.at(-1) ?? null;
+}
+
 export function buildDashboardOverview(
   cases: DashboardCaseInput[],
-  options: { includeFinancials: boolean },
+  options: { includeFinancials: boolean; now?: Date },
 ) {
+  const today = startOfDay(options.now ?? new Date()) ?? new Date();
   const inProgressStatuses = new Set(["現調中", "見積中", "施工待ち", "施工中"]);
   const inProgress = cases.filter((item) => inProgressStatuses.has(item.status));
   const urgent = cases.filter((item) => item.urgency === "S" || item.urgency === "A");
   const completed = cases.filter((item) => item.status === "完了" || item.status === "クローズ");
   const surveyed = cases.filter((item) => Boolean(item.surveyDate));
   const noRevisit = surveyed.filter((item) => (item.revisitCount ?? 0) === 0);
+  const overdueRequestCases = cases
+    .filter((item) => item.status !== "完了" && item.status !== "クローズ")
+    .map((item) => {
+      const requestedAt = item.requestDate ?? item.createdAt;
+      const requestDay = requestedAt ? startOfDay(requestedAt) : null;
+      if (!requestDay) return null;
+      const daysElapsed = Math.floor((today.getTime() - requestDay.getTime()) / DAY_MS);
+      if (daysElapsed < 14) return null;
+      return {
+        ...item,
+        requestDate: requestDay,
+        daysElapsed,
+        ...constructionWeek(item.constructionDate),
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .sort((a, b) => b.daysElapsed - a.daysElapsed);
 
   const statusBreakdown: DashboardBreakdownRow[] = DASHBOARD_STATUS_ORDER.map((status) => ({
     key: status,
@@ -96,5 +147,6 @@ export function buildDashboardOverview(
       : null,
     cases,
     recentCases: cases.slice(0, 6),
+    overdueRequestCases,
   };
 }

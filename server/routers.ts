@@ -172,7 +172,7 @@ import { TRPCError } from "@trpc/server";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { BUDGET_RATIO, calcBudget } from "../shared/budget";
 import { calcCaseProfit } from "../shared/profit";
-import { buildDashboardOverview } from "../shared/dashboard";
+import { buildDashboardOverview, selectPreferredConstructionDate } from "../shared/dashboard";
 import { buildStoreBulkLinkPreview } from "../shared/storeBulkLink";
 import { detectPrefecture } from "../shared/prefecture";
 import { resolveStageStatus, syncStageFromStatus } from "../shared/stageStatus";
@@ -342,13 +342,21 @@ export const appRouter = router({
         if (input?.toMs !== undefined && time > input.toMs) return false;
         return true;
       });
-      const users = await getAllUsers();
+      const [users, routes] = await Promise.all([getAllUsers(), listCrossPartnerRoutes()]);
       const userNames = new Map(users.map((user) => [user.id, user.name ?? `User ${user.id}`]));
+      const constructionDatesByCase = new Map<number, Array<Date | string>>();
+      for (const route of routes) {
+        if (route.taskType !== "construction") continue;
+        const dates = constructionDatesByCase.get(route.caseId) ?? [];
+        dates.push(route.scheduledDate);
+        constructionDatesByCase.set(route.caseId, dates);
+      }
       const isAdmin = ctx.user.role === "admin" || ctx.user.role === "owner";
       const caseRows = periodCases.map((item) => {
         const row = {
           ...item,
           assigneeName: item.assigneeId ? userNames.get(item.assigneeId) ?? null : null,
+          constructionDate: item.constructionDate ?? selectPreferredConstructionDate(constructionDatesByCase.get(item.id) ?? []),
         };
         return ctx.user.role === "partner" ? stripFinancialFields(row) : row;
       });

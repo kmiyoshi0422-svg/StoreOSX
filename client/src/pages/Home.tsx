@@ -103,6 +103,7 @@ type DashboardCase = {
   urgency: string;
   requestDate?: Date | string | null;
   createdAt?: Date | string | null;
+  constructionDate?: Date | string | null;
   surveyDate?: Date | string | null;
   revisitCount?: number | null;
   assigneeId?: number | null;
@@ -112,6 +113,13 @@ type DashboardCase = {
   categoryLarge?: string | null;
   categoryMedium?: string | null;
   requestContent?: string | null;
+};
+
+type OverdueRequestCase = DashboardCase & {
+  daysElapsed: number;
+  constructionDate: Date | string | null;
+  constructionWeekStart: Date | string | null;
+  constructionWeekEnd: Date | string | null;
 };
 
 type DashboardAlert = {
@@ -134,6 +142,11 @@ type DrilldownState = {
 function formatDate(value: Date | string | null | undefined) {
   if (!value) return "—";
   return new Date(value).toLocaleDateString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit" });
+}
+
+function formatScheduleDate(value: Date | string | null | undefined) {
+  if (!value) return "未設定";
+  return new Date(value).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric", weekday: "short" });
 }
 
 function csvCell(value: unknown) {
@@ -201,6 +214,7 @@ export default function Home() {
 
   const cases = (dashboard?.cases ?? []) as DashboardCase[];
   const recent = (dashboard?.recentCases ?? []) as DashboardCase[];
+  const overdueRequestCases = (dashboard?.overdueRequestCases ?? []) as OverdueRequestCase[];
   const kpis = dashboard?.kpis;
   const financials = dashboard?.financials;
 
@@ -234,7 +248,7 @@ export default function Home() {
 
   // partner向けダッシュボードを表示
   if (isPartner) {
-    return <div className="space-y-6">{periodControls}<PartnerDashboard cases={cases} isLoading={isLoading} setLocation={setLocation} userName={user?.name ?? "協力業者"} /></div>;
+    return <div className="space-y-6">{periodControls}<PartnerDashboard cases={cases} overdueRequestCases={overdueRequestCases} isLoading={isLoading} setLocation={setLocation} userName={user?.name ?? "協力業者"} /></div>;
   }
 
   const openDrilldown = (key: string, label?: string) => {
@@ -428,6 +442,8 @@ export default function Home() {
 
       {periodControls}
 
+      <OverdueRequestCases rows={overdueRequestCases} setLocation={setLocation} />
+
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
         <KpiCard icon={<ClipboardList className="h-4 w-4" />} label="案件総数" value={kpis?.total ?? 0} accent="text-primary" secondary="全案件の内訳" onClick={() => openDrilldown("all", "案件総数の内訳")} />
         <KpiCard icon={<Clock className="h-4 w-4" />} label="進行中" value={kpis?.inProgress ?? 0} accent="text-amber-600" secondary="現調〜施工中" onClick={() => openDrilldown("inProgress", "進行中案件の内訳")} />
@@ -607,6 +623,56 @@ function KpiAlertSection({ alerts, isLoading }: { alerts: DashboardAlert[]; isLo
   return <div><div className="flex items-end justify-between mb-3"><div className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-red-600" /><div><h2 className="font-serif-jp text-xl font-semibold">KPIアラート</h2><p className="text-xs text-muted-foreground mt-0.5">期限超過 <span className="font-bold text-red-600">{overdueCount}件</span>{warningCount > 0 && <> / 期限間近 <span className="font-bold text-amber-600">{warningCount}件</span></>}</p></div></div>{alerts.length > 8 && <Button variant="ghost" size="sm" onClick={() => setShowAll(!showAll)}>{showAll ? "折りたたむ" : `すべて表示 ${alerts.length}件`}</Button>}</div><div className="space-y-2">{displayed.map((alert, index) => <button key={`${alert.caseId}-${alert.kpiType}-${index}`} onClick={() => setLocation(`/cases/${alert.caseId}`)} className="w-full text-left group"><Card className={`transition-all hover:shadow-md ${alert.severity === "overdue" ? "border-red-200 bg-red-50/50" : "border-amber-200 bg-amber-50/50"}`}><CardContent className="p-3 flex items-center gap-3"><div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${alert.severity === "overdue" ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-600"}`}>{KPI_ICONS[alert.kpiType] || <AlertCircle className="h-3.5 w-3.5" />}</div><div className="flex-1 min-w-0"><div className="flex items-center gap-2 mb-0.5"><Badge variant="outline" className={alert.severity === "overdue" ? "border-red-300 text-red-700 bg-red-100" : "border-amber-300 text-amber-700 bg-amber-100"}>{alert.severity === "overdue" ? "超過" : "間近"}</Badge><Badge variant="outline">{alert.kpiType}</Badge><span className="text-[11px] text-muted-foreground font-mono">{alert.requestNumber}</span></div><p className="text-sm font-medium truncate">{alert.storeName}</p><p className="text-xs text-muted-foreground mt-0.5">{alert.message}</p></div><div className={alert.severity === "overdue" ? "bg-red-100 px-2 py-1 rounded text-center" : "bg-amber-100 px-2 py-1 rounded text-center"}><p className={alert.severity === "overdue" ? "text-lg font-bold text-red-700" : "text-lg font-bold text-amber-700"}>{alert.daysElapsed}</p><p className="text-[10px] text-muted-foreground">日経過</p></div><ArrowUpRight className="h-4 w-4 text-muted-foreground/50 group-hover:text-primary" /></CardContent></Card></button>)}</div></div>;
 }
 
+function OverdueRequestCases({ rows, setLocation }: { rows: OverdueRequestCase[]; setLocation: (path: string) => void }) {
+  return (
+    <Card className="border-amber-200 bg-amber-50/30">
+      <CardContent className="p-0">
+        <div className="p-5 border-b border-amber-200 flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-lg bg-amber-100 text-amber-700"><CalendarDays className="h-5 w-5" /></div>
+            <div>
+              <h2 className="font-serif-jp text-xl font-semibold">依頼から14日以上経過した案件</h2>
+              <p className="text-xs text-muted-foreground mt-1">未完了案件の施工予定日と、その予定日を含む週を表示します。</p>
+            </div>
+          </div>
+          <Badge className="bg-amber-600 text-white shrink-0">{rows.length}件</Badge>
+        </div>
+        {rows.length === 0 ? (
+          <div className="py-8 px-5 text-center text-sm text-muted-foreground">対象案件はありません</div>
+        ) : (
+          <div className="divide-y divide-amber-100 max-h-[480px] overflow-auto">
+            {rows.map((row) => (
+              <button
+                key={row.id}
+                type="button"
+                onClick={() => setLocation(`/cases/${row.id}`)}
+                className="w-full text-left px-5 py-4 grid gap-3 md:grid-cols-[minmax(0,1.4fr)_120px_120px_minmax(190px,0.9fr)_20px] md:items-center hover:bg-amber-50 transition-colors"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-1"><span className="font-mono text-[11px] text-muted-foreground">{row.requestNumber}</span><Badge variant="outline" className={STATUS_COLORS[row.status]}>{row.status}</Badge></div>
+                  <p className="font-semibold truncate">{row.storeName}</p>
+                  <p className="text-xs text-muted-foreground mt-1 truncate">{row.requestContent || "依頼内容未記入"}</p>
+                </div>
+                <div><p className="text-[10px] text-muted-foreground">依頼日</p><p className="text-sm font-medium mt-1">{formatDate(row.requestDate)}</p></div>
+                <div><p className="text-[10px] text-muted-foreground">経過日数</p><p className="text-lg font-bold text-amber-700 mt-0.5">{row.daysElapsed}日</p></div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground">施工予定日（予定週）</p>
+                  {row.constructionDate ? (
+                    <><p className="text-sm font-semibold mt-1">{formatScheduleDate(row.constructionDate)}</p><p className="text-xs text-muted-foreground mt-0.5">{formatScheduleDate(row.constructionWeekStart)}〜{formatScheduleDate(row.constructionWeekEnd)}</p></>
+                  ) : (
+                    <Badge variant="outline" className="mt-1 border-red-300 bg-red-50 text-red-700">施工予定日 未設定</Badge>
+                  )}
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground hidden md:block" />
+              </button>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 const DashboardPdfDocument = ({ ref, dashboard, alerts, isAdmin, isPartner }: { ref: React.RefObject<HTMLDivElement | null>; dashboard: any; alerts: DashboardAlert[]; isAdmin: boolean; isPartner: boolean }) => {
   const total = Math.max(1, dashboard.kpis.total);
   return (
@@ -657,11 +723,13 @@ function RevisitZeroCard({ cases }: { cases: any[] }) {
 // ─── Partner Dashboard ─────────────────────────────────────────
 function PartnerDashboard({
   cases,
+  overdueRequestCases,
   isLoading,
   setLocation,
   userName,
 }: {
   cases: any[];
+  overdueRequestCases: OverdueRequestCase[];
   isLoading: boolean;
   setLocation: (path: string) => void;
   userName: string;
@@ -736,6 +804,8 @@ function PartnerDashboard({
           </CardContent>
         </Card>
       </div>
+
+      <OverdueRequestCases rows={overdueRequestCases} setLocation={setLocation} />
 
       {/* 対応が必要な案件 */}
       {cases.filter((c: any) => c.status === "受付" || c.urgency === "S" || c.urgency === "A").length > 0 && (
