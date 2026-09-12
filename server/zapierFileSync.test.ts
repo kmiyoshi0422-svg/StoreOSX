@@ -7,6 +7,7 @@ import {
   splitDocumentFileName,
   ZAPIER_FILE_TABLE_ID,
 } from "./zapierFileSync";
+import { extractZapierCallbackToken } from "./zapierFileSyncRoutes";
 
 describe("Zapier file sync", () => {
   it("accepts only HTTPS Catch Hook URLs on hooks.zapier.com", () => {
@@ -33,6 +34,15 @@ describe("Zapier file sync", () => {
     });
     expect(splitDocumentFileName("README")).toEqual({ fileStem: "README", fileExtension: "" });
     expect(splitDocumentFileName(".env")).toEqual({ fileStem: ".env", fileExtension: "" });
+  });
+
+  it("extracts the callback token only from the expected Basic Auth user", () => {
+    const token = "123e4567-e89b-12d3-a456-426614174000";
+    expect(extractZapierCallbackToken(`Basic ${Buffer.from(`sync:${token}`).toString("base64")}`))
+      .toBe(token);
+    expect(extractZapierCallbackToken(`Basic ${Buffer.from(`other:${token}`).toString("base64")}`))
+      .toBeNull();
+    expect(extractZapierCallbackToken("Bearer test")).toBeNull();
   });
 
   it("builds a complete Zapier payload without embedding file bytes", () => {
@@ -73,6 +83,7 @@ describe("Zapier file sync", () => {
     expect(payload).toMatchObject({
       event_id: "event-9",
       callback_token: "secret-token",
+      callback_basic_auth: "sync:secret-token",
       sync_id: 9,
       document_id: 42,
       case_id: 7,

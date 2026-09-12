@@ -15,6 +15,7 @@ const WEBHOOK_TIMEOUT_MS = 12_000;
 export type ZapierFilePayload = {
   event_id: string;
   callback_token: string;
+  callback_basic_auth: string;
   sync_id: number;
   document_id: number;
   case_id: number | null;
@@ -89,6 +90,7 @@ export function buildZapierFilePayload(input: {
   return {
     event_id: sync.eventId,
     callback_token: sync.callbackToken,
+    callback_basic_auth: `sync:${sync.callbackToken}`,
     sync_id: sync.id,
     document_id: document.id,
     case_id: document.caseId ?? null,

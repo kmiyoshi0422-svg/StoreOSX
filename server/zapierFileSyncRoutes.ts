@@ -25,9 +25,34 @@ const callbackSchema = z.discriminatedUnion("status", [
   }),
 ]);
 
+export function extractZapierCallbackToken(authorization: string | undefined): string | null {
+  if (!authorization?.startsWith("Basic ")) return null;
+  try {
+    const decoded = Buffer.from(authorization.slice(6), "base64").toString("utf8");
+    const separator = decoded.indexOf(":");
+    if (separator < 0 || decoded.slice(0, separator) !== "sync") return null;
+    const token = decoded.slice(separator + 1);
+    return z.string().uuid().safeParse(token).success ? token : null;
+  } catch {
+    return null;
+  }
+}
+
+function getCallbackPayload(req: Request): unknown {
+  const body = req.body && typeof req.body === "object" && !Array.isArray(req.body)
+    ? req.body as Record<string, unknown>
+    : {};
+  if (body.callback_token) return body;
+
+  const callbackToken = extractZapierCallbackToken(req.get("authorization"));
+  return callbackToken
+    ? { ...req.query, callback_token: callbackToken }
+    : body;
+}
+
 export function registerZapierFileSyncRoutes(app: Express) {
   app.post("/api/zapier/file-sync/callback", async (req: Request, res: Response) => {
-    const parsed = callbackSchema.safeParse(req.body);
+    const parsed = callbackSchema.safeParse(getCallbackPayload(req));
     if (!parsed.success) {
       res.status(400).json({ ok: false, error: "invalid callback payload" });
       return;

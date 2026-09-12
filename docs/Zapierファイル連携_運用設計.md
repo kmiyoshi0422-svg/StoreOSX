@@ -40,20 +40,19 @@ Zap名は **「StoreOSX｜資料をDrive保存＋ファイル台帳記録」** �
 | 1 | Webhooks by Zapier / Catch Hook | StoreOSXから受け取る固有URLをStoreOSXの「Zapier設定」へ登録 |
 | 2 | Google Drive / Upload File | File=`source_file_url`、File Name=`file_stem`、File Extension=`file_extension`、保存フォルダ=`StoreOSX` |
 | 3 | Zapier Tables / Create Record | Table ID=`01M2AS20424Z7E7P4GT4197QYC`。案件・ファイル・Drive情報を対応列へ登録 |
-| 4 | Webhooks by Zapier / POST | URL=`callback_url`。完了状態、Drive File ID、Drive URL、Tables Record IDをStoreOSXへ返却 |
+| 4 | Webhooks by Zapier / Custom Request | Method=`POST`。URL=`callback_url`へ完了状態、イベントID、Drive File ID、Drive URL、Tables Record IDをqueryで追加し、Basic Auth=`callback_basic_auth`を設定 |
 
-コールバック本文は次の形式です。
+コールバックは一時トークンをURLへ露出させないため、Basic Authのユーザー名を`sync`、パスワードを一時トークンとします。Zapierには両方を連結した`callback_basic_auth`が渡されます。queryは次の形式です。各値はZapierの動的データとして挿入し、URLエンコードします。
 
-```json
-{
-  "status": "completed",
-  "event_id": "Triggerのevent_id",
-  "callback_token": "Triggerのcallback_token",
-  "google_drive_file_id": "Google DriveステップのFile ID",
-  "google_drive_url": "Google Driveステップの代替リンク",
-  "zapier_table_record_id": "Zapier TablesステップのRecord ID"
-}
+```text
+?status=completed
+&event_id={Triggerのevent_id}
+&google_drive_file_id={Google DriveステップのFile ID}
+&google_drive_url={Google Driveステップの代替リンク}
+&zapier_table_record_id={Zapier TablesステップのRecord ID}
 ```
+
+既存のJSON本文形式も後方互換として受理します。
 
 ## 5. Zapier Tables台帳
 
@@ -83,7 +82,7 @@ Zap名は **「StoreOSX｜資料をDrive保存＋ファイル台帳記録」** �
 
 ## 7. 障害時の動作
 
-Zapierが未設定または一時的に失敗しても、StoreOSX S3と資料DBへの保存は完了します。Zapier送信は独立した状態として記録され、元の資料を再アップロードせずに再送できます。Zapierへ渡すのはファイル本体ではなく短時間有効な署名付きダウンロードURLです。Google Driveには`file_name`を拡張子なしの`file_stem`と`file_extension`に分けて渡し、Zapierが取得元URLの拡張子を二重付与しないようにします。Catch Hook URLは`https://hooks.zapier.com/hooks/catch/`配下だけを許可し、任意ホストへの送信を防ぎます。コールバック先はStoreOSXの固定公開URLを使用します。再送のたびにイベントIDと一時トークンを更新し、DBにはトークンのSHA-256ハッシュだけを保存します。古いZap実行から届いた応答はイベント不一致として拒否します。
+Zapierが未設定または一時的に失敗しても、StoreOSX S3と資料DBへの保存は完了します。Zapier送信は独立した状態として記録され、元の資料を再アップロードせずに再送できます。Zapierへ渡すのはファイル本体ではなく短時間有効な署名付きダウンロードURLです。Google Driveには`file_name`を拡張子なしの`file_stem`と`file_extension`に分けて渡し、Zapierが取得元URLの拡張子を二重付与しないようにします。Catch Hook URLは`https://hooks.zapier.com/hooks/catch/`配下だけを許可し、任意ホストへの送信を防ぎます。コールバック先はStoreOSXの固定公開URLを使用します。一時トークンはBasic Authで送り、URLやqueryへ含めません。再送のたびにイベントIDと一時トークンを更新し、DBにはトークンのSHA-256ハッシュだけを保存します。古いZap実行から届いた応答はイベント不一致として拒否します。
 
 ## 8. 検証項目
 
