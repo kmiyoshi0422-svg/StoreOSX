@@ -52,6 +52,15 @@ describe("経過案件3区分ダッシュボード", () => {
     expect(routerSource).toContain("bulkScheduleCases: protectedProcedure");
   });
 
+  it("業者選択時に月間空き状況と同一予定日の集中警告を表示する", () => {
+    expect(homeSource).toContain("業者スケジュール・空き状況");
+    expect(homeSource).toContain("同じ予定日に既に");
+    expect(homeSource).toContain("保存後は全体");
+    expect(homeSource).toContain("trpc.dashboard.scheduleAvailability.useQuery");
+    expect(routerSource).toContain("scheduleAvailability: protectedProcedure");
+    expect(routerSource).toContain("業者スケジュールの閲覧権限がありません");
+  });
+
   it("協力業者ダッシュボードへ本人宛ての担当案件通知を表示する", () => {
     expect(homeSource).toContain("新しい担当案件のお知らせ");
     expect(homeSource).toContain("trpc.dashboard.partnerNotifications.useQuery");

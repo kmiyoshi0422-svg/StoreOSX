@@ -63,6 +63,7 @@ import {
   ListChecks,
   Ban,
   RotateCcw,
+  ChevronLeft,
 } from "lucide-react";
 import { usePdfHistoryRecorder } from "@/hooks/usePdfHistoryRecorder";
 import { applyRootSeoMetadata, ROOT_SEO } from "@/lib/seo";
@@ -180,6 +181,20 @@ function toDateInputValue(value: Date | string | null | undefined) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function currentMonthKey(value = new Date()) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function shiftMonthKey(month: string, offset: number) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return currentMonthKey(new Date(year, monthNumber - 1 + offset, 1));
+}
+
+function formatMonthLabel(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return `${year}年${monthNumber}月`;
 }
 
 function csvCell(value: unknown) {
@@ -711,6 +726,7 @@ function AttentionCases({
   const [constructionDate, setConstructionDate] = useState("");
   const [partnerId, setPartnerId] = useState("");
   const [partnerSearch, setPartnerSearch] = useState("");
+  const [availabilityMonth, setAvailabilityMonth] = useState(() => currentMonthKey());
   const [selectedCaseIds, setSelectedCaseIds] = useState<number[]>([]);
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const [lostRow, setLostRow] = useState<AttentionCase | null>(null);
@@ -721,6 +737,11 @@ function AttentionCases({
   const selectableCaseIds = useMemo(
     () => activeGroup === "lost" ? [] : rows.filter((row) => !row.constructionDate).map((row) => row.id),
     [activeGroup, rows],
+  );
+  const scheduleDialogOpen = Boolean(editingRow) || bulkDialogOpen;
+  const availabilityExcludedCaseIds = useMemo(
+    () => bulkDialogOpen ? selectedCaseIds : editingRow ? [editingRow.id] : [],
+    [bulkDialogOpen, editingRow, selectedCaseIds],
   );
   const utils = trpc.useUtils();
   const { data: partnerOptions = [], isLoading: partnerOptionsLoading } = trpc.dashboard.schedulingOptions.useQuery(undefined, {
@@ -733,6 +754,27 @@ function AttentionCases({
       [partner.name, partner.category, partner.area].filter(Boolean).join(" ").toLowerCase().includes(keyword),
     );
   }, [partnerOptions, partnerSearch]);
+  const availabilityInput = useMemo(() => ({
+    partnerId: partnerId ? Number(partnerId) : 1,
+    month: availabilityMonth,
+    excludeCaseIds: availabilityExcludedCaseIds,
+  }), [partnerId, availabilityMonth, availabilityExcludedCaseIds]);
+  const {
+    data: scheduleAvailability,
+    isLoading: scheduleAvailabilityLoading,
+    error: scheduleAvailabilityError,
+  } = trpc.dashboard.scheduleAvailability.useQuery(availabilityInput, {
+    enabled: canEditSchedule && scheduleDialogOpen && Boolean(partnerId),
+  });
+  const selectedDayAvailability = scheduleAvailability?.days.find((day) => day.date === constructionDate);
+  const pendingScheduleCount = bulkDialogOpen ? selectedCaseIds.length : 1;
+  const availabilityCalendarCells = useMemo(() => {
+    const offset = new Date(`${availabilityMonth}-01T12:00:00`).getDay();
+    return [
+      ...Array.from({ length: offset }, () => null),
+      ...(scheduleAvailability?.days ?? []),
+    ];
+  }, [availabilityMonth, scheduleAvailability]);
   const scheduleCase = trpc.dashboard.scheduleCase.useMutation({
     onSuccess: async (result) => {
       toast.success(`${result.partner.name}で施工予定を設定しました`);
@@ -812,7 +854,9 @@ function AttentionCases({
     setEditingRow(row);
     setBulkDialogOpen(false);
     setSelectedCaseIds([]);
-    setConstructionDate(toDateInputValue(row.constructionDate));
+    const nextDate = toDateInputValue(row.constructionDate);
+    setConstructionDate(nextDate);
+    setAvailabilityMonth(nextDate ? nextDate.slice(0, 7) : currentMonthKey());
     setPartnerId(row.partnerId ? String(row.partnerId) : "");
     setPartnerSearch("");
   };
@@ -822,6 +866,7 @@ function AttentionCases({
     setEditingRow(null);
     setBulkDialogOpen(true);
     setConstructionDate("");
+    setAvailabilityMonth(currentMonthKey());
     setPartnerId("");
     setPartnerSearch("");
   };
@@ -1021,8 +1066,8 @@ function AttentionCases({
         )}
       </CardContent>
     </Card>
-    <Dialog open={Boolean(editingRow) || bulkDialogOpen} onOpenChange={(open) => !open && closeScheduleDialog()}>
-      <DialogContent className="sm:max-w-lg">
+    <Dialog open={scheduleDialogOpen} onOpenChange={(open) => !open && closeScheduleDialog()}>
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{bulkDialogOpen ? `${selectedCaseIds.length}件の施工予定を一括設定` : editingRow?.constructionDate ? "施工予定日・施工業者を変更" : "施工予定日・施工業者を設定"}</DialogTitle>
           <DialogDescription>
@@ -1035,7 +1080,17 @@ function AttentionCases({
         <div className="space-y-4 pt-2">
           <div>
             <label htmlFor="dashboard-construction-date" className="text-sm font-medium">施工予定日</label>
-            <Input id="dashboard-construction-date" type="date" value={constructionDate} onChange={(event) => setConstructionDate(event.target.value)} className="mt-1.5" />
+            <Input
+              id="dashboard-construction-date"
+              type="date"
+              value={constructionDate}
+              onChange={(event) => {
+                const nextDate = event.target.value;
+                setConstructionDate(nextDate);
+                if (nextDate) setAvailabilityMonth(nextDate.slice(0, 7));
+              }}
+              className="mt-1.5"
+            />
           </div>
           <div>
             <label className="text-sm font-medium">施工業者</label>
@@ -1053,6 +1108,76 @@ function AttentionCases({
             {!partnerOptionsLoading && partnerOptions.length === 0 && <p className="text-xs text-red-600 mt-1.5">有効な施工業者が登録されていません。</p>}
             {!partnerOptionsLoading && partnerOptions.length > 0 && filteredPartnerOptions.length === 0 && <p className="text-xs text-muted-foreground mt-1.5">検索条件に一致する業者がありません。</p>}
           </div>
+          {partnerId && (
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <p className="text-sm font-semibold">業者スケジュール・空き状況</p>
+                  <p className="text-xs text-muted-foreground">緑は空き、黄は他案件あり、赤は選択業者に予定ありです。</p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button type="button" size="icon" variant="outline" aria-label="前月" onClick={() => setAvailabilityMonth((month) => shiftMonthKey(month, -1))}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="min-w-24 text-center text-sm font-semibold">{formatMonthLabel(availabilityMonth)}</span>
+                  <Button type="button" size="icon" variant="outline" aria-label="翌月" onClick={() => setAvailabilityMonth((month) => shiftMonthKey(month, 1))}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              {scheduleAvailabilityLoading ? (
+                <div className="py-8 text-center text-sm text-muted-foreground"><Loader2 className="inline h-4 w-4 mr-2 animate-spin" />予定を読み込み中</div>
+              ) : scheduleAvailabilityError ? (
+                <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">空き状況を取得できませんでした。再度お試しください。</div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-muted-foreground mb-1">
+                    {["日", "月", "火", "水", "木", "金", "土"].map((weekday) => <span key={weekday}>{weekday}</span>)}
+                  </div>
+                  <div className="grid grid-cols-7 gap-1">
+                    {availabilityCalendarCells.map((day, index) => day ? (
+                      <button
+                        key={day.date}
+                        type="button"
+                        onClick={() => setConstructionDate(day.date)}
+                        className={`min-h-16 rounded-md border px-1 py-1.5 text-left transition-colors ${constructionDate === day.date ? "ring-2 ring-primary ring-offset-1" : ""} ${day.partnerCount > 0 ? "border-red-300 bg-red-50 hover:bg-red-100" : day.totalCount > 0 ? "border-amber-300 bg-amber-50 hover:bg-amber-100" : "border-emerald-200 bg-emerald-50/60 hover:bg-emerald-100"}`}
+                      >
+                        <span className="block text-xs font-semibold">{Number(day.date.slice(-2))}</span>
+                        <span className={`block mt-1 text-[10px] font-medium ${day.partnerCount > 0 ? "text-red-700" : day.totalCount > 0 ? "text-amber-700" : "text-emerald-700"}`}>
+                          {day.partnerCount > 0 ? `業者 ${day.partnerCount}件` : "空き"}
+                        </span>
+                        {day.totalCount > 0 && <span className="block text-[9px] text-muted-foreground">全体 {day.totalCount}件</span>}
+                      </button>
+                    ) : <span key={`blank-${index}`} aria-hidden="true" />)}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          {constructionDate && selectedDayAvailability && (
+            <div className={`rounded-lg border p-3 ${selectedDayAvailability.totalCount >= 2 ? "border-red-300 bg-red-50" : selectedDayAvailability.totalCount === 1 ? "border-amber-300 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}>
+              <div className="flex items-start gap-2">
+                {selectedDayAvailability.totalCount > 0 ? <AlertTriangle className={`h-4 w-4 mt-0.5 ${selectedDayAvailability.totalCount >= 2 ? "text-red-600" : "text-amber-600"}`} /> : <CheckCircle2 className="h-4 w-4 mt-0.5 text-emerald-600" />}
+                <div>
+                  <p className="text-sm font-semibold">
+                    {selectedDayAvailability.totalCount === 0
+                      ? "この日は現在、他の施工予定がありません"
+                      : `同じ予定日に既に${selectedDayAvailability.totalCount}件あります`}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    保存後は全体 {selectedDayAvailability.totalCount + pendingScheduleCount}件・この業者 {selectedDayAvailability.partnerCount + pendingScheduleCount}件になります。
+                  </p>
+                  {selectedDayAvailability.partnerCases.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {selectedDayAvailability.partnerCases.slice(0, 5).map((item) => (
+                        <p key={item.caseId} className="text-xs">{item.requestNumber} / {item.storeName}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={closeScheduleDialog} disabled={scheduleCase.isPending || bulkScheduleCases.isPending}>キャンセル</Button>
             <Button type="button" onClick={saveSchedule} disabled={!constructionDate || !partnerId || scheduleCase.isPending || bulkScheduleCases.isPending}>

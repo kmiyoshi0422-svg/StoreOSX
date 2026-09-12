@@ -188,6 +188,7 @@ import { adminProcedure, financialProcedure, protectedProcedure, publicProcedure
 import { BUDGET_RATIO, calcBudget } from "../shared/budget";
 import { calcCaseProfit } from "../shared/profit";
 import { buildDashboardOverview, selectPreferredConstructionDate } from "../shared/dashboard";
+import { buildScheduleAvailability, monthDateRange } from "../shared/scheduleAvailability";
 import { buildStoreBulkLinkPreview } from "../shared/storeBulkLink";
 import { detectPrefecture, PREFECTURES } from "../shared/prefecture";
 import {
@@ -518,6 +519,30 @@ export const appRouter = router({
           area: partner.area,
         }));
     }),
+    scheduleAvailability: protectedProcedure
+      .input(z.object({
+        partnerId: z.number().int().positive(),
+        month: z.string().regex(/^\d{4}-\d{2}$/),
+        excludeCaseIds: z.array(z.number().int().positive()).max(100).optional(),
+      }))
+      .query(async ({ ctx, input }) => {
+        if (!canManageCases(ctx.user.role)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "業者スケジュールの閲覧権限がありません" });
+        }
+        const { start, end } = monthDateRange(input.month);
+        const [allCases, routes] = await Promise.all([
+          listCasesSummary(),
+          listCrossPartnerRoutes(start, end),
+        ]);
+        const visibleCases = await applyCaseVisibility(allCases, ctx.user);
+        return buildScheduleAvailability({
+          cases: visibleCases,
+          routes,
+          partnerId: input.partnerId,
+          month: input.month,
+          excludeCaseIds: input.excludeCaseIds,
+        });
+      }),
     scheduleCase: protectedProcedure
       .input(z.object({
         caseId: z.number().int().positive(),

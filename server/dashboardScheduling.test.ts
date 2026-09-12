@@ -5,6 +5,8 @@ const dbMocks = vi.hoisted(() => ({
   getCaseById: vi.fn(),
   getPartnerById: vi.fn(),
   listPartners: vi.fn(),
+  listCasesSummary: vi.fn(),
+  listCrossPartnerRoutes: vi.fn(),
   listSchedulesByCase: vi.fn(),
   listRouteAssignmentsForCase: vi.fn(),
   updateCase: vi.fn(),
@@ -299,6 +301,51 @@ describe("dashboard.schedulingOptions", () => {
   it("協力業者には業者選択肢を返さない", async () => {
     const caller = appRouter.createCaller(createContext("partner"));
     await expect(caller.dashboard.schedulingOptions()).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
+
+describe("dashboard.scheduleAvailability", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dbMocks.listCasesSummary.mockResolvedValue([
+      {
+        id: 201,
+        requestNumber: "REQ-201",
+        storeName: "予定店舗A",
+        status: "施工待ち",
+        prefecture: "福岡県",
+        partnerId: 5,
+        contractorName: "施工業者A",
+        constructionDate: "2026-10-20",
+      },
+      {
+        id: 202,
+        requestNumber: "REQ-202",
+        storeName: "予定店舗B",
+        status: "施工中",
+        prefecture: "福岡県",
+        partnerId: 8,
+        contractorName: "施工業者B",
+        constructionDate: "2026-10-20",
+      },
+    ]);
+    dbMocks.listCrossPartnerRoutes.mockResolvedValue([]);
+  });
+
+  it("社員へ同一日の全案件数と選択業者の予定を返す", async () => {
+    const caller = appRouter.createCaller(createContext("user"));
+    const result = await caller.dashboard.scheduleAvailability({ partnerId: 5, month: "2026-10" });
+    const day = result.days.find((item) => item.date === "2026-10-20");
+    expect(day).toMatchObject({ totalCount: 2, partnerCount: 1 });
+    expect(day?.partnerCases[0]).toMatchObject({ caseId: 201, storeName: "予定店舗A" });
+    expect(dbMocks.listCrossPartnerRoutes).toHaveBeenCalledWith("2026-10-01", "2026-10-31");
+  });
+
+  it("協力業者は他業者の空き状況を取得できない", async () => {
+    const caller = appRouter.createCaller(createContext("partner"));
+    await expect(caller.dashboard.scheduleAvailability({ partnerId: 5, month: "2026-10" }))
+      .rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(dbMocks.listCasesSummary).not.toHaveBeenCalled();
   });
 });
 
