@@ -37,6 +37,8 @@ import {
   InsertRainLeakCheckItem,
   documents,
   InsertDocument,
+  zapierFileSyncs,
+  InsertZapierFileSync,
   pdfGenerationHistory,
   InsertPdfGenerationHistory,
   projectFolders,
@@ -65,6 +67,7 @@ import {
   InsertStoreDistributionBoard,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { createHash, randomUUID } from "node:crypto";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -1120,6 +1123,125 @@ export async function createDocument(doc: InsertDocument) {
   return result.insertId;
 }
 
+export async function getDocumentById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(documents).where(eq(documents.id, id)).limit(1);
+  return result[0];
+}
+
+/**
+ * Deployment safeguard for environments where migrations are applied after process start.
+ * The Drizzle migration remains the canonical schema; this only creates this new table if absent.
+ */
+export async function ensureZapierFileSyncSchema() {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql.raw(`
+    CREATE TABLE IF NOT EXISTS zapier_file_syncs (
+      id int AUTO_INCREMENT NOT NULL,
+      document_id int NOT NULL,
+      event_id varchar(64) NOT NULL,
+      callback_token_hash varchar(64) NOT NULL,
+      status enum('pending','sent','completed','failed','skipped') NOT NULL DEFAULT 'pending',
+      attempt_count int NOT NULL DEFAULT 0,
+      last_error text,
+      google_drive_file_id varchar(255),
+      google_drive_url varchar(1000),
+      zapier_table_record_id varchar(255),
+      requested_by int,
+      last_attempt_at timestamp NULL,
+      completed_at timestamp NULL,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uniq_zapier_sync_document (document_id),
+      UNIQUE KEY uniq_zapier_sync_event (event_id),
+      UNIQUE KEY uniq_zapier_sync_callback_token_hash (callback_token_hash),
+      KEY idx_zapier_sync_status (status)
+    )
+  `));
+}
+
+export async function createOrResetZapierFileSync(documentId: number, requestedBy?: number | null) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+
+  const eventId = randomUUID();
+  const callbackToken = randomUUID();
+  const callbackTokenHash = createHash("sha256").update(callbackToken).digest("hex");
+
+  const existing = await db.select().from(zapierFileSyncs)
+    .where(eq(zapierFileSyncs.documentId, documentId))
+    .limit(1);
+
+  if (existing[0]) {
+    await db.update(zapierFileSyncs).set({
+      eventId,
+      callbackTokenHash,
+      status: "pending",
+      lastError: null,
+      googleDriveFileId: null,
+      googleDriveUrl: null,
+      zapierTableRecordId: null,
+      completedAt: null,
+      requestedBy: requestedBy ?? existing[0].requestedBy,
+      updatedAt: new Date(),
+    }).where(eq(zapierFileSyncs.id, existing[0].id));
+    return { id: existing[0].id, documentId, eventId, callbackToken };
+  }
+
+  const row: InsertZapierFileSync = {
+    documentId,
+    eventId,
+    callbackTokenHash,
+    status: "pending",
+    requestedBy: requestedBy ?? null,
+  };
+  const [result] = await db.insert(zapierFileSyncs).values(row);
+  return { id: result.insertId, documentId, eventId, callbackToken };
+}
+
+export async function getZapierFileSyncByCallbackToken(callbackToken: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const callbackTokenHash = createHash("sha256").update(callbackToken).digest("hex");
+  const result = await db.select().from(zapierFileSyncs)
+    .where(eq(zapierFileSyncs.callbackTokenHash, callbackTokenHash))
+    .limit(1);
+  return result[0];
+}
+
+export async function updateZapierFileSync(id: number, data: Partial<InsertZapierFileSync>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.update(zapierFileSyncs).set({ ...data, updatedAt: new Date() })
+    .where(eq(zapierFileSyncs.id, id));
+}
+
+export async function updateZapierFileSyncForEvent(
+  id: number,
+  eventId: string,
+  data: Partial<InsertZapierFileSync>,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const [result] = await db.update(zapierFileSyncs)
+    .set({ ...data, updatedAt: new Date() })
+    .where(and(eq(zapierFileSyncs.id, id), eq(zapierFileSyncs.eventId, eventId)));
+  return result.affectedRows > 0;
+}
+
+export async function markZapierFileSyncAttempt(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.update(zapierFileSyncs).set({
+    attemptCount: sql`${zapierFileSyncs.attemptCount} + 1`,
+    lastAttemptAt: new Date(),
+    updatedAt: new Date(),
+  }).where(eq(zapierFileSyncs.id, id));
+}
+
 export async function listDocumentsByCase(caseId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -1189,9 +1311,15 @@ export async function listAllDocuments(opts: { category?: string; search?: strin
       createdAt: documents.createdAt,
       storeName: cases.storeName,
       requestNumber: cases.requestNumber,
+      zapierSyncStatus: zapierFileSyncs.status,
+      zapierSyncAttempts: zapierFileSyncs.attemptCount,
+      zapierSyncError: zapierFileSyncs.lastError,
+      googleDriveUrl: zapierFileSyncs.googleDriveUrl,
+      zapierSyncedAt: zapierFileSyncs.completedAt,
     })
     .from(documents)
     .leftJoin(cases, eq(documents.caseId, cases.id))
+    .leftJoin(zapierFileSyncs, eq(documents.id, zapierFileSyncs.documentId))
     .where(where)
     .orderBy(desc(documents.createdAt))
     .limit(limit)
@@ -1601,8 +1729,14 @@ export async function searchDocuments(query: string, opts?: { scope?: "case" | "
       memo: documents.memo,
       isLocked: documents.isLocked,
       createdAt: documents.createdAt,
+      zapierSyncStatus: zapierFileSyncs.status,
+      zapierSyncAttempts: zapierFileSyncs.attemptCount,
+      zapierSyncError: zapierFileSyncs.lastError,
+      googleDriveUrl: zapierFileSyncs.googleDriveUrl,
+      zapierSyncedAt: zapierFileSyncs.completedAt,
     })
     .from(documents)
+    .leftJoin(zapierFileSyncs, eq(documents.id, zapierFileSyncs.documentId))
     .where(and(...conditions))
     .orderBy(desc(documents.createdAt))
     .limit(opts?.limit || 50);

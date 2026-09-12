@@ -560,6 +560,35 @@ export type Document = typeof documents.$inferSelect;
 export type InsertDocument = typeof documents.$inferInsert;
 
 /**
+ * Zapierファイル連携状態
+ * ファイル本体はS3、資料情報はdocuments、外部バックアップの状態だけをここで追跡する。
+ */
+export const zapierFileSyncs = mysqlTable("zapier_file_syncs", {
+  id: int("id").autoincrement().primaryKey(),
+  documentId: int("document_id").notNull(),
+  eventId: varchar("event_id", { length: 64 }).notNull(),
+  callbackTokenHash: varchar("callback_token_hash", { length: 64 }).notNull(),
+  status: mysqlEnum("status", ["pending", "sent", "completed", "failed", "skipped"]).default("pending").notNull(),
+  attemptCount: int("attempt_count").default(0).notNull(),
+  lastError: text("last_error"),
+  googleDriveFileId: varchar("google_drive_file_id", { length: 255 }),
+  googleDriveUrl: varchar("google_drive_url", { length: 1000 }),
+  zapierTableRecordId: varchar("zapier_table_record_id", { length: 255 }),
+  requestedBy: int("requested_by"),
+  lastAttemptAt: timestamp("last_attempt_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  uniqDocument: unique("uniq_zapier_sync_document").on(t.documentId),
+  uniqEvent: unique("uniq_zapier_sync_event").on(t.eventId),
+  uniqCallbackTokenHash: unique("uniq_zapier_sync_callback_token_hash").on(t.callbackTokenHash),
+  statusIdx: index("idx_zapier_sync_status").on(t.status),
+}));
+export type ZapierFileSync = typeof zapierFileSyncs.$inferSelect;
+export type InsertZapierFileSync = typeof zapierFileSyncs.$inferInsert;
+
+/**
  * PDF生成履歴（報告書・写真台帳・ダッシュボード等）
  * PDF本体はS3へ保存し、DBには検索・再ダウンロード用メタデータのみ保持する。
  */

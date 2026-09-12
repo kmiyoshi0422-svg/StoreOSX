@@ -6,6 +6,8 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
 import { registerCalendarFeedRoutes } from "../calendarFeedRoutes.js";
+import { registerZapierFileSyncRoutes } from "../zapierFileSyncRoutes.js";
+import { ensureZapierFileSyncSchema } from "../db.js";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -30,6 +32,12 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+  try {
+    await ensureZapierFileSyncSchema();
+  } catch (error) {
+    console.error("Zapier file sync schema initialization failed:", error);
+  }
+
   const app = express();
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads
@@ -38,6 +46,7 @@ async function startServer() {
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   registerCalendarFeedRoutes(app);
+  registerZapierFileSyncRoutes(app);
 
   // Scheduled tasks (Heartbeat callbacks)
   app.post("/api/scheduled/monthly-expense-report", async (_req, res) => {

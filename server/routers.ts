@@ -84,6 +84,8 @@ import {
   upsertRainLeakCheckItems,
   updateRainLeakCheckItem,
   createDocument,
+  getDocumentById,
+  createOrResetZapierFileSync,
   listDocumentsByCase,
   listAllDocuments,
   deleteDocument,
@@ -167,6 +169,13 @@ import {
 } from "../shared/route-planner";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { storagePut, storageGetSignedUrl, storageUrlForRead } from "./storage";
+import {
+  dispatchZapierFileSync,
+  getZapierFileSyncConfig,
+  isAllowedZapierWebhookUrl,
+  ZAPIER_FILE_TABLE_ID,
+  ZAPIER_FILE_WEBHOOK_SETTING,
+} from "./zapierFileSync";
 import { systemRouter } from "./_core/systemRouter";
 import { TRPCError } from "@trpc/server";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -4389,6 +4398,24 @@ JSONスキーマに従って回答してください。`,
   // Documents (図面・仕様書・資料)
   // ============================================================
   documents: router({
+    zapierConfig: protectedProcedure.query(async () => {
+      const config = await getZapierFileSyncConfig();
+      return { configured: config.configured, tableId: ZAPIER_FILE_TABLE_ID };
+    }),
+
+    saveZapierConfig: adminProcedure
+      .input(z.object({ webhookUrl: z.string().trim().max(1000) }))
+      .mutation(async ({ input }) => {
+        if (input.webhookUrl && !isAllowedZapierWebhookUrl(input.webhookUrl)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "hooks.zapier.com のCatch Hook URLを入力してください",
+          });
+        }
+        await setAppSetting(ZAPIER_FILE_WEBHOOK_SETTING, input.webhookUrl);
+        return { configured: Boolean(input.webhookUrl), tableId: ZAPIER_FILE_TABLE_ID };
+      }),
+
     list: protectedProcedure
       .input(z.object({ caseId: z.number() }))
       .query(async ({ input, ctx }) => {
@@ -4405,6 +4432,9 @@ JSONスキーマに従って回答してください。`,
         scope: z.enum(["case", "shared", "all"]).optional(),
       }).optional())
       .query(async ({ input, ctx }) => {
+        if (ctx.user.role === "partner") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "資料DB庫の閲覧権限がありません" });
+        }
         const result = await listAllDocuments(input || {});
         return {
           ...result,
@@ -4431,6 +4461,9 @@ JSONスキーマに従って回答してください。`,
         tags: z.string().optional(), // JSON array string
       }))
       .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role === "partner") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "資料アップロード権限がありません" });
+        }
         // Upload to S3
         const ext = input.fileName.split(".").pop() || "bin";
         const folder = input.caseId ? `documents/${input.caseId}` : "documents/shared";
@@ -4454,7 +4487,34 @@ JSONスキーマに従って回答してください。`,
         if (input.tags) {
           await updateDocumentTags(id, input.tags);
         }
-        return { id, fileUrl: url };
+        const document = await getDocumentById(id);
+        if (!document) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "資料台帳の作成に失敗しました" });
+        const sync = await createOrResetZapierFileSync(id, ctx.user.id);
+        const caseData = document.caseId ? await getCaseById(document.caseId) : null;
+        const zapierResult = await dispatchZapierFileSync({
+          sync,
+          document,
+          caseData,
+        });
+        return { id, fileUrl: url, zapierSyncStatus: zapierResult.status, zapierSyncError: zapierResult.error };
+      }),
+
+    retryZapierSync: protectedProcedure
+      .input(z.object({ documentId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role === "partner") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Zapier連携の再送権限がありません" });
+        }
+        const document = await getDocumentById(input.documentId);
+        if (!document) throw new TRPCError({ code: "NOT_FOUND", message: "資料が見つかりません" });
+        const sync = await createOrResetZapierFileSync(document.id, ctx.user.id);
+        const caseData = document.caseId ? await getCaseById(document.caseId) : null;
+        const result = await dispatchZapierFileSync({
+          sync,
+          document,
+          caseData,
+        });
+        return result;
       }),
 
     updateTags: protectedProcedure
@@ -4591,6 +4651,9 @@ JSONスキーマに従って回答してください。`,
     search: protectedProcedure
       .input(z.object({ query: z.string().min(1), scope: z.enum(["case", "shared", "all"]).optional(), limit: z.number().optional() }))
       .query(async ({ input, ctx }) => {
+        if (ctx.user.role === "partner") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "資料DB庫の検索権限がありません" });
+        }
         const items = await searchDocuments(input.query, {
           scope: input.scope || "all",
           limit: input.limit,

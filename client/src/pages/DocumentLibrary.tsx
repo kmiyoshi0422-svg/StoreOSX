@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { useState, useMemo, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Loader2, FileText, Search, Eye, Library, ExternalLink, Upload, Lock, Unlock,
   Plus, Tag, Globe, FolderOpen, History, X, ChevronDown, ChevronRight, Download,
+  Cloud, CloudOff, RefreshCw, Settings2, CircleCheck, TriangleAlert,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -72,6 +74,7 @@ function parseTags(tagsStr: string | null | undefined): string[] {
 type ViewMode = "documents" | "folders";
 
 export default function DocumentLibrary() {
+  const { user } = useAuth();
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string>("all");
@@ -83,6 +86,7 @@ export default function DocumentLibrary() {
   const [selectedDocForHistory, setSelectedDocForHistory] = useState<number | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showZapierDialog, setShowZapierDialog] = useState(false);
   const limit = 30;
 
   const queryInput = useMemo(() => ({
@@ -96,6 +100,7 @@ export default function DocumentLibrary() {
   const { data, isLoading } = trpc.documents.listAll.useQuery(queryInput);
   const { data: casesData } = trpc.cases.listSummary.useQuery();
   const { data: foldersData, isLoading: foldersLoading } = trpc.projectFolders.list.useQuery();
+  const { data: zapierConfig } = trpc.documents.zapierConfig.useQuery();
   const { data: searchResults, isLoading: searchLoading } = trpc.documentSearch.search.useQuery(
     { query: searchQuery, scope: scope === "all" ? undefined : scope },
     { enabled: isSearching && searchQuery.length > 0 }
@@ -106,10 +111,16 @@ export default function DocumentLibrary() {
   const totalPages = Math.ceil(total / limit);
 
   const uploadMutation = trpc.documents.upload.useMutation({
-    onSuccess: () => {
+    onSuccess: (result) => {
       utils.documents.listAll.invalidate();
       setShowUploadDialog(false);
-      toast.success("ファイルをアップロードしました");
+      if (result.zapierSyncStatus === "sent") {
+        toast.success("アップロードし、Zapierへクラウド保存を依頼しました");
+      } else if (result.zapierSyncStatus === "skipped") {
+        toast.warning("アップロード完了。Zapier設定後に再送してください");
+      } else {
+        toast.warning("アップロード完了。Zapier連携は再送できます");
+      }
     },
     onError: () => toast.error("アップロードに失敗しました"),
   });
@@ -120,6 +131,15 @@ export default function DocumentLibrary() {
       toast.success("ロック状態を変更しました");
     },
     onError: () => toast.error("ロック変更に失敗しました"),
+  });
+
+  const retryZapierMutation = trpc.documents.retryZapierSync.useMutation({
+    onSuccess: (result) => {
+      utils.documents.listAll.invalidate();
+      if (result.status === "sent") toast.success("Zapierへ再送しました");
+      else toast.error(result.error || "Zapierへの再送に失敗しました");
+    },
+    onError: (error) => toast.error(error.message || "Zapierへの再送に失敗しました"),
   });
 
   const handleSearchSubmit = () => {
@@ -149,6 +169,12 @@ export default function DocumentLibrary() {
             <FolderOpen className="h-4 w-4 mr-1" />
             フォルダ管理
           </Button>
+          {user && ["admin", "owner"].includes(user.role) && (
+            <Button size="sm" variant="outline" onClick={() => setShowZapierDialog(true)}>
+              <Settings2 className="h-4 w-4 mr-1" />
+              Zapier設定
+            </Button>
+          )}
           <Button size="sm" onClick={() => setShowUploadDialog(true)}>
             <Plus className="h-4 w-4 mr-1" />
             アップロード
@@ -169,6 +195,16 @@ export default function DocumentLibrary() {
           </TabsTrigger>
         </TabsList>
       </Tabs>
+
+      <div className={`rounded-lg border p-3 text-sm flex items-start gap-2 ${zapierConfig?.configured ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+        {zapierConfig?.configured ? <Cloud className="h-4 w-4 mt-0.5" /> : <CloudOff className="h-4 w-4 mt-0.5" />}
+        <div>
+          <p className="font-medium">{zapierConfig?.configured ? "Zapierクラウド連携は有効です" : "Zapierクラウド連携は未設定です"}</p>
+          <p className="text-xs mt-0.5 opacity-80">
+            StoreOSXのクラウドストレージと資料DBへの保存は常に行い、設定済みの場合はGoogle Drive保存とZapier Tables台帳記録も開始します。
+          </p>
+        </div>
+      </div>
 
       {viewMode === "documents" ? (
         <>
@@ -287,6 +323,24 @@ export default function DocumentLibrary() {
                               制限付き
                             </Badge>
                           )}
+                          {doc.zapierSyncStatus === "completed" && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-400 text-emerald-700 bg-emerald-50">
+                              <CircleCheck className="h-2.5 w-2.5 mr-0.5" />
+                              Drive保存済
+                            </Badge>
+                          )}
+                          {doc.zapierSyncStatus === "sent" && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-blue-300 text-blue-700 bg-blue-50">
+                              <Cloud className="h-2.5 w-2.5 mr-0.5" />
+                              Zapier処理中
+                            </Badge>
+                          )}
+                          {["failed", "skipped"].includes(doc.zapierSyncStatus) && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-400 text-amber-700 bg-amber-50" title={doc.zapierSyncError || undefined}>
+                              <TriangleAlert className="h-2.5 w-2.5 mr-0.5" />
+                              連携待ち
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                           {doc.storeName && (
@@ -315,6 +369,29 @@ export default function DocumentLibrary() {
                         )}
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
+                        {doc.googleDriveUrl && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0"
+                            onClick={() => window.open(doc.googleDriveUrl, "_blank", "noopener,noreferrer")}
+                            title="Google Driveで開く"
+                          >
+                            <Cloud className="h-3.5 w-3.5 text-emerald-600" />
+                          </Button>
+                        )}
+                        {doc.zapierSyncStatus !== "completed" && zapierConfig?.configured && user?.role !== "partner" && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0"
+                            disabled={retryZapierMutation.isPending && retryZapierMutation.variables?.documentId === doc.id}
+                            onClick={() => retryZapierMutation.mutate({ documentId: doc.id })}
+                            title="Zapierへ再送"
+                          >
+                            <RefreshCw className={`h-3.5 w-3.5 ${retryZapierMutation.isPending && retryZapierMutation.variables?.documentId === doc.id ? "animate-spin" : ""}`} />
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="ghost"
@@ -382,6 +459,13 @@ export default function DocumentLibrary() {
       <FolderManagementDialog
         open={showFolderDialog}
         onOpenChange={setShowFolderDialog}
+      />
+
+      <ZapierSettingsDialog
+        open={showZapierDialog}
+        onOpenChange={setShowZapierDialog}
+        configured={Boolean(zapierConfig?.configured)}
+        tableId={zapierConfig?.tableId || ""}
       />
 
       {/* Version History Dialog */}
@@ -696,6 +780,76 @@ function FolderManagementDialog({ open, onOpenChange }: { open: boolean; onOpenC
               ))}
             </div>
           )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Zapier Settings Dialog ─────────────────────────────
+function ZapierSettingsDialog({
+  open,
+  onOpenChange,
+  configured,
+  tableId,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  configured: boolean;
+  tableId: string;
+}) {
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const utils = trpc.useUtils();
+  const saveMutation = trpc.documents.saveZapierConfig.useMutation({
+    onSuccess: (result) => {
+      utils.documents.zapierConfig.invalidate();
+      setWebhookUrl("");
+      onOpenChange(false);
+      toast.success(result.configured ? "Zapier Catch Hookを保存しました" : "Zapier連携を解除しました");
+    },
+    onError: (error) => toast.error(error.message || "Zapier設定の保存に失敗しました"),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Cloud className="h-5 w-5" />
+            Zapierクラウド連携
+          </DialogTitle>
+          <DialogDescription>
+            Webhooks by Zapier の Catch Hook URLを保存すると、資料アップロード後にGoogle Drive保存とZapier Tables台帳記録を開始します。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 mt-2">
+          <div className={`rounded-lg border p-3 text-sm ${configured ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+            現在の状態: <strong>{configured ? "設定済み" : "未設定"}</strong>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Catch Hook URL</Label>
+            <Input
+              type="url"
+              value={webhookUrl}
+              onChange={(event) => setWebhookUrl(event.target.value)}
+              placeholder="https://hooks.zapier.com/hooks/catch/..."
+            />
+            <p className="text-xs text-muted-foreground">URLは画面へ再表示しません。変更時は新しいURLを入力してください。</p>
+          </div>
+          <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
+            Zapier Tables ID: <code className="font-mono">{tableId}</code>
+          </div>
+          <div className="flex justify-end gap-2">
+            {configured && (
+              <Button variant="outline" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate({ webhookUrl: "" })}>
+                連携解除
+              </Button>
+            )}
+            <Button disabled={!webhookUrl.trim() || saveMutation.isPending} onClick={() => saveMutation.mutate({ webhookUrl: webhookUrl.trim() })}>
+              {saveMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              保存
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
