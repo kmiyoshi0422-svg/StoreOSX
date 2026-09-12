@@ -1195,3 +1195,12 @@
 - [x] 重複・曖昧候補・既存紐付け済み案件を安全に除外
 - [x] DB適用・実DBスモーク・305 Vitest・型チェック・本番ビルドを完走
 - [x] StoreOSX mainと既存公開ドメインへ反映（7b46db7）
+
+## ルートページSEO修正（ユーザー指定の厳格上限）
+- [x] meta keywordsを6個の関連キーワードで追加
+- [x] 説明的なH2見出しを追加し33文字にする
+- [x] document.titleを53文字に変更
+- [x] meta descriptionを82文字に追加
+- [x] 文字数・キーワード数を自動テストで固定
+- [x] TypeScript・308 Vitest・本番ビルド・生成HTMLを確認
+- [ ] StoreOSX mainと既存公開ドメインへ反映

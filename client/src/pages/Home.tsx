@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,6 +57,7 @@ import {
   CalendarDays,
 } from "lucide-react";
 import { usePdfHistoryRecorder } from "@/hooks/usePdfHistoryRecorder";
+import { applyRootSeoMetadata, ROOT_SEO } from "@/lib/seo";
 
 const STATUS_COLORS: Record<string, string> = {
   受付: "bg-slate-100 text-slate-700 border-slate-200",
@@ -193,6 +194,10 @@ export default function Home() {
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [pdfProgress, setPdfProgress] = useState("");
   const [drilldown, setDrilldown] = useState<DrilldownState>(null);
+
+  useEffect(() => {
+    applyRootSeoMetadata();
+  }, []);
 
   const cases = (dashboard?.cases ?? []) as DashboardCase[];
   const recent = (dashboard?.recentCases ?? []) as DashboardCase[];
@@ -406,6 +411,7 @@ export default function Home() {
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-2">Store OSX · Dashboard</p>
           <h1 className="font-serif-jp text-3xl md:text-4xl font-semibold tracking-tight">Store OSX</h1>
+          <h2 className="text-base md:text-lg font-medium mt-2">{ROOT_SEO.h2}</h2>
           <p className="text-sm text-muted-foreground mt-2">プレナス修理依頼案件の施工管理をチーム全員で管理・共有</p>
           <p className="text-[11px] text-muted-foreground mt-2">最終集計: {new Date(dashboard.generatedAt).toLocaleString("ja-JP")}</p>
         </div>
@@ -685,6 +691,7 @@ function PartnerDashboard({
         <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
           {userName}さんの担当案件
         </h1>
+        <h2 className="text-base font-medium mt-2">{ROOT_SEO.h2}</h2>
         <p className="text-sm text-muted-foreground mt-1">
           担当案件の進捗状況を確認できます
         </p>
