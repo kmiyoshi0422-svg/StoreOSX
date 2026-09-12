@@ -294,6 +294,7 @@ export async function listCasesSummary() {
       categoryMedium: cases.categoryMedium,
       categorySmall: cases.categorySmall,
       requestContent: cases.requestContent,
+      contractorName: cases.contractorName,
       requesterName: cases.requesterName,
       createdAt: cases.createdAt,
       revisitCount: cases.revisitCount,

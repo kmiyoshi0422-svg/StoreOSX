@@ -114,6 +114,7 @@ type DashboardCase = {
   categoryMedium?: string | null;
   categorySmall?: string | null;
   requestContent?: string | null;
+  contractorName?: string | null;
 };
 
 type AttentionCase = DashboardCase & {
@@ -453,7 +454,7 @@ export default function Home() {
 
       {periodControls}
 
-      <AttentionCases groups={attentionCases} setLocation={setLocation} />
+      <AttentionCases groups={attentionCases} setLocation={setLocation} canEditSchedule />
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
         <KpiCard icon={<ClipboardList className="h-4 w-4" />} label="案件総数" value={kpis?.total ?? 0} accent="text-primary" secondary="全案件の内訳" onClick={() => openDrilldown("all", "案件総数の内訳")} />
@@ -662,11 +663,68 @@ const ATTENTION_GROUPS: Array<{
   },
 ];
 
-function AttentionCases({ groups, setLocation }: { groups: AttentionCaseGroups; setLocation: (path: string) => void }) {
+function AttentionCases({
+  groups,
+  setLocation,
+  canEditSchedule = false,
+}: {
+  groups: AttentionCaseGroups;
+  setLocation: (path: string) => void;
+  canEditSchedule?: boolean;
+}) {
   const [activeGroup, setActiveGroup] = useState<AttentionGroupKey>("threeMonthsOrMore");
+  const [editingRow, setEditingRow] = useState<AttentionCase | null>(null);
+  const [constructionDate, setConstructionDate] = useState("");
+  const [partnerId, setPartnerId] = useState("");
+  const [partnerSearch, setPartnerSearch] = useState("");
   const activeMeta = ATTENTION_GROUPS.find((group) => group.key === activeGroup) ?? ATTENTION_GROUPS[0];
   const rows = groups[activeGroup] ?? [];
+  const utils = trpc.useUtils();
+  const { data: partnerOptions = [], isLoading: partnerOptionsLoading } = trpc.dashboard.schedulingOptions.useQuery(undefined, {
+    enabled: canEditSchedule,
+  });
+  const filteredPartnerOptions = useMemo(() => {
+    const keyword = partnerSearch.trim().toLowerCase();
+    if (!keyword) return partnerOptions;
+    return partnerOptions.filter((partner) =>
+      [partner.name, partner.category, partner.area].filter(Boolean).join(" ").toLowerCase().includes(keyword),
+    );
+  }, [partnerOptions, partnerSearch]);
+  const scheduleCase = trpc.dashboard.scheduleCase.useMutation({
+    onSuccess: async (result) => {
+      toast.success(`${result.partner.name}で施工予定を設定しました`);
+      setEditingRow(null);
+      setConstructionDate("");
+      setPartnerId("");
+      setPartnerSearch("");
+      await Promise.all([
+        utils.dashboard.overview.invalidate(),
+        utils.crossSchedule.list.invalidate(),
+        utils.cases.listSummary.invalidate(),
+      ]);
+    },
+    onError: (mutationError) => {
+      toast.error(mutationError.message || "施工予定を保存できませんでした");
+    },
+  });
+
+  const openScheduleDialog = (row: AttentionCase) => {
+    setEditingRow(row);
+    setConstructionDate("");
+    setPartnerId("");
+    setPartnerSearch("");
+  };
+
+  const saveSchedule = () => {
+    if (!editingRow || !constructionDate || !partnerId) return;
+    scheduleCase.mutate({
+      caseId: editingRow.id,
+      constructionDate,
+      partnerId: Number(partnerId),
+    });
+  };
   return (
+    <>
     <Card className="border-slate-200 bg-slate-50/30">
       <CardContent className="p-0">
         <div className="p-5 border-b border-slate-200">
@@ -706,34 +764,78 @@ function AttentionCases({ groups, setLocation }: { groups: AttentionCaseGroups; 
         ) : (
           <div className="divide-y divide-slate-100 max-h-[480px] overflow-auto">
             {rows.map((row) => (
-              <button
+              <div
                 key={row.id}
-                type="button"
-                onClick={() => setLocation(`/cases/${row.id}`)}
                 className="w-full text-left px-5 py-4 grid gap-3 md:grid-cols-[minmax(0,1.4fr)_120px_120px_minmax(190px,0.9fr)_20px] md:items-center hover:bg-slate-50 transition-colors"
               >
-                <div className="min-w-0">
+                <button type="button" onClick={() => setLocation(`/cases/${row.id}`)} className="min-w-0 text-left group">
                   <div className="flex items-center gap-2 mb-1"><span className="font-mono text-[11px] text-muted-foreground">{row.requestNumber}</span><Badge variant="outline" className={STATUS_COLORS[row.status]}>{row.status}</Badge></div>
-                  <p className="font-semibold truncate">{row.storeName}</p>
+                  <p className="font-semibold truncate group-hover:text-primary">{row.storeName}</p>
                   <p className="text-xs text-muted-foreground mt-1 truncate">{row.requestContent || "依頼内容未記入"}</p>
-                </div>
+                </button>
                 <div><p className="text-[10px] text-muted-foreground">依頼日</p><p className="text-sm font-medium mt-1">{formatDate(row.requestDate)}</p></div>
                 <div><p className="text-[10px] text-muted-foreground">経過日数</p><p className="text-lg font-bold text-slate-800 mt-0.5">{row.daysElapsed}日</p></div>
                 <div>
                   <p className="text-[10px] text-muted-foreground">施工予定日（予定週）</p>
                   {row.constructionDate ? (
-                    <><p className="text-sm font-semibold mt-1">{formatScheduleDate(row.constructionDate)}</p><p className="text-xs text-muted-foreground mt-0.5">{formatScheduleDate(row.constructionWeekStart)}〜{formatScheduleDate(row.constructionWeekEnd)}</p></>
+                    <><p className="text-sm font-semibold mt-1">{formatScheduleDate(row.constructionDate)}</p><p className="text-xs text-muted-foreground mt-0.5">{formatScheduleDate(row.constructionWeekStart)}〜{formatScheduleDate(row.constructionWeekEnd)}</p>{row.contractorName && <p className="text-xs font-medium text-slate-700 mt-1">施工業者：{row.contractorName}</p>}</>
                   ) : (
-                    <Badge variant="outline" className="mt-1 border-red-300 bg-red-50 text-red-700">施工予定日 未設定</Badge>
+                    <div className="mt-1 flex flex-col items-start gap-2">
+                      <Badge variant="outline" className="border-red-300 bg-red-50 text-red-700">施工予定日 未設定</Badge>
+                      {canEditSchedule && (
+                        <Button type="button" size="sm" onClick={() => openScheduleDialog(row)}>
+                          <CalendarDays className="h-3.5 w-3.5 mr-1.5" />予定日・業者を設定
+                        </Button>
+                      )}
+                    </div>
                   )}
                 </div>
-                <ChevronRight className="h-4 w-4 text-muted-foreground hidden md:block" />
-              </button>
+                <button type="button" onClick={() => setLocation(`/cases/${row.id}`)} aria-label={`${row.storeName}の案件詳細を開く`} className="hidden md:block"><ChevronRight className="h-4 w-4 text-muted-foreground" /></button>
+              </div>
             ))}
           </div>
         )}
       </CardContent>
     </Card>
+    <Dialog open={Boolean(editingRow)} onOpenChange={(open) => !open && setEditingRow(null)}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>施工予定日・施工業者を設定</DialogTitle>
+          <DialogDescription>
+            {editingRow ? `${editingRow.requestNumber} / ${editingRow.storeName}` : "対象案件"}の施工予定を登録します。保存後、予定週と横断工程表にも反映されます。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <div>
+            <label htmlFor="dashboard-construction-date" className="text-sm font-medium">施工予定日</label>
+            <Input id="dashboard-construction-date" type="date" value={constructionDate} onChange={(event) => setConstructionDate(event.target.value)} className="mt-1.5" />
+          </div>
+          <div>
+            <label className="text-sm font-medium">施工業者</label>
+            <Input value={partnerSearch} onChange={(event) => setPartnerSearch(event.target.value)} placeholder="業者名・カテゴリ・エリアで検索" className="mt-1.5" />
+            <Select value={partnerId} onValueChange={setPartnerId} disabled={partnerOptionsLoading}>
+              <SelectTrigger className="mt-1.5"><SelectValue placeholder={partnerOptionsLoading ? "業者を読み込み中" : "施工業者を選択"} /></SelectTrigger>
+              <SelectContent>
+                {filteredPartnerOptions.map((partner) => (
+                  <SelectItem key={partner.id} value={String(partner.id)}>
+                    {partner.name}（{partner.category}{partner.area ? `・${partner.area}` : ""}）
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!partnerOptionsLoading && partnerOptions.length === 0 && <p className="text-xs text-red-600 mt-1.5">有効な施工業者が登録されていません。</p>}
+            {!partnerOptionsLoading && partnerOptions.length > 0 && filteredPartnerOptions.length === 0 && <p className="text-xs text-muted-foreground mt-1.5">検索条件に一致する業者がありません。</p>}
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={() => setEditingRow(null)} disabled={scheduleCase.isPending}>キャンセル</Button>
+            <Button type="button" onClick={saveSchedule} disabled={!constructionDate || !partnerId || scheduleCase.isPending}>
+              {scheduleCase.isPending && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}保存する
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
@@ -869,7 +971,7 @@ function PartnerDashboard({
         </Card>
       </div>
 
-      <AttentionCases groups={attentionCases} setLocation={setLocation} />
+      <AttentionCases groups={attentionCases} setLocation={setLocation} canEditSchedule={false} />
 
       {/* 対応が必要な案件 */}
       {cases.filter((c: any) => c.status === "受付" || c.urgency === "S" || c.urgency === "A").length > 0 && (

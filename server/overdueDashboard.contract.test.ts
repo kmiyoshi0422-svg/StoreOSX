@@ -24,4 +24,20 @@ describe("経過案件3区分ダッシュボード", () => {
     expect(routerSource).toContain('route.taskType !== "construction"');
     expect(routerSource).toContain("selectPreferredConstructionDate(constructionDatesByCase.get(item.id) ?? [])");
   });
+
+  it("未設定行から施工予定日と施工業者を選択して保存できる", () => {
+    expect(homeSource).toContain("予定日・業者を設定");
+    expect(homeSource).toContain("施工予定日・施工業者を設定");
+    expect(homeSource).toContain("trpc.dashboard.schedulingOptions.useQuery");
+    expect(homeSource).toContain("trpc.dashboard.scheduleCase.useMutation");
+    expect(homeSource).toContain("utils.dashboard.overview.invalidate()");
+    expect(homeSource).toContain("utils.crossSchedule.list.invalidate()");
+  });
+
+  it("partner画面では設定操作を無効化し、APIでも拒否する", () => {
+    expect(homeSource).toContain("canEditSchedule={false}");
+    expect(homeSource).toContain("{canEditSchedule && (");
+    expect(routerSource).toContain('ctx.user.role === "partner"');
+    expect(routerSource).toContain("施工予定の設定権限がありません");
+  });
 });

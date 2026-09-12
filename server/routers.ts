@@ -369,6 +369,86 @@ export const appRouter = router({
         },
       };
     }),
+    schedulingOptions: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role === "partner") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "施工予定の設定権限がありません" });
+      }
+      const partnerRows = await listPartners();
+      return partnerRows
+        .filter((partner) => partner.isActive && !partner.name.includes("テスト"))
+        .map((partner) => ({
+          id: partner.id,
+          name: partner.name,
+          category: partner.category,
+          area: partner.area,
+        }));
+    }),
+    scheduleCase: protectedProcedure
+      .input(z.object({
+        caseId: z.number().int().positive(),
+        constructionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "施工予定日を選択してください"),
+        partnerId: z.number().int().positive(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role === "partner") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "施工予定の設定権限がありません" });
+        }
+        const [caseData, partner] = await Promise.all([
+          getCaseById(input.caseId),
+          getPartnerById(input.partnerId),
+        ]);
+        if (!caseData) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        }
+        if (!partner || !partner.isActive) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "有効な施工業者を選択してください" });
+        }
+
+        const constructionDate = new Date(`${input.constructionDate}T12:00:00+09:00`);
+        if (Number.isNaN(constructionDate.getTime()) || constructionDate.toISOString().slice(0, 10) !== input.constructionDate) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "施工予定日が正しくありません" });
+        }
+
+        await updateCase(input.caseId, {
+          constructionDate,
+          partnerId: partner.id,
+          contractorName: partner.name,
+          contractorPic: partner.pic ?? null,
+          contractorPhone: partner.picPhone ?? partner.phone ?? null,
+        });
+
+        const schedules = await listSchedulesByCase(input.caseId);
+        const constructionSchedule = schedules.find((schedule) => schedule.title === "施工");
+        if (constructionSchedule) {
+          await updateSchedule(constructionSchedule.id, {
+            startDate: input.constructionDate,
+            endDate: input.constructionDate,
+            status: "予定",
+            color: "#f97316",
+            memo: "ダッシュボードから施工予定日を設定",
+          });
+        } else {
+          await createSchedule({
+            caseId: input.caseId,
+            title: "施工",
+            startDate: input.constructionDate,
+            endDate: input.constructionDate,
+            status: "予定",
+            color: "#f97316",
+            memo: "ダッシュボードから施工予定日を設定",
+            progress: 0,
+            orderNo: schedules.length,
+            createdBy: ctx.user.id,
+          });
+        }
+
+        return {
+          success: true,
+          caseId: input.caseId,
+          constructionDate,
+          partner: { id: partner.id, name: partner.name },
+        };
+      }),
   }),
 
   pdfHistory: router({
