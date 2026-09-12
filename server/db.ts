@@ -160,6 +160,29 @@ export async function getAllUsers() {
   return db.select().from(users);
 }
 
+export async function updateUserAccess(
+  id: number,
+  data: {
+    role: "user" | "executive" | "admin" | "owner" | "partner" | "customer";
+    areaAccessMode: "all" | "selected";
+    allowedPrefectures: string[];
+  },
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(users)
+    .set({
+      role: data.role,
+      areaAccessMode: data.areaAccessMode,
+      allowedPrefectures:
+        data.areaAccessMode === "selected"
+          ? JSON.stringify(data.allowedPrefectures)
+          : null,
+    })
+    .where(eq(users.id, id));
+}
+
 // ============================================================
 // Cases
 // ============================================================
@@ -249,8 +272,8 @@ export function buildStoreSummariesQuery(db: StoreSummaryDatabase) {
       brand: sql<string | null>`MAX(CASE WHEN ${rankedCases.brandRank} = 1 THEN ${rankedCases.brand} END)`,
       address: sql<string | null>`MAX(CASE WHEN ${rankedCases.addressRank} = 1 THEN ${rankedCases.address} END)`,
       caseCount: sql<number>`COUNT(*)`.mapWith(Number),
-      openCount: sql<number>`SUM(CASE WHEN ${rankedCases.status} IN ('完了', 'クローズ') THEN 0 ELSE 1 END)`.mapWith(Number),
-      completedCount: sql<number>`SUM(CASE WHEN ${rankedCases.status} IN ('完了', 'クローズ') THEN 1 ELSE 0 END)`.mapWith(Number),
+      openCount: sql<number>`SUM(CASE WHEN ${rankedCases.status} IN ('完了', 'クローズ', '失注') THEN 0 ELSE 1 END)`.mapWith(Number),
+      completedCount: sql<number>`SUM(CASE WHEN ${rankedCases.status} IN ('完了', 'クローズ', '失注') THEN 1 ELSE 0 END)`.mapWith(Number),
       urgentCount: sql<number>`SUM(CASE WHEN ${rankedCases.urgency} IN ('S', 'A') THEN 1 ELSE 0 END)`.mapWith(Number),
       totalEstimated: sql<number>`COALESCE(SUM(${rankedCases.estimatedCost}), 0)`.mapWith(Number),
       totalActual: sql<number>`COALESCE(SUM(${rankedCases.actualCost}), 0)`.mapWith(Number),
@@ -306,6 +329,11 @@ export async function listCasesSummary() {
       surveyDate: cases.surveyDate,
       partnerId: cases.partnerId,
       amountApproved: cases.amountApproved,
+      lostReason: cases.lostReason,
+      lostReasonDetail: cases.lostReasonDetail,
+      lostAt: cases.lostAt,
+      lostBy: cases.lostBy,
+      preLostStatus: cases.preLostStatus,
     })
     .from(cases)
     .orderBy(desc(cases.createdAt));
@@ -325,6 +353,7 @@ export async function listCasesForMap() {
       storeName: cases.storeName,
       brand: cases.brand,
       address: cases.address,
+      prefecture: cases.prefecture,
       storePhone: cases.storePhone,
       latitude: cases.latitude,
       longitude: cases.longitude,
@@ -352,6 +381,8 @@ export async function listCasesMinimal() {
       storeName: cases.storeName,
       brand: cases.brand,
       address: cases.address,
+      prefecture: cases.prefecture,
+      partnerId: cases.partnerId,
     })
     .from(cases)
     .orderBy(desc(cases.createdAt));
@@ -370,6 +401,7 @@ export async function listCasesForBudget() {
       requestNumber: cases.requestNumber,
       storeName: cases.storeName,
       brand: cases.brand,
+      prefecture: cases.prefecture,
       status: cases.status,
       progressStage: cases.progressStage,
       urgency: cases.urgency,

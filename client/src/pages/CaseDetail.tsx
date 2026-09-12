@@ -157,6 +157,8 @@ export default function CaseDetail({ id }: { id: number }) {
   const { user } = useAuth();
   const isPartner = user?.role === 'partner';
   const isOwnerOrAdmin = user?.role === 'owner' || user?.role === 'admin';
+  const canViewFinancials = isOwnerOrAdmin || user?.role === 'executive';
+  const canManageCase = isOwnerOrAdmin || user?.role === 'executive' || user?.role === 'user';
   const utils = trpc.useUtils();
   const [activeTab, setActiveTab] = useState("info");
   const { data: caseData, isLoading } = trpc.cases.get.useQuery({ id });
@@ -233,7 +235,7 @@ export default function CaseDetail({ id }: { id: number }) {
             </div>
           </div>
           <div className="flex flex-wrap gap-2 shrink-0">
-            {!isPartner && (
+            {canViewFinancials && (
               <Button
                 variant="outline"
                 size="sm"
@@ -267,7 +269,7 @@ export default function CaseDetail({ id }: { id: number }) {
         </div>
       </div>
 
-      {!isPartner && (
+      {canManageCase && (
         <StoreMasterLinkPanel
           caseId={id}
           currentStoreId={(caseData as any).storeId ?? null}
@@ -308,19 +310,19 @@ export default function CaseDetail({ id }: { id: number }) {
                 {photos.length}
               </Badge>
             </TabsTrigger>
-            {!isPartner && (
+            {canViewFinancials && (
               <TabsTrigger value="estimates" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
                 <Receipt className="h-3.5 w-3.5" />
                 見積書
               </TabsTrigger>
             )}
-            {!isPartner && (
+            {canViewFinancials && (
               <TabsTrigger value="profit" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
                 <Wallet className="h-3.5 w-3.5" />
                 収支
               </TabsTrigger>
             )}
-            {!isPartner && (
+            {!isPartner && user?.role !== "customer" && (
               <TabsTrigger value="expenses" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
                 <Receipt className="h-3.5 w-3.5" />
                 経費
@@ -338,7 +340,7 @@ export default function CaseDetail({ id }: { id: number }) {
               <Clock className="h-3.5 w-3.5" />
               履歴
             </TabsTrigger>
-            {!isPartner && (caseData as any).storeId && (
+            {canManageCase && (caseData as any).storeId && (
               <TabsTrigger value="storeHistory" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
                 <Building2 className="h-3.5 w-3.5" />
                 店舗履歴
@@ -348,7 +350,14 @@ export default function CaseDetail({ id }: { id: number }) {
         </div>
 
         <TabsContent value="info">
-          <InfoTab caseData={caseData} onUpdated={() => utils.cases.get.invalidate({ id })} isPartner={isPartner} />
+          <InfoTab
+            caseData={caseData}
+            onUpdated={() => utils.cases.get.invalidate({ id })}
+            isPartner={isPartner}
+            canManageCase={canManageCase}
+            canViewFinancials={canViewFinancials}
+            canDeleteCase={isOwnerOrAdmin}
+          />
         </TabsContent>
 
         <TabsContent value="checklist">
@@ -395,7 +404,7 @@ export default function CaseDetail({ id }: { id: number }) {
           {activeTab === "history" && <React.Suspense fallback={<LazyTabFallback />}><StatusHistoryTab caseId={id} /></React.Suspense>}
         </TabsContent>
 
-        {!isPartner && (caseData as any).storeId && (
+        {canManageCase && (caseData as any).storeId && (
           <TabsContent value="storeHistory">
             {activeTab === "storeHistory" && <React.Suspense fallback={<LazyTabFallback />}><StoreHistoryTab storeId={(caseData as any).storeId} currentCaseId={id} /></React.Suspense>}
           </TabsContent>
@@ -455,10 +464,16 @@ function InfoTab({
   caseData,
   onUpdated,
   isPartner = false,
+  canManageCase = false,
+  canViewFinancials = false,
+  canDeleteCase = false,
 }: {
   caseData: Case;
   onUpdated: () => void;
   isPartner?: boolean;
+  canManageCase?: boolean;
+  canViewFinancials?: boolean;
+  canDeleteCase?: boolean;
 }) {
   const updateMutation = trpc.cases.update.useMutation({
     onSuccess: () => {
@@ -498,18 +513,21 @@ function InfoTab({
       : [];
 
   const handleSave = () => {
+    const { estimatedCost, ...nonFinancialForm } = form;
     updateMutation.mutate(
       {
         id: caseData.id,
         data: {
-          ...form,
+          ...nonFinancialForm,
           prefecture: form.prefecture || null,
           address: form.address || null,
           categoryLarge: form.categoryLarge || null,
           categoryMedium: form.categoryMedium || null,
           categorySmall: form.categorySmall || null,
-          estimatedCost: form.estimatedCost || null,
-          is10mYen: form.estimatedCost >= 100000,
+          ...(canViewFinancials ? {
+            estimatedCost: estimatedCost || null,
+            is10mYen: estimatedCost >= 100000,
+          } : {}),
         },
       },
       { onSuccess: () => setEditing(false) }
@@ -522,7 +540,7 @@ function InfoTab({
         <CardContent className="p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-serif-jp font-semibold">案件情報</h3>
-            {!isPartner && (
+            {canManageCase && (
               !editing ? (
                 <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
                   編集
@@ -748,17 +766,19 @@ function InfoTab({
                   />
                 </div>
               </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">見積金額・円</Label>
-                <Input
-                  className="mt-1"
-                  type="number"
-                  value={form.estimatedCost}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, estimatedCost: Number(e.target.value) || 0 }))
-                  }
-                />
-              </div>
+              {canViewFinancials && (
+                <div>
+                  <Label className="text-xs text-muted-foreground">見積金額・円</Label>
+                  <Input
+                    className="mt-1"
+                    type="number"
+                    value={form.estimatedCost}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, estimatedCost: Number(e.target.value) || 0 }))
+                    }
+                  />
+                </div>
+              )}
               <div>
                 <Label className="text-xs text-muted-foreground">備考</Label>
                 <Textarea
@@ -781,14 +801,16 @@ function InfoTab({
               />
               <Row label="依頼者" value={caseData.requesterName || "—"} />
               <Row label="依頼者連絡先" value={caseData.requesterPhone || "—"} />
-              <Row
-                label="見積金額"
-                value={
-                  caseData.estimatedCost
-                    ? `¥${caseData.estimatedCost.toLocaleString()}`
-                    : "—"
-                }
-              />
+              {canViewFinancials && (
+                <Row
+                  label="見積金額"
+                  value={
+                    caseData.estimatedCost
+                      ? `¥${caseData.estimatedCost.toLocaleString()}`
+                      : "—"
+                  }
+                />
+              )}
               <Row label="依頼内容" value={caseData.requestContent || "—"} multiline />
               <Row label="備考" value={caseData.notes || "—"} multiline />
             </dl>
@@ -799,7 +821,7 @@ function InfoTab({
       {/* 協力業者作業メモ欄 */}
       <PartnerNotesCard caseId={caseData.id} partnerNotes={(caseData as any).partnerNotes ?? ""} partnerNotesUpdatedAt={(caseData as any).partnerNotesUpdatedAt ?? null} partnerNotesUpdatedBy={(caseData as any).partnerNotesUpdatedBy ?? null} isPartner={isPartner} onUpdated={onUpdated} />
 
-      <Card>
+      {canManageCase && <Card>
         <CardContent className="p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-serif-jp font-semibold flex items-center gap-2">
@@ -838,7 +860,7 @@ function InfoTab({
               value={new Date(caseData.createdAt).toLocaleString("ja-JP")}
             />
           </dl>
-          <div className="pt-4 border-t">
+          {canDeleteCase && <div className="pt-4 border-t">
             <Button
               variant="ghost"
               size="sm"
@@ -852,13 +874,13 @@ function InfoTab({
               <Trash2 className="h-3.5 w-3.5" />
               案件を削除
             </Button>
-          </div>
+          </div>}
         </CardContent>
-      </Card>
+      </Card>}
       {/* 再訪記録カード */}
       <RevisitCard caseId={caseData.id} revisitCount={(caseData as any).revisitCount ?? 0} onUpdated={onUpdated} />
       {/* 現調スキップカード */}
-      {!isPartner && (
+      {canManageCase && (
         <SurveySkipCard caseId={caseData.id} storeId={(caseData as any).storeId ?? null} progressStage={(caseData as any).progressStage ?? '未対応'} />
       )}
     </div>

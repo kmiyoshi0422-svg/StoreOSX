@@ -7,6 +7,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import DashboardLayout from "./components/DashboardLayout";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import AdminOnly from "./components/AdminOnly";
+import FinancialOnly from "./components/FinancialOnly";
 
 // ─── Eagerly loaded (critical path) ───────────────────────
 import Home from "./pages/Home";
@@ -47,6 +48,7 @@ const CrossSchedule = lazy(() => import("./pages/CrossSchedule"));
 const Effectiveness = lazy(() => import("./pages/Effectiveness"));
 const CompletedReports = lazy(() => import("./pages/CompletedReports"));
 const PdfHistory = lazy(() => import("./pages/PdfHistory"));
+const AccessManagement = lazy(() => import("./pages/AccessManagement"));
 
 // ─── Loading fallback ─────────────────────────────────────
 function PageLoader() {
@@ -88,23 +90,21 @@ function Router() {
                   </AdminOnly>
                 </Route>
                 <Route path={"/expenses/list"}>
-                  <AdminOnly>
-                    <ExpenseList />
-                  </AdminOnly>
+                  <ExpenseList />
                 </Route>
                 <Route path={"/expenses/by-user"}>
-                  <AdminOnly>
+                  <FinancialOnly>
                     <ExpenseByUser />
-                  </AdminOnly>
+                  </FinancialOnly>
                 </Route>
                 <Route path={"/reports"}>
-                  <AdminOnly><Reports /></AdminOnly>
+                  <FinancialOnly><Reports /></FinancialOnly>
                 </Route>
                 <Route path={"/budget"}>
-                  <AdminOnly><BudgetActual /></AdminOnly>
+                  <FinancialOnly><BudgetActual /></FinancialOnly>
                 </Route>
                 <Route path={"/reports/monthly"}>
-                  <AdminOnly><MonthlyReport /></AdminOnly>
+                  <FinancialOnly><MonthlyReport /></FinancialOnly>
                 </Route>
                 <Route path={"/reports/completed"}>
                   <AdminOnly><CompletedReports /></AdminOnly>
@@ -117,8 +117,9 @@ function Router() {
                 <Route path={"/workload"} component={Workload} />
                 <Route path={"/cross-schedule"} component={CrossSchedule} />
                 <Route path={"/effectiveness"}>
-                  <AdminOnly><Effectiveness /></AdminOnly>
+                  <FinancialOnly><Effectiveness /></FinancialOnly>
                 </Route>
+                <Route path={"/settings/access"}><AdminOnly><AccessManagement /></AdminOnly></Route>
                 <Route path={"/settings/exclusions"} component={FullwidthExclusions} />
                 <Route path={"/settings/impression"} component={ImpressionSettings} />
                 <Route path={"/document-library"} component={DocumentLibrary} />

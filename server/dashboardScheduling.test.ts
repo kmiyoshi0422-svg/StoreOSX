@@ -17,6 +17,7 @@ const dbMocks = vi.hoisted(() => ({
   listPartnerAssignmentNotificationsByUser: vi.fn(),
   markPartnerAssignmentNotificationRead: vi.fn(),
   markAllPartnerAssignmentNotificationsRead: vi.fn(),
+  createStatusLog: vi.fn(),
 }));
 
 vi.mock("./db", async (importOriginal) => {
@@ -298,5 +299,96 @@ describe("dashboard.schedulingOptions", () => {
   it("協力業者には業者選択肢を返さない", async () => {
     const caller = appRouter.createCaller(createContext("partner"));
     await expect(caller.dashboard.schedulingOptions()).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
+
+describe("dashboard lost and revive", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dbMocks.getCaseById.mockResolvedValue({
+      id: 101,
+      requestNumber: "REQ-101",
+      storeName: "失注対象店",
+      status: "見積中",
+      prefecture: "福岡県",
+      partnerId: 5,
+      constructionDate: new Date("2026-10-20T12:00:00+09:00"),
+      preLostStatus: null,
+    });
+    dbMocks.updateCase.mockResolvedValue(undefined);
+    dbMocks.createStatusLog.mockResolvedValue(1);
+    dbMocks.createPartnerAssignmentNotification.mockResolvedValue(1);
+  });
+
+  it("社員は理由付きで失注にし、完了相当日時と直前状態を保存できる", async () => {
+    const caller = appRouter.createCaller(createContext("user"));
+    await expect(caller.dashboard.markCaseLost({
+      caseId: 101,
+      reason: "対応に不備",
+      reasonDetail: "初動対応に時間を要した",
+    })).resolves.toMatchObject({ success: true, caseId: 101, status: "失注" });
+
+    expect(dbMocks.updateCase).toHaveBeenCalledWith(101, expect.objectContaining({
+      status: "失注",
+      completedAt: expect.any(Date),
+      lostReason: "対応に不備",
+      lostReasonDetail: "初動対応に時間を要した",
+      lostAt: expect.any(Date),
+      lostBy: 10,
+      preLostStatus: "見積中",
+    }));
+    expect(dbMocks.createStatusLog).toHaveBeenCalledWith(expect.objectContaining({
+      fromStatus: "見積中",
+      toStatus: "失注",
+    }));
+    expect(dbMocks.createPartnerAssignmentNotification).toHaveBeenCalledWith(expect.objectContaining({
+      partnerId: 5,
+      notificationType: "cancelled",
+    }));
+  });
+
+  it("その他を選んだ場合は補足理由を必須にする", async () => {
+    const caller = appRouter.createCaller(createContext("admin"));
+    await expect(caller.dashboard.markCaseLost({
+      caseId: 101,
+      reason: "その他",
+      reasonDetail: "",
+    })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(dbMocks.updateCase).not.toHaveBeenCalled();
+  });
+
+  it("失注案件を直前状態へ復活し、失注情報を解除できる", async () => {
+    dbMocks.getCaseById.mockResolvedValue({
+      id: 101,
+      requestNumber: "REQ-101",
+      storeName: "復活対象店",
+      status: "失注",
+      prefecture: "福岡県",
+      partnerId: 5,
+      constructionDate: new Date("2026-10-20T12:00:00+09:00"),
+      preLostStatus: "施工待ち",
+    });
+    const caller = appRouter.createCaller(createContext("admin"));
+    await expect(caller.dashboard.reviveLostCase({ caseId: 101 })).resolves.toMatchObject({
+      success: true,
+      status: "施工待ち",
+    });
+    expect(dbMocks.updateCase).toHaveBeenCalledWith(101, {
+      status: "施工待ち",
+      completedAt: null,
+      lostReason: null,
+      lostReasonDetail: null,
+      lostAt: null,
+      lostBy: null,
+      preLostStatus: null,
+    });
+  });
+
+  it("協力業者と顧客は失注・復活を操作できない", async () => {
+    const partnerCaller = appRouter.createCaller(createContext("partner"));
+    await expect(partnerCaller.dashboard.markCaseLost({ caseId: 101, reason: "高額なため" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const customerCaller = appRouter.createCaller(createContext("customer"));
+    await expect(customerCaller.dashboard.reviveLostCase({ caseId: 101 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(dbMocks.updateCase).not.toHaveBeenCalled();
   });
 });

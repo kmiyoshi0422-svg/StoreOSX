@@ -8,6 +8,7 @@ export const DASHBOARD_STATUS_ORDER = [
   "施工中",
   "完了",
   "クローズ",
+  "失注",
 ] as const;
 
 export const DASHBOARD_URGENCY_ORDER = ["S", "A", "B", "C"] as const;
@@ -36,6 +37,11 @@ export type DashboardCaseInput = {
   assigneeName?: string | null;
   estimatedCost?: number | null;
   actualCost?: number | null;
+  lostReason?: string | null;
+  lostReasonDetail?: string | null;
+  lostAt?: Date | string | null;
+  lostBy?: number | null;
+  preLostStatus?: string | null;
 };
 
 export type DashboardBreakdownRow = {
@@ -112,11 +118,12 @@ export function buildDashboardOverview(
   const inProgressStatuses = new Set(["現調中", "見積中", "施工待ち", "施工中"]);
   const inProgress = cases.filter((item) => inProgressStatuses.has(item.status));
   const urgent = cases.filter((item) => item.urgency === "S" || item.urgency === "A");
-  const completed = cases.filter((item) => item.status === "完了" || item.status === "クローズ");
+  const completedStatuses = new Set(["完了", "クローズ", "失注"]);
+  const completed = cases.filter((item) => completedStatuses.has(item.status));
   const surveyed = cases.filter((item) => Boolean(item.surveyDate));
   const noRevisit = surveyed.filter((item) => (item.revisitCount ?? 0) === 0);
   const unfinishedCases = cases
-    .filter((item) => item.status !== "完了" && item.status !== "クローズ")
+    .filter((item) => !completedStatuses.has(item.status))
     .map((item) => {
       const requestedAt = item.requestDate ?? item.createdAt;
       const requestDay = requestedAt ? startOfDay(requestedAt) : null;
@@ -140,6 +147,25 @@ export function buildDashboardOverview(
       return time <= oneMonthAgo.getTime() && time > threeMonthsAgo.getTime();
     }),
     leakageRelated: unfinishedCases.filter(isLeakageRelated),
+    lost: cases
+      .filter((item) => item.status === "失注")
+      .map((item) => {
+        const requestedAt = item.requestDate ?? item.createdAt;
+        const requestDay = requestedAt ? startOfDay(requestedAt) : today;
+        return {
+          ...item,
+          requestDate: requestDay ?? today,
+          daysElapsed: requestDay
+            ? Math.floor((today.getTime() - requestDay.getTime()) / DAY_MS)
+            : 0,
+          ...constructionWeek(item.constructionDate),
+        };
+      })
+      .sort((a, b) => {
+        const aTime = a.lostAt ? new Date(a.lostAt).getTime() : 0;
+        const bTime = b.lostAt ? new Date(b.lostAt).getTime() : 0;
+        return bTime - aTime;
+      }),
   };
 
   const statusBreakdown: DashboardBreakdownRow[] = DASHBOARD_STATUS_ORDER.map((status) => ({

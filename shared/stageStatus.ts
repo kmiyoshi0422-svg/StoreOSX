@@ -22,6 +22,7 @@ export const CASE_STATUSES = [
   "施工中",
   "完了",
   "クローズ",
+  "失注",
 ] as const;
 export type CaseStatus = (typeof CASE_STATUSES)[number];
 
@@ -40,6 +41,7 @@ const STATUS_ORDER: Record<CaseStatus, number> = {
   施工中: 4,
   完了: 5,
   クローズ: 6,
+  失注: 6,
 };
 
 /**
@@ -82,6 +84,7 @@ export function statusToStage(status: CaseStatus): ProgressStage {
       return "見積提出済";
     case "完了":
     case "クローズ":
+    case "失注":
       return "承認済";
   }
 }

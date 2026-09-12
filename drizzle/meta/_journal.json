@@ -267,6 +267,13 @@
       "when": 1789217220922,
       "tag": "0037_spotty_micromax",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "5",
+      "when": 1789225852639,
+      "tag": "0038_curvy_harpoon",
+      "breakpoints": true
     }
   ]
 }

@@ -130,6 +130,7 @@ export default function CasesList() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
   const isPartner = user?.role === 'partner';
+  const canViewFinancials = user?.role === 'owner' || user?.role === 'admin' || user?.role === 'executive';
   const { data: cases = [], isLoading } = trpc.cases.listSummary.useQuery();
   const { data: users = [] } = trpc.users.list.useQuery();
   const userMap = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
@@ -695,7 +696,7 @@ export default function CasesList() {
                   </Select>
                   <span className="text-sm font-medium truncate min-w-0 flex-1">{c.storeName}</span>
                   <span className="text-[11px] text-muted-foreground font-mono shrink-0 hidden sm:inline">{c.requestNumber}</span>
-                  {!isPartner && c.plenusQuoteAmount != null && (
+                  {canViewFinancials && c.plenusQuoteAmount != null && (
                     <span className="text-xs font-mono text-emerald-700 shrink-0">¥{c.plenusQuoteAmount.toLocaleString()}</span>
                   )}
                   {assigneeUser && (
@@ -759,7 +760,7 @@ export default function CasesList() {
                         <span className="px-3 py-2 font-medium truncate flex-1 min-w-0">{c.storeName}</span>
                         <span className="px-3 py-2 font-mono text-xs text-muted-foreground w-[120px] shrink-0 hidden md:inline">{c.requestNumber}</span>
                         <span className="px-3 py-2 text-xs text-muted-foreground w-[100px] shrink-0 hidden lg:inline">{c.categoryLarge || "—"}</span>
-                        {!isPartner && <span className="px-3 py-2 text-right font-mono text-xs w-[100px] shrink-0">{c.plenusQuoteAmount != null ? `¥${c.plenusQuoteAmount.toLocaleString()}` : "—"}</span>}
+                        {canViewFinancials && <span className="px-3 py-2 text-right font-mono text-xs w-[100px] shrink-0">{c.plenusQuoteAmount != null ? `¥${c.plenusQuoteAmount.toLocaleString()}` : "—"}</span>}
                         <span className="px-3 py-2 w-[80px] shrink-0 hidden sm:inline">
                           {assigneeUser ? (
                             <span className="text-xs">{assigneeUser.name || assigneeUser.email}</span>
@@ -1026,7 +1027,7 @@ export default function CasesList() {
                               : "text-muted-foreground";
                         return (
                           <div className="mt-3 flex flex-wrap items-stretch gap-2">
-                            {!isPartner && (
+                            {canViewFinancials && (
                             <div className="rounded-md border bg-stone-50/80 px-3 py-1.5">
                               <p className="text-[10px] text-muted-foreground leading-none mb-1">
                                 出し見積{profit.salesIsEstimated ? " 想定" : ""}
@@ -1040,17 +1041,19 @@ export default function CasesList() {
                               </p>
                             </div>
                             )}
-                            <div className="rounded-md border bg-stone-50/80 px-3 py-1.5">
-                              <p className="text-[10px] text-muted-foreground leading-none mb-1">
-                                実行見積
-                              </p>
-                              <p className="font-mono text-sm font-semibold">
-                                {c.estimatedCost != null
-                                  ? `¥${c.estimatedCost.toLocaleString()}`
-                                  : "—"}
-                              </p>
-                            </div>
-                            {!isPartner && (
+                            {canViewFinancials && (
+                              <div className="rounded-md border bg-stone-50/80 px-3 py-1.5">
+                                <p className="text-[10px] text-muted-foreground leading-none mb-1">
+                                  実行見積
+                                </p>
+                                <p className="font-mono text-sm font-semibold">
+                                  {c.estimatedCost != null
+                                    ? `¥${c.estimatedCost.toLocaleString()}`
+                                    : "—"}
+                                </p>
+                              </div>
+                            )}
+                            {canViewFinancials && (
                             <div className={`rounded-md border px-3 py-1.5 ${gp > 0 ? "bg-emerald-50/70 border-emerald-200" : gp < 0 ? "bg-red-50/70 border-red-200" : "bg-stone-50/80"}`}>
                               <p className="text-[10px] text-muted-foreground leading-none mb-1">
                                 粗利

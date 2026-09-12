@@ -128,7 +128,7 @@ describe("checklist.toggle 自動ステータス遷移", () => {
     expect(lastResult?.autoAdvanced?.to).toBe("現調中");
     const after = await caller.cases.get({ id });
     expect(after?.status).toBe("現調中");
-    await caller.cases.delete({ id });
+    await appRouter.createCaller(createAdminContext()).cases.delete({ id });
   });
 });
 
@@ -187,7 +187,7 @@ describe("v5: 業種自動推薦", () => {
 
 describe("v5: partners.history 発注履歴", () => {
   it("協力会社の累計サマリーが集計される", { timeout: 30000 }, async () => {
-    const caller = appRouter.createCaller(createAuthContext());
+    const caller = appRouter.createCaller(createAdminContext());
     const stamp = Date.now();
     const created = await caller.partners.create({
       name: `履歴テスト${stamp}`,
@@ -313,9 +313,18 @@ describe("v8: cases.uploadPdf / partners.uploadFile 入力バリデーション"
 
 describe("見積書・協力業者ビュー（v9）", () => {
   it("estimates.listByCase は配列を返す", async () => {
-    const caller = appRouter.createCaller(createAuthContext());
-    const result = await caller.estimates.listByCase({ caseId: 999999 });
-    expect(Array.isArray(result)).toBe(true);
+    const caller = appRouter.createCaller(createAdminContext());
+    const created = await caller.cases.create({
+      requestNumber: `EST-LIST-${Date.now()}`,
+      brand: "その他",
+      storeName: "見積一覧テスト店",
+    });
+    try {
+      const result = await caller.estimates.listByCase({ caseId: created.id });
+      expect(Array.isArray(result)).toBe(true);
+    } finally {
+      await caller.cases.delete({ id: created.id });
+    }
   });
 
   it("partnerView.getByToken は無効なトークンでエラーを投げる", async () => {
@@ -803,7 +812,7 @@ describe("v17: 個別案件 収支計算", () => {
 
 describe("v19: reports.monthly 月別実績レポート", () => {
   it("デフォルト6ヶ月の月別行と合計を返す", async () => {
-    const caller = appRouter.createCaller(createAuthContext());
+    const caller = appRouter.createCaller(createAdminContext());
     const res = await caller.reports.monthly();
     expect(res).toHaveProperty("rows");
     expect(res).toHaveProperty("totals");
@@ -828,7 +837,7 @@ describe("v19: reports.monthly 月別実績レポート", () => {
   });
 
   it("3ヶ月を指定すると行数が3になる", async () => {
-    const caller = appRouter.createCaller(createAuthContext());
+    const caller = appRouter.createCaller(createAdminContext());
     const res = await caller.reports.monthly({ months: 3 });
     expect(res.rows.length).toBe(3);
   });
@@ -842,7 +851,7 @@ describe("v19: reports.monthly 月別実績レポート", () => {
 
 describe("v19: reports.byAssignee 担当者別成績", () => {
   it("担当者別の集計を取得できる（rowsプロパティを返す）", async () => {
-    const caller = appRouter.createCaller(createAuthContext());
+    const caller = appRouter.createCaller(createAdminContext());
     const res = await caller.reports.byAssignee();
     expect(res).toHaveProperty("rows");
     expect(Array.isArray(res.rows)).toBe(true);
@@ -855,7 +864,7 @@ describe("v19: reports.byAssignee 担当者別成績", () => {
   });
 
   it("担当者0件は除外される（caseCount>0のみ返す）", async () => {
-    const caller = appRouter.createCaller(createAuthContext());
+    const caller = appRouter.createCaller(createAdminContext());
     const res = await caller.reports.byAssignee();
     for (const r of res.rows) {
       expect(r.caseCount).toBeGreaterThan(0);
@@ -944,7 +953,7 @@ describe("v25: 月別レポート集計ロジック（新定義・純粋関数�
 
 describe("v25: reports 集計がプレナス提出額を売上に使う（DB統合）", () => {
   it("plenusQuoteAmount を設定した案件の売上が monthly の合計に反映される", { timeout: 30000 }, async () => {
-    const caller = appRouter.createCaller(createAuthContext());
+    const caller = appRouter.createCaller(createAdminContext());
     const stamp = Date.now();
     const before = await caller.reports.monthly({ months: 24 });
     const beforeRevenue = before.totals.revenue;
@@ -973,7 +982,7 @@ describe("v25: reports 集計がプレナス提出額を売上に使う（DB統�
   });
 
   it("plenusQuoteAmount 未入力の案件は estimatedCost÷0.75 で売上計上される", { timeout: 30000 }, async () => {
-    const caller = appRouter.createCaller(createAuthContext());
+    const caller = appRouter.createCaller(createAdminContext());
     const stamp = Date.now();
     const before = await caller.reports.monthly({ months: 24 });
     const beforeRevenue = before.totals.revenue;

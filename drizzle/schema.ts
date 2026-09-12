@@ -9,7 +9,9 @@ export const users = mysqlTable("users", {
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin", "owner", "partner"]).default("user").notNull(),
+  role: mysqlEnum("role", ["user", "executive", "admin", "owner", "partner", "customer"]).default("user").notNull(),
+  areaAccessMode: mysqlEnum("areaAccessMode", ["all", "selected"]).default("all").notNull(),
+  allowedPrefectures: text("allowedPrefectures"), // JSON string[]。selected時のみ適用
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -70,6 +72,7 @@ export const cases = mysqlTable("cases", {
     "施工中",     // 工事中
     "完了",       // 完了
     "クローズ",   // クローズ
+    "失注",       // 失注（完了相当・復活可能）
   ]).default("受付").notNull(),
   urgency: mysqlEnum("urgency", ["S", "A", "B", "C"]).default("B").notNull(),
   // 担当者
@@ -98,6 +101,11 @@ export const cases = mysqlTable("cases", {
   surveyDate: timestamp("surveyDate"), // 現調日
   constructionDate: timestamp("constructionDate"), // 施工日
   completedAt: timestamp("completedAt"), // 完了日
+  lostReason: mysqlEnum("lostReason", ["高額なため", "対応に不備", "別業者手配", "その他"]),
+  lostReasonDetail: text("lostReasonDetail"),
+  lostAt: timestamp("lostAt"),
+  lostBy: int("lostBy"),
+  preLostStatus: varchar("preLostStatus", { length: 32 }), // 復活時に戻す直前ステータス
   // メタ
     notes: text("notes"),
   // 現調報告書 所感

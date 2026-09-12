@@ -12,6 +12,7 @@ import {
   deletePartner,
   deletePhoto,
   getAllUsers,
+  updateUserAccess,
   getCaseById,
   getCaseByPartnerToken,
   getCaseByRequestNumber,
@@ -183,12 +184,21 @@ import {
 } from "./zapierFileSync";
 import { systemRouter } from "./_core/systemRouter";
 import { TRPCError } from "@trpc/server";
-import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, financialProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { BUDGET_RATIO, calcBudget } from "../shared/budget";
 import { calcCaseProfit } from "../shared/profit";
 import { buildDashboardOverview, selectPreferredConstructionDate } from "../shared/dashboard";
 import { buildStoreBulkLinkPreview } from "../shared/storeBulkLink";
-import { detectPrefecture } from "../shared/prefecture";
+import { detectPrefecture, PREFECTURES } from "../shared/prefecture";
+import {
+  APP_ROLES,
+  INTERNAL_FINANCIAL_FIELDS,
+  applyFinancialVisibility,
+  canAccessPrefecture,
+  canManageCases,
+  canViewInternalFinancials,
+  filterCasesByArea,
+} from "../shared/accessPolicy";
 import { resolveStageStatus, syncStageFromStatus } from "../shared/stageStatus";
 import type { ProgressStage, CaseStatus } from "../shared/stageStatus";
 import { aggregateExpensesByUser } from "../shared/expense-aggregate";
@@ -235,19 +245,31 @@ async function filterCasesForPartner<T>(cases: T[], userId: number): Promise<T[]
   });
 }
 
-/** partnerに見せてはいけない金額フィールドをnullにする */
-function stripFinancialFields<T>(caseData: T): T {
-  const HIDDEN_FIELDS = [
-    'estimatedCost', 'plenusQuoteAmount', 'estimatedMaterialCost', 'estimatedLaborCost',
-    'is10mYen', 'managementFee', 'siteExpense', 'ownSurveyCost', 'partnerSurveyCost',
-    'transportCost', 'laborCost', 'actualCost', 'actualMaterialCost', 'actualLaborCost',
-    'expenseBudget', 'invoiceNumber', 'invoiceDate',
-  ];
-  const result = { ...caseData } as any;
-  for (const f of HIDDEN_FIELDS) {
-    if (f in result) result[f] = null;
+type CaseAccessUser = {
+  id: number;
+  role: string;
+  areaAccessMode?: "all" | "selected" | null;
+  allowedPrefectures?: string | null;
+};
+
+async function applyCaseVisibility<T>(
+  rows: T[],
+  user: CaseAccessUser,
+): Promise<T[]> {
+  const areaVisible = user.role === "partner"
+    ? await filterCasesForPartner(rows, user.id)
+    : filterCasesByArea(rows, user);
+  return areaVisible.map((row) => applyFinancialVisibility(row, user.role));
+}
+
+async function assertCaseAccess(
+  caseData: { partnerId?: number | null; prefecture?: string | null },
+  user: CaseAccessUser,
+) {
+  const visible = await applyCaseVisibility([caseData], user);
+  if (visible.length === 0) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "この案件へのアクセス権がありません" });
   }
-  return result;
 }
 
 // ============================================================
@@ -292,7 +314,7 @@ const caseInputSchema = z.object({
   partnerId: z.number().int().nullish(),
   storeId: z.number().int().nullish(),
   status: z
-    .enum(["受付", "現調中", "見積中", "施工待ち", "施工中", "完了", "クローズ"])
+    .enum(["受付", "現調中", "見積中", "施工待ち", "施工中", "完了", "クローズ", "失注"])
     .default("受付"),
   progressStage: z
     .enum(["未対応", "現調済", "見積提出済", "承認済"])
@@ -446,9 +468,7 @@ export const appRouter = router({
       .input(z.object({ fromMs: z.number().int().optional(), toMs: z.number().int().optional() }).optional())
       .query(async ({ ctx, input }) => {
       const allCases = await listCasesSummary();
-      const visibleCases = ctx.user.role === "partner"
-        ? await filterCasesForPartner(allCases, ctx.user.id)
-        : allCases;
+      const visibleCases = await applyCaseVisibility(allCases, ctx.user);
       const periodCases = visibleCases.filter((item) => {
         const value = item.requestDate ?? item.createdAt;
         if (!value) return !input?.fromMs && !input?.toMs;
@@ -466,14 +486,14 @@ export const appRouter = router({
         dates.push(route.scheduledDate);
         constructionDatesByCase.set(route.caseId, dates);
       }
-      const isAdmin = ctx.user.role === "admin" || ctx.user.role === "owner";
+      const isAdmin = canViewInternalFinancials(ctx.user.role);
       const caseRows = periodCases.map((item) => {
         const row = {
           ...item,
           assigneeName: item.assigneeId ? userNames.get(item.assigneeId) ?? null : null,
           constructionDate: item.constructionDate ?? selectPreferredConstructionDate(constructionDatesByCase.get(item.id) ?? []),
         };
-        return ctx.user.role === "partner" ? stripFinancialFields(row) : row;
+        return applyFinancialVisibility(row, ctx.user.role);
       });
 
       return {
@@ -485,7 +505,7 @@ export const appRouter = router({
       };
     }),
     schedulingOptions: protectedProcedure.query(async ({ ctx }) => {
-      if (ctx.user.role === "partner") {
+      if (!canManageCases(ctx.user.role)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "施工予定の設定権限がありません" });
       }
       const partnerRows = await listPartners();
@@ -505,21 +525,25 @@ export const appRouter = router({
         partnerId: z.number().int().positive(),
       }))
       .mutation(async ({ ctx, input }) => {
-        if (ctx.user.role === "partner") {
+        if (!canManageCases(ctx.user.role)) {
           throw new TRPCError({ code: "FORBIDDEN", message: "施工予定の設定権限がありません" });
         }
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
         return saveDashboardConstructionAssignment({ ...input, createdBy: ctx.user.id });
       }),
     clearScheduleCase: protectedProcedure
       .input(z.object({ caseId: z.number().int().positive() }))
       .mutation(async ({ ctx, input }) => {
-        if (ctx.user.role === "partner") {
+        if (!canManageCases(ctx.user.role)) {
           throw new TRPCError({ code: "FORBIDDEN", message: "施工予定の解除権限がありません" });
         }
         const caseData = await getCaseById(input.caseId);
         if (!caseData) {
           throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
         }
+        await assertCaseAccess(caseData, ctx.user);
         const [schedules, routes] = await Promise.all([
           listSchedulesByCase(input.caseId),
           listRouteAssignmentsForCase(input.caseId),
@@ -555,7 +579,7 @@ export const appRouter = router({
         partnerId: z.number().int().positive(),
       }))
       .mutation(async ({ ctx, input }) => {
-        if (ctx.user.role === "partner") {
+        if (!canManageCases(ctx.user.role)) {
           throw new TRPCError({ code: "FORBIDDEN", message: "施工予定の一括設定権限がありません" });
         }
         const caseIds = Array.from(new Set(input.caseIds));
@@ -563,6 +587,9 @@ export const appRouter = router({
         const failed: Array<{ caseId: number; message: string }> = [];
         for (const caseId of caseIds) {
           try {
+            const caseData = await getCaseById(caseId);
+            if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+            await assertCaseAccess(caseData, ctx.user);
             await saveDashboardConstructionAssignment({
               caseId,
               constructionDate: input.constructionDate,
@@ -578,6 +605,107 @@ export const appRouter = router({
           }
         }
         return { successCount: succeeded.length, failedCount: failed.length, succeeded, failed };
+      }),
+    markCaseLost: protectedProcedure
+      .input(z.object({
+        caseId: z.number().int().positive(),
+        reason: z.enum(["高額なため", "対応に不備", "別業者手配", "その他"]),
+        reasonDetail: z.string().trim().max(1000).nullish(),
+      }).superRefine((input, ctx) => {
+        if (input.reason === "その他" && !input.reasonDetail?.trim()) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["reasonDetail"], message: "その他の理由を入力してください" });
+        }
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (!canManageCases(ctx.user.role)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "失注にする権限がありません" });
+        }
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
+        if (caseData.status === "失注") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "すでに失注になっています" });
+        }
+        const lostAt = new Date();
+        await updateCase(input.caseId, {
+          status: "失注",
+          completedAt: lostAt,
+          lostReason: input.reason,
+          lostReasonDetail: input.reasonDetail?.trim() || null,
+          lostAt,
+          lostBy: ctx.user.id,
+          preLostStatus: caseData.status,
+        });
+        await createStatusLog({
+          caseId: input.caseId,
+          userId: ctx.user.id,
+          userName: ctx.user.name ?? "不明",
+          fromStatus: caseData.status,
+          toStatus: "失注",
+          comment: input.reasonDetail?.trim() ? `${input.reason}: ${input.reasonDetail.trim()}` : input.reason,
+          photoUrls: null,
+          createdAt: Date.now(),
+        });
+        if (caseData.partnerId) {
+          await createPartnerAssignmentNotification({
+            partnerId: caseData.partnerId,
+            caseId: input.caseId,
+            notificationType: "cancelled",
+            title: "担当案件が失注になりました",
+            message: `${caseData.requestNumber} / ${caseData.storeName}`,
+            constructionDate: null,
+            createdBy: ctx.user.id,
+          });
+        }
+        return { success: true as const, caseId: input.caseId, status: "失注" as const };
+      }),
+    reviveLostCase: protectedProcedure
+      .input(z.object({ caseId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        if (!canManageCases(ctx.user.role)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "失注案件を復活する権限がありません" });
+        }
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
+        if (caseData.status !== "失注") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "失注案件ではありません" });
+        }
+        const restorableStatuses = ["受付", "現調中", "見積中", "施工待ち", "施工中"] as const;
+        const previousStatus = restorableStatuses.includes(caseData.preLostStatus as typeof restorableStatuses[number])
+          ? caseData.preLostStatus as typeof restorableStatuses[number]
+          : "受付";
+        await updateCase(input.caseId, {
+          status: previousStatus,
+          completedAt: null,
+          lostReason: null,
+          lostReasonDetail: null,
+          lostAt: null,
+          lostBy: null,
+          preLostStatus: null,
+        });
+        await createStatusLog({
+          caseId: input.caseId,
+          userId: ctx.user.id,
+          userName: ctx.user.name ?? "不明",
+          fromStatus: "失注",
+          toStatus: previousStatus,
+          comment: "失注案件を復活",
+          photoUrls: null,
+          createdAt: Date.now(),
+        });
+        if (caseData.partnerId) {
+          await createPartnerAssignmentNotification({
+            partnerId: caseData.partnerId,
+            caseId: input.caseId,
+            notificationType: "assigned",
+            title: "担当案件が復活しました",
+            message: `${caseData.requestNumber} / ${caseData.storeName}`,
+            constructionDate: caseData.constructionDate,
+            createdBy: ctx.user.id,
+          });
+        }
+        return { success: true as const, caseId: input.caseId, status: previousStatus };
       }),
     partnerNotifications: protectedProcedure.query(async ({ ctx }) => {
       if (ctx.user.role !== "partner") {
@@ -718,11 +846,51 @@ export const appRouter = router({
 
   users: router({
     list: protectedProcedure.query(() => getAllUsers()),
+    accessList: adminProcedure.query(() => getAllUsers()),
+    updateAccess: adminProcedure
+      .input(
+        z.object({
+          id: z.number().int().positive(),
+          role: z.enum(APP_ROLES),
+          areaAccessMode: z.enum(["all", "selected"]),
+          allowedPrefectures: z.array(z.enum(PREFECTURES)).max(PREFECTURES.length),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        const target = (await getAllUsers()).find((user) => user.id === input.id);
+        if (!target) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "対象ユーザーが見つかりません" });
+        }
+        if (target.role === "owner") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "オーナー権限は変更できません" });
+        }
+        if (ctx.user.id === input.id && !["admin", "owner"].includes(input.role)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "自分自身の管理者権限は解除できません" });
+        }
+        const areaAccessMode = ["admin", "owner"].includes(input.role)
+          ? "all"
+          : input.areaAccessMode;
+        const allowedPrefectures = areaAccessMode === "selected"
+          ? Array.from(new Set(input.allowedPrefectures))
+          : [];
+        await updateUserAccess(input.id, {
+          role: input.role,
+          areaAccessMode,
+          allowedPrefectures,
+        });
+        return { success: true };
+      }),
   }),
 
   partners: router({
-    list: protectedProcedure.query(() => listPartners()),
-    get: protectedProcedure.input(z.object({ id: z.number() })).query(({ input }) => getPartnerById(input.id)),
+    list: protectedProcedure.query(({ ctx }) => {
+      if (!canManageCases(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "協力会社を閲覧する権限がありません" });
+      return listPartners();
+    }),
+    get: protectedProcedure.input(z.object({ id: z.number() })).query(({ ctx, input }) => {
+      if (!canManageCases(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "協力会社を閲覧する権限がありません" });
+      return getPartnerById(input.id);
+    }),
     create: protectedProcedure
       .input(
         z.object({
@@ -740,7 +908,8 @@ export const appRouter = router({
           isActive: z.boolean().default(true),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
+        if (!canManageCases(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "協力会社を登録する権限がありません" });
         const id = await createPartner(input);
         return { id };
       }),
@@ -767,13 +936,15 @@ export const appRouter = router({
             .partial(),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
+        if (!canManageCases(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "協力会社を変更する権限がありません" });
         await updatePartner(input.id, input.data);
         return { success: true } as const;
       }),
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
+        if (!canManageCases(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "協力会社を削除する権限がありません" });
         await deletePartner(input.id);
         return { success: true } as const;
       }),
@@ -800,7 +971,8 @@ export const appRouter = router({
             .min(1),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
+        if (!canManageCases(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "協力会社を一括登録する権限がありません" });
         const results: { name: string; ok: boolean; error?: string }[] = [];
         let inserted = 0;
         let failed = 0;
@@ -828,6 +1000,7 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
+        if (!canManageCases(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "協力会社資料を取り込む権限がありません" });
         const base64 = input.fileBase64.includes(",")
           ? input.fileBase64.split(",")[1]
           : input.fileBase64;
@@ -848,7 +1021,8 @@ export const appRouter = router({
           mimeType: z.string(),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
+        if (!canManageCases(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "協力会社資料を解析する権限がありません" });
         const key = input.fileKey.replace(/^\/manus-storage\//, "");
         const publicUrl = await storageGetSignedUrl(key);
 
@@ -945,8 +1119,11 @@ export const appRouter = router({
     history: protectedProcedure
       .input(z.object({ partnerId: z.number() }))
       .query(async ({ input, ctx }) => {
+        if (!canViewInternalFinancials(ctx.user.role)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "協力会社の金額履歴を閲覧する権限がありません" });
+        }
         const partner = await getPartnerById(input.partnerId);
-        const list = await listCasesByPartner(input.partnerId);
+        const list = filterCasesByArea(await listCasesByPartner(input.partnerId), ctx.user);
         const totalCases = list.length;
         const completedCases = list.filter((c) => c.status === "完了" || c.status === "クローズ").length;
         const totalEstimated = list.reduce((sum, c) => sum + (c.estimatedCost ?? 0), 0);
@@ -973,59 +1150,56 @@ export const appRouter = router({
   cases: router({
     list: protectedProcedure.query(async ({ ctx }) => {
       const all = await listCases();
-      if (ctx.user.role === 'partner') {
-        const filtered = await filterCasesForPartner(all, ctx.user.id);
-        return filtered.map(stripFinancialFields);
-      }
-      return all;
+      return applyCaseVisibility(all, ctx.user);
     }),
     listSummary: protectedProcedure.query(async ({ ctx }) => {
       const all = await listCasesSummary();
-      if (ctx.user.role === 'partner') {
-        const filtered = await filterCasesForPartner(all, ctx.user.id);
-        return filtered.map(stripFinancialFields);
-      }
-      return all;
+      return applyCaseVisibility(all, ctx.user);
     }),
     listForMap: protectedProcedure.query(async ({ ctx }) => {
       const all = await listCasesForMap();
-      if (ctx.user.role === 'partner') {
-        return filterCasesForPartner(all, ctx.user.id);
-      }
-      return all;
+      return applyCaseVisibility(all, ctx.user);
     }),
     listMinimal: protectedProcedure.query(async ({ ctx }) => {
       const all = await listCasesMinimal();
-      if (ctx.user.role === 'partner') {
-        return filterCasesForPartner(all, ctx.user.id);
-      }
-      return all;
+      return applyCaseVisibility(all, ctx.user);
     }),
     listForBudget: protectedProcedure.query(async ({ ctx }) => {
-      if (ctx.user.role === 'partner') return []; // partner cannot see budget view
-      return listCasesForBudget();
+      if (!canViewInternalFinancials(ctx.user.role)) return [];
+      const all = await listCasesForBudget();
+      return filterCasesByArea(all, ctx.user);
     }),
 
     get: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
       const caseData = await getCaseById(input.id);
       if (!caseData) return null;
-      if (ctx.user.role === 'partner') {
-        // partnerは担当案件のみ閲覧可能 + 全金額情報を非表示
-        const filtered = await filterCasesForPartner([caseData], ctx.user.id);
-        if (filtered.length === 0) {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'この案件へのアクセス権がありません' });
-        }
-        return stripFinancialFields(caseData);
-      }
-      return caseData;
+      await assertCaseAccess(caseData, ctx.user);
+      return applyFinancialVisibility(caseData, ctx.user.role);
     }),
 
     create: protectedProcedure.input(caseInputSchema).mutation(async ({ ctx, input }) => {
+      if (!canManageCases(ctx.user.role)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "案件を登録する権限がありません" });
+      }
       // 都道府県が未入力なら住所から自動推定して補完（手入力は優先）
       const prefecture =
         input.prefecture && input.prefecture.trim()
           ? input.prefecture.trim()
           : detectPrefecture(input.address) ?? input.prefecture ?? null;
+      if (!canAccessPrefecture(ctx.user, prefecture)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "このエリアの案件を登録する権限がありません" });
+      }
+      if (!canViewInternalFinancials(ctx.user.role)) {
+        const hasFinancialInput = INTERNAL_FINANCIAL_FIELDS.some(
+          (field) => {
+            const value = (input as Record<string, unknown>)[field];
+            return value != null && value !== false && value !== 0 && value !== "";
+          },
+        );
+        if (hasFinancialInput) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "金額情報を登録する権限がありません" });
+        }
+      }
       const id = await createCase({ ...input, prefecture, createdBy: ctx.user.id });
       // デフォルトチェックリストを自動投入
       const items = DEFAULT_CHECKLIST.map((tpl) => ({
@@ -1043,6 +1217,20 @@ export const appRouter = router({
       .input(z.object({ id: z.number(), data: caseInputSchema.partial(), forceStage: z.boolean().optional() }))
       .mutation(async ({ ctx, input }) => {
         let data = { ...input.data };
+        const currentCase = await getCaseById(input.id);
+        if (!currentCase) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(currentCase, ctx.user);
+        if (ctx.user.role === "customer") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "顧客アカウントは案件を変更できません" });
+        }
+        if (!canViewInternalFinancials(ctx.user.role)) {
+          const disallowedFinancials = Object.keys(data).filter((key) =>
+            (INTERNAL_FINANCIAL_FIELDS as readonly string[]).includes(key),
+          );
+          if (disallowedFinancials.length > 0) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "金額情報を変更する権限がありません" });
+          }
+        }
         // partnerロールはステータス/進捗ステージ/緊急度の変更のみ許可
         if (ctx.user.role === 'partner') {
           const allowedKeys = ['status', 'progressStage', 'urgency', 'partnerNotes', 'surveyImpression', 'surveyImpressionAuthor'];
@@ -1073,6 +1261,10 @@ export const appRouter = router({
           if (detected) data.prefecture = detected;
         } else if (data.prefecture != null) {
           data.prefecture = data.prefecture.trim() || null;
+        }
+        const nextPrefecture = data.prefecture === undefined ? currentCase.prefecture : data.prefecture;
+        if (!canAccessPrefecture(ctx.user, nextPrefecture)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "このエリアへ案件を変更する権限がありません" });
         }
         // ステータス変更時は履歴を記録
         if (data.status != null) {
@@ -1152,7 +1344,7 @@ export const appRouter = router({
         const logs = await db.select().from(revisitLogs).where(eq(revisitLogs.caseId, input.caseId)).orderBy(desc(revisitLogs.createdAt));
         return logs;
       }),
-    delete: protectedProcedure
+    delete: adminProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         await deleteCase(input.id);
@@ -1392,6 +1584,9 @@ export const appRouter = router({
     bulkImport: protectedProcedure
       .input(z.object({ rows: z.array(caseInputSchema).min(1, "最低1件必要です") }))
       .mutation(async ({ ctx, input }) => {
+        if (!canManageCases(ctx.user.role)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "案件を一括登録する権限がありません" });
+        }
         const results: { requestNumber: string; ok: boolean; error?: string }[] = [];
         let inserted = 0;
         let failed = 0;
@@ -1401,6 +1596,18 @@ export const appRouter = router({
               row.prefecture && row.prefecture.trim()
                 ? row.prefecture.trim()
                 : detectPrefecture(row.address) ?? row.prefecture ?? null;
+            if (!canAccessPrefecture(ctx.user, prefecture)) {
+              throw new Error("このエリアの案件を登録する権限がありません");
+            }
+            if (!canViewInternalFinancials(ctx.user.role)) {
+              const hasFinancialInput = INTERNAL_FINANCIAL_FIELDS.some(
+                (field) => {
+                  const value = (row as Record<string, unknown>)[field];
+                  return value != null && value !== false && value !== 0 && value !== "";
+                },
+              );
+              if (hasFinancialInput) throw new Error("金額情報を登録する権限がありません");
+            }
             const id = await createCase({ ...row, prefecture, createdBy: ctx.user.id });
             const items = DEFAULT_CHECKLIST.map((tpl) => ({
               caseId: id,
@@ -1422,8 +1629,8 @@ export const appRouter = router({
       }),
 
     // 予実サマリー（管理者のみ・予算 = 見積 × 75%）
-    summary: adminProcedure.query(async () => {
-      const cases = await listCases();
+    summary: financialProcedure.query(async ({ ctx }) => {
+      const cases = filterCasesByArea(await listCases(), ctx.user);
       const total = cases.length;
       const totalEstimated = cases.reduce((s, c) => s + (c.estimatedCost ?? 0), 0);
       const totalBudget = calcBudget(totalEstimated);
@@ -1450,8 +1657,8 @@ export const appRouter = router({
     }),
 
     // 月次レポート（月別・店舗別集計、管理者のみ）
-    monthlyReport: adminProcedure.query(async () => {
-      const cases = await listCases();
+    monthlyReport: financialProcedure.query(async ({ ctx }) => {
+      const cases = filterCasesByArea(await listCases(), ctx.user);
       // 基準日：completedAt > constructionDate > surveyDate > createdAt
       const monthly: Record<string, { yearMonth: string; count: number; completed: number; estimated: number; actual: number }> = {};
       const byStore: Record<string, { storeName: string; count: number; completed: number; estimated: number; actual: number }> = {};
@@ -2236,7 +2443,15 @@ export const appRouter = router({
   estimates: router({
     listByCase: protectedProcedure
       .input(z.object({ caseId: z.number() }))
-      .query(({ input }) => listEstimatesByCase(input.caseId)),
+      .query(async ({ input, ctx }) => {
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
+        if (!canViewInternalFinancials(ctx.user.role) && ctx.user.role !== "partner") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "見積金額の閲覧権限がありません" });
+        }
+        return listEstimatesByCase(input.caseId);
+      }),
 
     uploadFile: protectedProcedure
       .input(
@@ -3182,21 +3397,28 @@ export const appRouter = router({
   expenses: router({
     list: protectedProcedure.query(async ({ ctx }) => {
       let rows = await listAllExpenses();
-      if (ctx.user.role === 'partner') { rows = rows.filter(r => r.uploadedBy === ctx.user.id); }
+      if (!canViewInternalFinancials(ctx.user.role)) {
+        rows = rows.filter((row) => row.uploadedBy === ctx.user.id);
+      }
       return rows;
     }),
     listByCase: protectedProcedure
       .input(z.object({ caseId: z.number().int() }))
       .query(async ({ input, ctx }) => {
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
         let rows = await listExpensesByCase(input.caseId);
-        if (ctx.user.role === 'partner') {
+        if (!canViewInternalFinancials(ctx.user.role)) {
           rows = rows.filter(r => r.uploadedBy === ctx.user.id);
         }
         return rows;
       }),
     listUnmatched: protectedProcedure.query(async ({ ctx }) => {
-      if (ctx.user.role === 'partner') return [];
-      return await listUnmatchedExpenses();
+      const rows = await listUnmatchedExpenses();
+      return canViewInternalFinancials(ctx.user.role)
+        ? rows
+        : rows.filter((row) => row.uploadedBy === ctx.user.id);
     }),
     uploadFile: protectedProcedure
       .input(
@@ -3225,7 +3447,7 @@ export const appRouter = router({
           mimeType: z.string().optional(),
         }),
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const key = input.fileKey.replace(/^\/manus-storage\//, "");
         const signedUrl = await storageGetSignedUrl(key);
         const isImage = (input.mimeType || "").startsWith("image/");
@@ -3281,8 +3503,8 @@ export const appRouter = router({
           parsed = {};
         }
 
-        // 案件マッチング
-        const allCases = await listCases();
+        // 案件マッチング（担当案件・許可エリアのみ）
+        const allCases = await applyCaseVisibility(await listCases(), ctx.user);
         const candidates = allCases.map((c) => ({
           id: c.id,
           requestNumber: c.requestNumber,
@@ -3348,6 +3570,9 @@ export const appRouter = router({
         const ids: number[] = [];
         const touchedCases = new Set<number>();
         for (const item of input.items) {
+          const caseData = await getCaseById(item.caseId);
+          if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+          await assertCaseAccess(caseData, ctx.user);
           const id = await createExpense({
             caseId: item.caseId,
             scope: "案件",
@@ -3416,17 +3641,22 @@ export const appRouter = router({
         return { count: ids.length, ids };
       }),
     // 立替者(uploadedBy)別の集計。期間、区分内訳、案件/全体内訳を返す。管理者のみ。
-    byUser: adminProcedure
+    byUser: financialProcedure
       .input(
         z
           .object({ fromMs: z.number().int().nullish(), toMs: z.number().int().nullish() })
           .optional(),
       )
       .query(async ({ input, ctx }) => {
-        const rows = await listExpensesForAggregation(
+        let rows = await listExpensesForAggregation(
           input?.fromMs ?? undefined,
           input?.toMs ?? undefined,
         );
+        if (ctx.user.areaAccessMode === "selected") {
+          const visibleCases = filterCasesByArea(await listCases(), ctx.user);
+          const visibleCaseIds = new Set(visibleCases.map((item) => item.id));
+          rows = rows.filter((row) => row.caseId != null && visibleCaseIds.has(row.caseId));
+        }
         const users = await getAllUsers();
         const userName = new Map<number, string>();
         for (const u of users) userName.set(u.id, u.name ?? `ID:${u.id}`);
@@ -3449,6 +3679,15 @@ export const appRouter = router({
       )
       .mutation(async ({ input, ctx }) => {
         const before = await getExpenseById(input.id);
+        if (!before) throw new TRPCError({ code: "NOT_FOUND", message: "経費が見つかりません" });
+        if (!canViewInternalFinancials(ctx.user.role) && before.uploadedBy !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "本人が入力した経費だけ変更できます" });
+        }
+        if (input.patch.caseId != null) {
+          const caseData = await getCaseById(input.patch.caseId);
+          if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+          await assertCaseAccess(caseData, ctx.user);
+        }
         const patch: any = { ...input.patch };
         if (patch.expenseDate !== undefined) {
           patch.expenseDate = patch.expenseDate ? new Date(patch.expenseDate) : null;
@@ -3464,8 +3703,12 @@ export const appRouter = router({
       }),
     delete: protectedProcedure
       .input(z.object({ id: z.number().int() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const before = await getExpenseById(input.id);
+        if (!before) throw new TRPCError({ code: "NOT_FOUND", message: "経費が見つかりません" });
+        if (!canViewInternalFinancials(ctx.user.role) && before.uploadedBy !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "本人が入力した経費だけ削除できます" });
+        }
         await deleteExpense(input.id);
         if (before?.caseId) await syncCaseActualCost(before.caseId);
         return { ok: true };
@@ -3475,9 +3718,9 @@ export const appRouter = router({
       .input(z.object({ fromMs: z.number().int().nullish(), toMs: z.number().int().nullish() }).optional())
       .query(async ({ input, ctx }) => {
         const all = await listAllExpenses();
-        let filtered = ctx.user.role === 'partner'
-          ? all.filter(r => r.uploadedBy === ctx.user.id)
-          : all;
+        let filtered = canViewInternalFinancials(ctx.user.role)
+          ? all
+          : all.filter((row) => row.uploadedBy === ctx.user.id);
         if (input?.fromMs || input?.toMs) {
           filtered = filtered.filter((e) => {
             const ts = e.createdAt ? new Date(e.createdAt).getTime() : 0;
@@ -3489,7 +3732,7 @@ export const appRouter = router({
         return filtered;
       }),
     // 月次推移データ（過去N月の月別合計・区分別内訳）
-    monthlyTrend: adminProcedure
+    monthlyTrend: financialProcedure
       .input(z.object({ months: z.number().int().min(1).max(24).default(6) }).optional())
       .query(async ({ input, ctx }) => {
         const months = input?.months ?? 6;
@@ -3538,6 +3781,11 @@ export const appRouter = router({
         mimeType: z.string().nullish(),
       }))
       .mutation(async ({ input, ctx }) => {
+        if (input.caseId) {
+          const caseData = await getCaseById(input.caseId);
+          if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+          await assertCaseAccess(caseData, ctx.user);
+        }
         const id = await createExpense({
           caseId: input.caseId ?? null,
           scope: input.scope,
@@ -3586,15 +3834,17 @@ export const appRouter = router({
       return await listPendingExpenses();
     }),
     // 案件の予算ステータス取得
-    budgetStatus: protectedProcedure
+    budgetStatus: financialProcedure
       .input(z.object({ caseId: z.number().int() }))
       .query(async ({ input, ctx }) => {
-        if (ctx.user.role === 'partner') return null;
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) return null;
+        await assertCaseAccess(caseData, ctx.user);
         return await getCaseBudgetStatus(input.caseId);
       }),
   }),
   reports: router({
-    monthly: protectedProcedure
+    monthly: financialProcedure
       .input(
         z
           .object({
@@ -3604,8 +3854,11 @@ export const appRouter = router({
       )
       .query(async ({ input, ctx }) => {
         const months = input?.months ?? 6;
-        const allCases = await listCases();
-        const allExpenses = await listAllExpenses();
+        const allCases = filterCasesByArea(await listCases(), ctx.user);
+        const visibleCaseIds = new Set(allCases.map((item) => item.id));
+        const allExpenses = (await listAllExpenses()).filter((item) =>
+          item.caseId == null ? ctx.user.areaAccessMode !== "selected" : visibleCaseIds.has(item.caseId),
+        );
 
         // 直近 months ヶ月の月キーを生成（YYYY-MM）
         const now = new Date();
@@ -3680,9 +3933,12 @@ export const appRouter = router({
         );
         return { rows, totals };
       }),
-    byAssignee: protectedProcedure.query(async () => {
-      const allCases = await listCases();
-      const allExpenses = await listAllExpenses();
+    byAssignee: financialProcedure.query(async ({ ctx }) => {
+      const allCases = filterCasesByArea(await listCases(), ctx.user);
+      const visibleCaseIds = new Set(allCases.map((item) => item.id));
+      const allExpenses = (await listAllExpenses()).filter((item) =>
+        item.caseId == null ? ctx.user.areaAccessMode !== "selected" : visibleCaseIds.has(item.caseId),
+      );
       const users = await getAllUsers();
       const byUser = new Map<number, { userId: number; name: string; email: string; caseCount: number; completedCount: number; revenue: number; cost: number }>();
       for (const u of users) {
@@ -3726,11 +3982,11 @@ export const appRouter = router({
             return { rows };
     }),
     // 効果測定ダッシュボード用集計
-    effectiveness: protectedProcedure
+    effectiveness: financialProcedure
       .input(z.object({ months: z.number().int().min(1).max(24).default(12) }).optional())
       .query(async ({ input, ctx }) => {
         const months = input?.months ?? 12;
-        const allCases = await listCases();
+        const allCases = filterCasesByArea(await listCases(), ctx.user);
         const users = await getAllUsers();
         const allPartners = await listPartners();
 

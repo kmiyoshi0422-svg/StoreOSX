@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 
 /**
  * 管理者ロールのユーザーのみが見られる領域をラップするガード
- * - ログイン中で role==='admin' → children を表示
+ * - ログイン中で role==='admin' または role==='owner' → children を表示
  * - それ以外 → アクセス拒否メッセージ
  */
 export default function AdminOnly({ children }: { children: React.ReactNode }) {
@@ -19,7 +19,7 @@ export default function AdminOnly({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user || user.role !== "admin") {
+  if (!user || !["owner", "admin"].includes(user.role)) {
     return (
       <div className="max-w-md mx-auto py-16 text-center space-y-4">
         <ShieldAlert className="h-10 w-10 text-muted-foreground mx-auto" />

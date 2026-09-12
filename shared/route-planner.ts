@@ -14,7 +14,8 @@ export type CaseStatus =
   | "施工待ち"
   | "施工中"
   | "完了"
-  | "クローズ";
+  | "クローズ"
+  | "失注";
 export type TaskType = "survey" | "construction";
 export type Team = "A" | "B";
 
@@ -67,7 +68,7 @@ const STAGE_WEIGHT: Record<ProgressStage, number> = {
  * 戻り値が null の場合は「現在訪問の必要なし」（見積提出済の承認待ちなど）
  */
 export function deriveNextTask(c: PlannerCase, today: Date): PlannerTask | null {
-  if (c.status === "完了" || c.status === "クローズ") return null;
+  if (c.status === "完了" || c.status === "クローズ" || c.status === "失注") return null;
 
   let taskType: TaskType;
   let reason: string;

@@ -21,43 +21,44 @@ import {
 } from "@/components/ui/sidebar";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, FilePlus, ClipboardList, Upload, Wallet, BarChart3, Briefcase, FileSearch, FileText, Users, Building2, Gauge, Receipt, TrendingUp, MapPinned, Images, BookMarked, Sparkles, Droplets, Library, GanttChart, Activity, List, SendHorizontal, CheckCircle2, FileClock } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, FilePlus, ClipboardList, Upload, Wallet, BarChart3, Briefcase, FileSearch, FileText, Users, Building2, Gauge, Receipt, TrendingUp, MapPinned, Images, BookMarked, Sparkles, Droplets, Library, GanttChart, Activity, List, SendHorizontal, CheckCircle2, FileClock, ShieldCheck } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
-type MenuItem = { icon: typeof LayoutDashboard; label: string; path: string; adminOnly?: boolean; hideForPartner?: boolean };
+type MenuItem = { icon: typeof LayoutDashboard; label: string; path: string; adminOnly?: boolean; financialOnly?: boolean; hideForPartner?: boolean; hideForCustomer?: boolean };
 const menuItems: MenuItem[] = [
   { icon: LayoutDashboard, label: "ダッシュボード", path: "/" },
   { icon: ClipboardList, label: "案件一覧", path: "/cases" },
-  { icon: Building2, label: "店舗一覧", path: "/stores", hideForPartner: true },
+  { icon: Building2, label: "店舗一覧", path: "/stores", hideForPartner: true, hideForCustomer: true },
   { icon: MapPinned, label: "案件マップ", path: "/cases/map" },
-  { icon: Images, label: "写真台帳・一括PDF", path: "/photo-ledger/batch", hideForPartner: true },
+  { icon: Images, label: "写真台帳・一括PDF", path: "/photo-ledger/batch", hideForPartner: true, hideForCustomer: true },
   { icon: Gauge, label: "ワークロード", path: "/workload", adminOnly: true },
-  { icon: GanttChart, label: "横断工程表", path: "/cross-schedule" },
+  { icon: GanttChart, label: "横断工程表", path: "/cross-schedule", hideForCustomer: true },
   { icon: ClipboardList, label: "完了報告書一覧", path: "/reports/completed", adminOnly: true },
-  { icon: FileClock, label: "PDF生成履歴", path: "/pdf-history", hideForPartner: true },
-  { icon: FilePlus, label: "案件登録", path: "/cases/new", hideForPartner: true },
-  { icon: FileSearch, label: "PDFから案件登録", path: "/cases/import-pdf", hideForPartner: true },
-  { icon: Library, label: "資料DB庫", path: "/document-library" },
-  { icon: Droplets, label: "雨漏り調査", path: "/rain-leak", hideForPartner: true },
-  { icon: FileText, label: "見積書取込", path: "/estimates/import", hideForPartner: true },
-  { icon: FileSearch, label: "見積書OCR→Excel", path: "/estimates/ocr-excel", hideForPartner: true },
-  { icon: Upload, label: "CSVインポート", path: "/cases/import", hideForPartner: true },
-  { icon: Briefcase, label: "協力会社", path: "/partners", hideForPartner: true },
-  { icon: Users, label: "協力会社取込", path: "/partners/import", hideForPartner: true },
-  { icon: Receipt, label: "経費取込", path: "/expenses/import" },
-  { icon: SendHorizontal, label: "経費申請", path: "/expenses/submit" },
+  { icon: FileClock, label: "PDF生成履歴", path: "/pdf-history", hideForPartner: true, hideForCustomer: true },
+  { icon: FilePlus, label: "案件登録", path: "/cases/new", hideForPartner: true, hideForCustomer: true },
+  { icon: FileSearch, label: "PDFから案件登録", path: "/cases/import-pdf", hideForPartner: true, hideForCustomer: true },
+  { icon: Library, label: "資料DB庫", path: "/document-library", hideForCustomer: true },
+  { icon: Droplets, label: "雨漏り調査", path: "/rain-leak", hideForPartner: true, hideForCustomer: true },
+  { icon: FileText, label: "見積書取込", path: "/estimates/import", hideForPartner: true, hideForCustomer: true },
+  { icon: FileSearch, label: "見積書OCR→Excel", path: "/estimates/ocr-excel", hideForPartner: true, hideForCustomer: true },
+  { icon: Upload, label: "CSVインポート", path: "/cases/import", hideForPartner: true, hideForCustomer: true },
+  { icon: Briefcase, label: "協力会社", path: "/partners", hideForPartner: true, hideForCustomer: true },
+  { icon: Users, label: "協力会社取込", path: "/partners/import", hideForPartner: true, hideForCustomer: true },
+  { icon: Receipt, label: "経費取込", path: "/expenses/import", hideForCustomer: true },
+  { icon: SendHorizontal, label: "経費申請", path: "/expenses/submit", hideForCustomer: true },
   { icon: CheckCircle2, label: "経費承認", path: "/expenses/approve", adminOnly: true },
-  { icon: List, label: "経費明細一覧", path: "/expenses/list", adminOnly: true },
-  { icon: Wallet, label: "立替者別経費", path: "/expenses/by-user", adminOnly: true },
-  { icon: Wallet, label: "予実管理", path: "/budget", adminOnly: true },
-  { icon: BarChart3, label: "月次レポート", path: "/reports/monthly", adminOnly: true },
-  { icon: TrendingUp, label: "実績レポート", path: "/reports", adminOnly: true },
-  { icon: Activity, label: "効果測定", path: "/effectiveness", adminOnly: true },
-  { icon: BookMarked, label: "全角化除外辞書", path: "/settings/exclusions", hideForPartner: true },
-  { icon: Sparkles, label: "所感AI設定", path: "/settings/impression", hideForPartner: true },
+  { icon: List, label: "経費明細一覧", path: "/expenses/list", hideForCustomer: true },
+  { icon: Wallet, label: "立替者別経費", path: "/expenses/by-user", financialOnly: true },
+  { icon: Wallet, label: "予実管理", path: "/budget", financialOnly: true },
+  { icon: BarChart3, label: "月次レポート", path: "/reports/monthly", financialOnly: true },
+  { icon: TrendingUp, label: "実績レポート", path: "/reports", financialOnly: true },
+  { icon: Activity, label: "効果測定", path: "/effectiveness", financialOnly: true },
+  { icon: BookMarked, label: "全角化除外辞書", path: "/settings/exclusions", hideForPartner: true, hideForCustomer: true },
+  { icon: Sparkles, label: "所感AI設定", path: "/settings/impression", hideForPartner: true, hideForCustomer: true },
+  { icon: ShieldCheck, label: "役割・閲覧エリア", path: "/settings/access", adminOnly: true },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -144,10 +145,14 @@ function DashboardLayoutContent({
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const isAdmin = user?.role === "admin" || user?.role === "owner";
+  const canViewFinancials = isAdmin || user?.role === "executive";
   const isPartner = user?.role === "partner";
+  const isCustomer = user?.role === "customer";
   const visibleMenuItems = menuItems.filter(item => {
     if (item.adminOnly && !isAdmin) return false;
+    if (item.financialOnly && !canViewFinancials) return false;
     if (item.hideForPartner && isPartner) return false;
+    if (item.hideForCustomer && isCustomer) return false;
     return true;
   });
   const activeMenuItem = visibleMenuItems.find(item => item.path === location);

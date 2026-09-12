@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 const root = resolve(import.meta.dirname, "..");
 const homeSource = readFileSync(resolve(root, "client/src/pages/Home.tsx"), "utf8");
 const routerSource = readFileSync(resolve(root, "server/routers.ts"), "utf8");
+const accessManagementSource = readFileSync(resolve(root, "client/src/pages/AccessManagement.tsx"), "utf8");
+const appSource = readFileSync(resolve(root, "client/src/App.tsx"), "utf8");
 
 describe("経過案件3区分ダッシュボード", () => {
   it("3か月以上・1か月以上・漏電関係と施工予定週を表示する", () => {
@@ -56,5 +58,25 @@ describe("経過案件3区分ダッシュボード", () => {
     expect(homeSource).toContain("すべて既読");
     expect(routerSource).toContain("partnerNotifications: protectedProcedure");
     expect(routerSource).toContain("markPartnerNotificationRead: protectedProcedure");
+  });
+
+  it("失注理由を4分類から選び、失注タブから即時復活できる", () => {
+    expect(homeSource).toContain("① 高額なため");
+    expect(homeSource).toContain("② 対応に不備（遅いなど）");
+    expect(homeSource).toContain("③ 別業者手配");
+    expect(homeSource).toContain("④ その他");
+    expect(homeSource).toContain("trpc.dashboard.markCaseLost.useMutation");
+    expect(homeSource).toContain("trpc.dashboard.reviveLostCase.useMutation");
+    expect(homeSource).toContain("復活する");
+    expect(routerSource).toContain("markCaseLost: protectedProcedure");
+    expect(routerSource).toContain("reviveLostCase: protectedProcedure");
+  });
+
+  it("管理者画面で役割と閲覧エリアを設定できる", () => {
+    expect(appSource).toContain('/settings/access');
+    expect(accessManagementSource).toContain("役割・閲覧エリア管理");
+    expect(accessManagementSource).toContain("trpc.users.updateAccess.useMutation");
+    expect(accessManagementSource).toContain("選択した都道府県のみ");
+    expect(routerSource).toContain("updateAccess: adminProcedure");
   });
 });

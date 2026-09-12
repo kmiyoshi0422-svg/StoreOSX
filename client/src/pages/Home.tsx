@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
@@ -60,6 +61,8 @@ import {
   Pencil,
   CalendarX,
   ListChecks,
+  Ban,
+  RotateCcw,
 } from "lucide-react";
 import { usePdfHistoryRecorder } from "@/hooks/usePdfHistoryRecorder";
 import { applyRootSeoMetadata, ROOT_SEO } from "@/lib/seo";
@@ -121,6 +124,11 @@ type DashboardCase = {
   requestContent?: string | null;
   contractorName?: string | null;
   partnerId?: number | null;
+  lostReason?: string | null;
+  lostReasonDetail?: string | null;
+  lostAt?: Date | string | null;
+  lostBy?: number | null;
+  preLostStatus?: string | null;
 };
 
 type AttentionCase = DashboardCase & {
@@ -134,6 +142,7 @@ type AttentionCaseGroups = {
   threeMonthsOrMore: AttentionCase[];
   oneToThreeMonths: AttentionCase[];
   leakageRelated: AttentionCase[];
+  lost: AttentionCase[];
 };
 
 type DashboardAlert = {
@@ -211,6 +220,8 @@ export default function Home() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "owner";
   const isPartner = user?.role === "partner";
+  const canViewFinancials = isAdmin || user?.role === "executive";
+  const canManageCases = isAdmin || user?.role === "executive" || user?.role === "user";
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>("all");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
@@ -224,7 +235,7 @@ export default function Home() {
   }), [selectedPeriod.from, selectedPeriod.to]);
   const { data: dashboard, isLoading, error } = trpc.dashboard.overview.useQuery(periodInput);
   const { data: alerts = [], isLoading: alertsLoading } = trpc.reports.kpiAlerts.useQuery(periodInput, {
-    enabled: !isPartner,
+    enabled: canViewFinancials,
   });
   const pdfRef = useRef<HTMLDivElement>(null);
   const { recordPdf } = usePdfHistoryRecorder();
@@ -242,6 +253,7 @@ export default function Home() {
     threeMonthsOrMore: [],
     oneToThreeMonths: [],
     leakageRelated: [],
+    lost: [],
   }) as AttentionCaseGroups;
   const kpis = dashboard?.kpis;
   const financials = dashboard?.financials;
@@ -295,7 +307,7 @@ export default function Home() {
     else if (key.startsWith("urgency:")) rows = cases.filter((item) => item.urgency === key.slice(8));
     else if (key === "financial") {
       rows = cases;
-      description = "管理者にのみ表示される案件別の見積・実績内訳です。";
+      description = "管理者・役員にのみ表示される案件別の見積・実績内訳です。";
     }
 
     setDrilldown({ title, description, rows });
@@ -321,7 +333,7 @@ export default function Home() {
       ...dashboard.urgencyBreakdown.map((row) => [row.label, row.value]),
     ];
 
-    if (isAdmin && dashboard.financials) {
+    if (canViewFinancials && dashboard.financials) {
       rows.push(
         [],
         ["予実", "金額"],
@@ -334,7 +346,7 @@ export default function Home() {
 
     rows.push(
       [],
-      ["案件番号", "店舗名", "ブランド", "都道府県", "ステータス", "進捗", "緊急度", "担当者", "依頼日", ...(isAdmin ? ["見積", "実績"] : [])],
+      ["案件番号", "店舗名", "ブランド", "都道府県", "ステータス", "進捗", "緊急度", "担当者", "依頼日", ...(canViewFinancials ? ["見積", "実績"] : [])],
       ...cases.map((item) => [
         item.requestNumber,
         item.storeName,
@@ -345,7 +357,7 @@ export default function Home() {
         item.urgency,
         item.assigneeName ?? "未割当",
         formatDate(item.requestDate ?? item.createdAt),
-        ...(isAdmin ? [item.estimatedCost ?? 0, item.actualCost ?? 0] : []),
+        ...(canViewFinancials ? [item.estimatedCost ?? 0, item.actualCost ?? 0] : []),
       ]),
       [],
       ["KPIアラート", "案件番号", "店舗名", "状態", "経過日数", "内容"],
@@ -470,7 +482,7 @@ export default function Home() {
 
       {periodControls}
 
-      <AttentionCases groups={attentionCases} setLocation={setLocation} canEditSchedule />
+      <AttentionCases groups={attentionCases} setLocation={setLocation} canEditSchedule={canManageCases} />
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
         <KpiCard icon={<ClipboardList className="h-4 w-4" />} label="案件総数" value={kpis?.total ?? 0} accent="text-primary" secondary="全案件の内訳" onClick={() => openDrilldown("all", "案件総数の内訳")} />
@@ -558,7 +570,7 @@ export default function Home() {
         </Card>
       </div>
 
-      {isAdmin && financials && (
+      {canViewFinancials && financials && (
         <div>
           <div className="flex items-end justify-between mb-4">
             <div className="flex items-center gap-2">
@@ -606,21 +618,21 @@ export default function Home() {
         )}
       </div>
 
-      <DashboardPdfDocument ref={pdfRef} dashboard={dashboard} alerts={alerts as DashboardAlert[]} isAdmin={isAdmin} isPartner={isPartner} />
+      <DashboardPdfDocument ref={pdfRef} dashboard={dashboard} alerts={alerts as DashboardAlert[]} canViewFinancials={canViewFinancials} isPartner={isPartner} />
 
       <Dialog open={Boolean(drilldown)} onOpenChange={(open) => !open && setDrilldown(null)}>
         <DialogContent className="max-w-5xl">
           <DialogHeader><DialogTitle>{drilldown?.title}</DialogTitle><DialogDescription>{drilldown?.description}</DialogDescription></DialogHeader>
           <div className="max-h-[65vh] overflow-auto border rounded-md">
             <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-muted/95 backdrop-blur"><tr><th className="text-left px-3 py-2">案件番号</th><th className="text-left px-3 py-2">店舗</th><th className="text-left px-3 py-2">状態</th><th className="text-left px-3 py-2">緊急度</th><th className="text-left px-3 py-2">担当</th>{isAdmin && <><th className="text-right px-3 py-2">見積</th><th className="text-right px-3 py-2">実績</th></>}</tr></thead>
+              <thead className="sticky top-0 bg-muted/95 backdrop-blur"><tr><th className="text-left px-3 py-2">案件番号</th><th className="text-left px-3 py-2">店舗</th><th className="text-left px-3 py-2">状態</th><th className="text-left px-3 py-2">緊急度</th><th className="text-left px-3 py-2">担当</th>{canViewFinancials && <><th className="text-right px-3 py-2">見積</th><th className="text-right px-3 py-2">実績</th></>}</tr></thead>
               <tbody>
                 {drilldown?.rows.map((item) => (
                   <tr key={item.id} onClick={() => setLocation(`/cases/${item.id}`)} className="border-t hover:bg-muted/40 cursor-pointer">
-                    <td className="px-3 py-2 font-mono text-xs">{item.requestNumber}</td><td className="px-3 py-2 font-medium">{item.storeName}</td><td className="px-3 py-2"><Badge variant="outline" className={STATUS_COLORS[item.status]}>{item.status}</Badge></td><td className="px-3 py-2">{item.urgency}</td><td className="px-3 py-2">{item.assigneeName ?? "未割当"}</td>{isAdmin && <><td className="px-3 py-2 text-right">¥{(item.estimatedCost ?? 0).toLocaleString()}</td><td className="px-3 py-2 text-right">¥{(item.actualCost ?? 0).toLocaleString()}</td></>}
+                    <td className="px-3 py-2 font-mono text-xs">{item.requestNumber}</td><td className="px-3 py-2 font-medium">{item.storeName}</td><td className="px-3 py-2"><Badge variant="outline" className={STATUS_COLORS[item.status]}>{item.status}</Badge></td><td className="px-3 py-2">{item.urgency}</td><td className="px-3 py-2">{item.assigneeName ?? "未割当"}</td>{canViewFinancials && <><td className="px-3 py-2 text-right">¥{(item.estimatedCost ?? 0).toLocaleString()}</td><td className="px-3 py-2 text-right">¥{(item.actualCost ?? 0).toLocaleString()}</td></>}
                   </tr>
                 ))}
-                {drilldown?.rows.length === 0 && <tr><td colSpan={isAdmin ? 7 : 5} className="px-3 py-12 text-center text-muted-foreground">該当する案件はありません</td></tr>}
+                {drilldown?.rows.length === 0 && <tr><td colSpan={canViewFinancials ? 7 : 5} className="px-3 py-12 text-center text-muted-foreground">該当する案件はありません</td></tr>}
               </tbody>
             </table>
           </div>
@@ -677,6 +689,12 @@ const ATTENTION_GROUPS: Array<{
     description: "漏電・ブレーカー・停電・絶縁・ヒューズ等を含む未完了案件です。経過期間にかかわらず表示します。",
     activeClass: "border-orange-600 bg-orange-600 text-white hover:bg-orange-700",
   },
+  {
+    key: "lost",
+    label: "失注",
+    description: "失注理由を確認し、再提出や案件復活時に元の状態へすぐ戻せます。",
+    activeClass: "border-zinc-700 bg-zinc-700 text-white hover:bg-zinc-800",
+  },
 ];
 
 function AttentionCases({
@@ -695,9 +713,15 @@ function AttentionCases({
   const [partnerSearch, setPartnerSearch] = useState("");
   const [selectedCaseIds, setSelectedCaseIds] = useState<number[]>([]);
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [lostRow, setLostRow] = useState<AttentionCase | null>(null);
+  const [lostReason, setLostReason] = useState<"高額なため" | "対応に不備" | "別業者手配" | "その他">("高額なため");
+  const [lostReasonDetail, setLostReasonDetail] = useState("");
   const activeMeta = ATTENTION_GROUPS.find((group) => group.key === activeGroup) ?? ATTENTION_GROUPS[0];
   const rows = groups[activeGroup] ?? [];
-  const selectableCaseIds = useMemo(() => rows.filter((row) => !row.constructionDate).map((row) => row.id), [rows]);
+  const selectableCaseIds = useMemo(
+    () => activeGroup === "lost" ? [] : rows.filter((row) => !row.constructionDate).map((row) => row.id),
+    [activeGroup, rows],
+  );
   const utils = trpc.useUtils();
   const { data: partnerOptions = [], isLoading: partnerOptionsLoading } = trpc.dashboard.schedulingOptions.useQuery(undefined, {
     enabled: canEditSchedule,
@@ -754,6 +778,35 @@ function AttentionCases({
     },
     onError: (mutationError) => toast.error(mutationError.message || "解除できませんでした"),
   });
+  const markCaseLost = trpc.dashboard.markCaseLost.useMutation({
+    onSuccess: async () => {
+      toast.success("案件を失注にしました。失注タブからいつでも復活できます");
+      setLostRow(null);
+      setLostReason("高額なため");
+      setLostReasonDetail("");
+      setSelectedCaseIds([]);
+      await Promise.all([
+        utils.dashboard.overview.invalidate(),
+        utils.cases.list.invalidate(),
+        utils.cases.listSummary.invalidate(),
+        utils.crossSchedule.list.invalidate(),
+      ]);
+      setActiveGroup("lost");
+    },
+    onError: (mutationError) => toast.error(mutationError.message || "失注にできませんでした"),
+  });
+  const reviveLostCase = trpc.dashboard.reviveLostCase.useMutation({
+    onSuccess: async (result) => {
+      toast.success(`案件を${result.status}へ復活しました`);
+      await Promise.all([
+        utils.dashboard.overview.invalidate(),
+        utils.cases.list.invalidate(),
+        utils.cases.listSummary.invalidate(),
+        utils.crossSchedule.list.invalidate(),
+      ]);
+    },
+    onError: (mutationError) => toast.error(mutationError.message || "案件を復活できませんでした"),
+  });
 
   const openScheduleDialog = (row: AttentionCase) => {
     setEditingRow(row);
@@ -796,6 +849,26 @@ function AttentionCases({
     clearScheduleCase.mutate({ caseId: row.id });
   };
 
+  const openLostDialog = (row: AttentionCase) => {
+    setLostRow(row);
+    setLostReason("高額なため");
+    setLostReasonDetail("");
+  };
+
+  const saveLost = () => {
+    if (!lostRow || (lostReason === "その他" && !lostReasonDetail.trim())) return;
+    markCaseLost.mutate({
+      caseId: lostRow.id,
+      reason: lostReason,
+      reasonDetail: lostReasonDetail.trim() || null,
+    });
+  };
+
+  const requestRevive = (row: AttentionCase) => {
+    if (!window.confirm(`${row.requestNumber} / ${row.storeName} を失注前の状態へ戻しますか？`)) return;
+    reviveLostCase.mutate({ caseId: row.id });
+  };
+
   const saveSchedule = () => {
     if (!constructionDate || !partnerId) return;
     if (bulkDialogOpen) {
@@ -828,7 +901,7 @@ function AttentionCases({
             </div>
             <Badge variant="outline" className="shrink-0">経過案件 {groups.threeMonthsOrMore.length + groups.oneToThreeMonths.length}件</Badge>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4" role="tablist" aria-label="要対応案件の区分">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 mt-4" role="tablist" aria-label="要対応案件の区分">
             {ATTENTION_GROUPS.map((group) => {
               const selected = group.key === activeGroup;
               return (
@@ -844,7 +917,7 @@ function AttentionCases({
                   }}
                   className={`justify-between ${selected ? group.activeClass : "bg-white"}`}
                 >
-                  <span className="flex items-center gap-2">{group.key === "leakageRelated" && <Zap className="h-4 w-4" />}{group.label}</span>
+                  <span className="flex items-center gap-2">{group.key === "leakageRelated" && <Zap className="h-4 w-4" />}{group.key === "lost" && <Ban className="h-4 w-4" />}{group.label}</span>
                   <Badge variant={selected ? "secondary" : "outline"}>{groups[group.key].length}件</Badge>
                 </Button>
               );
@@ -877,7 +950,7 @@ function AttentionCases({
                 className={`w-full text-left px-5 py-4 grid gap-3 md:grid-cols-[minmax(0,1.4fr)_120px_120px_minmax(220px,0.9fr)_20px] md:items-center hover:bg-slate-50 transition-colors ${selectedCaseIds.includes(row.id) ? "bg-blue-50/70" : ""}`}
               >
                 <div className="min-w-0 flex items-start gap-3">
-                  {canEditSchedule && !row.constructionDate && (
+                  {canEditSchedule && activeGroup !== "lost" && !row.constructionDate && (
                     <Checkbox
                       aria-label={`${row.storeName}を一括設定対象に選択`}
                       checked={selectedCaseIds.includes(row.id)}
@@ -895,7 +968,18 @@ function AttentionCases({
                 <div><p className="text-[10px] text-muted-foreground">経過日数</p><p className="text-lg font-bold text-slate-800 mt-0.5">{row.daysElapsed}日</p></div>
                 <div>
                   <p className="text-[10px] text-muted-foreground">施工予定日（予定週）</p>
-                  {row.constructionDate ? (
+                  {activeGroup === "lost" ? (
+                    <div className="mt-1 space-y-2">
+                      <Badge variant="outline" className="border-zinc-300 bg-zinc-100 text-zinc-700">{row.lostReason || "理由未設定"}</Badge>
+                      {row.lostReasonDetail && <p className="text-xs text-muted-foreground whitespace-pre-wrap">{row.lostReasonDetail}</p>}
+                      {row.lostAt && <p className="text-xs text-muted-foreground">失注日：{formatDate(row.lostAt)}</p>}
+                      {canEditSchedule && (
+                        <Button type="button" size="sm" variant="outline" onClick={() => requestRevive(row)} disabled={reviveLostCase.isPending}>
+                          <RotateCcw className="h-3.5 w-3.5 mr-1" />復活する
+                        </Button>
+                      )}
+                    </div>
+                  ) : row.constructionDate ? (
                     <>
                       <p className="text-sm font-semibold mt-1">{formatScheduleDate(row.constructionDate)}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">{formatScheduleDate(row.constructionWeekStart)}〜{formatScheduleDate(row.constructionWeekEnd)}</p>
@@ -908,6 +992,9 @@ function AttentionCases({
                           <Button type="button" size="sm" variant="outline" className="border-red-200 text-red-700 hover:bg-red-50" onClick={() => requestClearSchedule(row)} disabled={clearScheduleCase.isPending}>
                             <CalendarX className="h-3.5 w-3.5 mr-1" />解除
                           </Button>
+                          <Button type="button" size="sm" variant="outline" className="border-zinc-300 text-zinc-700 hover:bg-zinc-100" onClick={() => openLostDialog(row)}>
+                            <Ban className="h-3.5 w-3.5 mr-1" />失注
+                          </Button>
                         </div>
                       )}
                     </>
@@ -915,9 +1002,14 @@ function AttentionCases({
                     <div className="mt-1 flex flex-col items-start gap-2">
                       <Badge variant="outline" className="border-red-300 bg-red-50 text-red-700">施工予定日 未設定</Badge>
                       {canEditSchedule && (
-                        <Button type="button" size="sm" onClick={() => openScheduleDialog(row)}>
-                          <CalendarDays className="h-3.5 w-3.5 mr-1.5" />予定日・業者を設定
-                        </Button>
+                        <div className="flex flex-wrap gap-1.5">
+                          <Button type="button" size="sm" onClick={() => openScheduleDialog(row)}>
+                            <CalendarDays className="h-3.5 w-3.5 mr-1.5" />予定日・業者を設定
+                          </Button>
+                          <Button type="button" size="sm" variant="outline" className="border-zinc-300 text-zinc-700 hover:bg-zinc-100" onClick={() => openLostDialog(row)}>
+                            <Ban className="h-3.5 w-3.5 mr-1" />失注
+                          </Button>
+                        </div>
                       )}
                     </div>
                   )}
@@ -970,19 +1062,64 @@ function AttentionCases({
         </div>
       </DialogContent>
     </Dialog>
+    <Dialog open={Boolean(lostRow)} onOpenChange={(open) => !open && setLostRow(null)}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>案件を失注にする</DialogTitle>
+          <DialogDescription>
+            {lostRow ? `${lostRow.requestNumber} / ${lostRow.storeName}` : "対象案件"}を完了相当として要対応一覧から外します。失注タブからいつでも復活できます。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <div>
+            <label className="text-sm font-medium">失注理由</label>
+            <Select value={lostReason} onValueChange={(value) => setLostReason(value as typeof lostReason)}>
+              <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="高額なため">① 高額なため</SelectItem>
+                <SelectItem value="対応に不備">② 対応に不備（遅いなど）</SelectItem>
+                <SelectItem value="別業者手配">③ 別業者手配</SelectItem>
+                <SelectItem value="その他">④ その他</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label htmlFor="lost-reason-detail" className="text-sm font-medium">補足{lostReason === "その他" ? "（必須）" : "（任意）"}</label>
+            <Textarea
+              id="lost-reason-detail"
+              value={lostReasonDetail}
+              onChange={(event) => setLostReasonDetail(event.target.value)}
+              placeholder="具体的な理由や再提出時の注意点を入力"
+              className="mt-1.5 min-h-24"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={() => setLostRow(null)} disabled={markCaseLost.isPending}>キャンセル</Button>
+            <Button
+              type="button"
+              className="bg-zinc-800 text-white hover:bg-zinc-900"
+              onClick={saveLost}
+              disabled={!lostRow || (lostReason === "その他" && !lostReasonDetail.trim()) || markCaseLost.isPending}
+            >
+              {markCaseLost.isPending && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}失注にする
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
     </>
   );
 }
 
-const DashboardPdfDocument = ({ ref, dashboard, alerts, isAdmin, isPartner }: { ref: React.RefObject<HTMLDivElement | null>; dashboard: any; alerts: DashboardAlert[]; isAdmin: boolean; isPartner: boolean }) => {
+const DashboardPdfDocument = ({ ref, dashboard, alerts, canViewFinancials, isPartner }: { ref: React.RefObject<HTMLDivElement | null>; dashboard: any; alerts: DashboardAlert[]; canViewFinancials: boolean; isPartner: boolean }) => {
   const total = Math.max(1, dashboard.kpis.total);
   return (
     <div ref={ref} className="fixed left-[-10000px] top-0 opacity-0 pointer-events-none" aria-hidden="true">
       <section className="dashboard-pdf-page bg-white text-slate-900" style={{ width: "210mm", minHeight: "297mm", padding: "14mm 12mm", boxSizing: "border-box" }}>
-        <div className="border-b-2 border-slate-800 pb-4 mb-5"><div className="flex justify-between items-end"><div><p className="text-xs tracking-[0.18em] text-slate-500">STORE OSX</p><h1 className="text-2xl font-bold mt-1">ダッシュボードレポート</h1></div><div className="text-right text-xs text-slate-500"><p>{new Date(dashboard.generatedAt).toLocaleString("ja-JP")}</p><p>{isPartner ? "協力業者向け・担当案件のみ" : isAdmin ? "管理者向け" : "社員向け"}</p></div></div></div>
+        <div className="border-b-2 border-slate-800 pb-4 mb-5"><div className="flex justify-between items-end"><div><p className="text-xs tracking-[0.18em] text-slate-500">STORE OSX</p><h1 className="text-2xl font-bold mt-1">ダッシュボードレポート</h1></div><div className="text-right text-xs text-slate-500"><p>{new Date(dashboard.generatedAt).toLocaleString("ja-JP")}</p><p>{isPartner ? "協力業者向け・担当案件のみ" : canViewFinancials ? "管理者・役員向け" : "社員・顧客向け"}</p></div></div></div>
         <div className="grid grid-cols-5 gap-2 mb-6">{[["案件総数", dashboard.kpis.total], ["進行中", dashboard.kpis.inProgress], ["緊急・高", dashboard.kpis.urgent], ["完了", dashboard.kpis.completed], ["再訪ゼロ率", `${dashboard.kpis.noRevisitRate}%`]].map(([label, value]) => <div key={label} className="border border-slate-200 p-3"><p className="text-[10px] text-slate-500">{label}</p><p className="text-xl font-bold mt-1">{value}</p></div>)}</div>
         <div className="grid grid-cols-2 gap-6"><div><h2 className="text-sm font-bold border-b border-slate-300 pb-2 mb-3">ステータス別案件数</h2><div className="space-y-2">{dashboard.statusBreakdown.map((row: any, index: number) => <div key={row.key}><div className="flex justify-between text-xs mb-1"><span>{row.label}</span><span>{row.value}件</span></div><div className="h-3 bg-slate-100"><div className="h-3" style={{ width: `${Math.max(2, (row.value / total) * 100)}%`, backgroundColor: STATUS_CHART_COLORS[index % STATUS_CHART_COLORS.length] }} /></div></div>)}</div></div><div><h2 className="text-sm font-bold border-b border-slate-300 pb-2 mb-3">緊急度構成</h2><div className="space-y-3">{dashboard.urgencyBreakdown.map((row: any) => <div key={row.key} className="flex items-center justify-between border-b border-slate-100 pb-2"><span className="flex items-center gap-2 text-xs"><span className="h-3 w-3 rounded-full" style={{ backgroundColor: URGENCY_CHART_COLORS[row.key] }} />{row.label}</span><strong>{row.value}件</strong></div>)}</div></div></div>
-        {isAdmin && dashboard.financials && <div className="mt-7"><h2 className="text-sm font-bold border-b border-slate-300 pb-2 mb-3">予実サマリー</h2><div className="grid grid-cols-4 gap-2">{[["見積合計", dashboard.financials.totalEstimated], ["予算 見積×75%", dashboard.financials.totalBudget], ["実績合計", dashboard.financials.totalActual], ["差分", dashboard.financials.diff]].map(([label, value]) => <div key={label} className="border border-slate-200 p-3"><p className="text-[10px] text-slate-500">{label}</p><p className="text-base font-bold mt-1">¥{Number(value).toLocaleString()}</p></div>)}</div></div>}
+        {canViewFinancials && dashboard.financials && <div className="mt-7"><h2 className="text-sm font-bold border-b border-slate-300 pb-2 mb-3">予実サマリー</h2><div className="grid grid-cols-4 gap-2">{[["見積合計", dashboard.financials.totalEstimated], ["予算 見積×75%", dashboard.financials.totalBudget], ["実績合計", dashboard.financials.totalActual], ["差分", dashboard.financials.diff]].map(([label, value]) => <div key={label} className="border border-slate-200 p-3"><p className="text-[10px] text-slate-500">{label}</p><p className="text-base font-bold mt-1">¥{Number(value).toLocaleString()}</p></div>)}</div></div>}
         <p className="text-[9px] text-slate-400 mt-8">※ 本資料はStore OSXの表示時点の実データを集計しています。</p>
       </section>
       <section className="dashboard-pdf-page bg-white text-slate-900" style={{ width: "210mm", minHeight: "297mm", padding: "14mm 12mm", boxSizing: "border-box" }}>
