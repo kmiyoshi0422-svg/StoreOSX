@@ -162,6 +162,104 @@ export async function listCases() {
   return db.select().from(cases).orderBy(desc(cases.createdAt));
 }
 
+export type StoreSummaryRow = {
+  key: string;
+  storeCode: string | null;
+  storeName: string;
+  brand: string | null;
+  address: string | null;
+  caseCount: number;
+  openCount: number;
+  completedCount: number;
+  urgentCount: number;
+  totalEstimated: number;
+  totalActual: number;
+  latestRequestAt: Date | null;
+  latestStatus: string | null;
+  latestStage: string | null;
+};
+
+/**
+ * 店舗一覧専用のDB集約クエリ。
+ *
+ * 従来は全案件・全カラムをNode.jsへ転送してMap集計していたが、
+ * 店舗一覧で必要な14項目だけをDB側で集約して返す。
+ * 店舗キーは既存仕様どおり、trim済み店舗コードを優先し、
+ * 店舗コードが空の場合だけtrim済み店舗名へフォールバックする。
+ */
+type StoreSummaryDatabase = NonNullable<Awaited<ReturnType<typeof getDb>>>;
+
+export function buildStoreSummariesQuery(db: StoreSummaryDatabase) {
+  const storeKey = sql<string>`COALESCE(NULLIF(TRIM(${cases.storeCode}), ''), TRIM(${cases.storeName}))`;
+  const requestAt = sql<Date>`COALESCE(${cases.requestDate}, ${cases.createdAt})`;
+
+  const rankedCases = db
+    .select({
+      storeKey: storeKey.as("store_key"),
+      storeCode: cases.storeCode,
+      storeName: cases.storeName,
+      brand: cases.brand,
+      address: cases.address,
+      status: cases.status,
+      progressStage: cases.progressStage,
+      urgency: cases.urgency,
+      estimatedCost: cases.estimatedCost,
+      actualCost: cases.actualCost,
+      requestAt: requestAt.as("request_at"),
+      latestRank: sql<number>`ROW_NUMBER() OVER (
+        PARTITION BY ${storeKey}
+        ORDER BY ${requestAt} DESC, ${cases.createdAt} DESC, ${cases.id} DESC
+      )`.as("latest_rank"),
+      representativeRank: sql<number>`ROW_NUMBER() OVER (
+        PARTITION BY ${storeKey}
+        ORDER BY ${cases.createdAt} DESC, ${cases.id} DESC
+      )`.as("representative_rank"),
+      addressRank: sql<number>`ROW_NUMBER() OVER (
+        PARTITION BY ${storeKey}
+        ORDER BY CASE
+          WHEN ${cases.address} IS NULL OR TRIM(${cases.address}) = '' THEN 1
+          ELSE 0
+        END, ${cases.createdAt} DESC, ${cases.id} DESC
+      )`.as("address_rank"),
+      brandRank: sql<number>`ROW_NUMBER() OVER (
+        PARTITION BY ${storeKey}
+        ORDER BY CASE
+          WHEN ${cases.brand} IS NULL OR TRIM(${cases.brand}) = '' THEN 1
+          ELSE 0
+        END, ${cases.createdAt} DESC, ${cases.id} DESC
+      )`.as("brand_rank"),
+    })
+    .from(cases)
+    .as("ranked_cases");
+
+  return db
+    .select({
+      key: rankedCases.storeKey,
+      storeCode: sql<string | null>`MAX(CASE WHEN ${rankedCases.representativeRank} = 1 THEN ${rankedCases.storeCode} END)`,
+      storeName: sql<string>`MAX(CASE WHEN ${rankedCases.representativeRank} = 1 THEN ${rankedCases.storeName} END)`,
+      brand: sql<string | null>`MAX(CASE WHEN ${rankedCases.brandRank} = 1 THEN ${rankedCases.brand} END)`,
+      address: sql<string | null>`MAX(CASE WHEN ${rankedCases.addressRank} = 1 THEN ${rankedCases.address} END)`,
+      caseCount: sql<number>`COUNT(*)`.mapWith(Number),
+      openCount: sql<number>`SUM(CASE WHEN ${rankedCases.status} IN ('完了', 'クローズ') THEN 0 ELSE 1 END)`.mapWith(Number),
+      completedCount: sql<number>`SUM(CASE WHEN ${rankedCases.status} IN ('完了', 'クローズ') THEN 1 ELSE 0 END)`.mapWith(Number),
+      urgentCount: sql<number>`SUM(CASE WHEN ${rankedCases.urgency} IN ('S', 'A') THEN 1 ELSE 0 END)`.mapWith(Number),
+      totalEstimated: sql<number>`COALESCE(SUM(${rankedCases.estimatedCost}), 0)`.mapWith(Number),
+      totalActual: sql<number>`COALESCE(SUM(${rankedCases.actualCost}), 0)`.mapWith(Number),
+      latestRequestAt: sql<Date | null>`MAX(CASE WHEN ${rankedCases.latestRank} = 1 THEN ${rankedCases.requestAt} END)`,
+      latestStatus: sql<string | null>`MAX(CASE WHEN ${rankedCases.latestRank} = 1 THEN ${rankedCases.status} END)`,
+      latestStage: sql<string | null>`MAX(CASE WHEN ${rankedCases.latestRank} = 1 THEN ${rankedCases.progressStage} END)`,
+    })
+    .from(rankedCases)
+    .groupBy(rankedCases.storeKey)
+    .orderBy(desc(sql`latestRequestAt`));
+}
+
+export async function listStoreSummaries(): Promise<StoreSummaryRow[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return buildStoreSummariesQuery(db);
+}
+
 /**
  * 一覧表示用の軽量クエリ。
  * 全カラムではなく、一覧画面で必要な最小限のカラムのみ取得することで
@@ -1290,6 +1388,7 @@ export async function listFolderDocuments(folderId: number) {
     .select({
       id: documents.id,
       fileName: documents.fileName,
+      fileKey: documents.fileKey,
       fileUrl: documents.fileUrl,
       fileSize: documents.fileSize,
       category: documents.category,
@@ -1343,6 +1442,7 @@ export async function listDocumentsByFolderIds(folderIds: number[]) {
     .select({
       id: documents.id,
       fileName: documents.fileName,
+      fileKey: documents.fileKey,
       fileUrl: documents.fileUrl,
       fileSize: documents.fileSize,
       category: documents.category,
@@ -1402,6 +1502,7 @@ export async function searchDocuments(query: string, opts?: { scope?: "case" | "
       id: documents.id,
       caseId: documents.caseId,
       fileName: documents.fileName,
+      fileKey: documents.fileKey,
       fileUrl: documents.fileUrl,
       fileSize: documents.fileSize,
       category: documents.category,
@@ -1491,6 +1592,26 @@ export async function deleteStoreMaster(id: number) {
 // ============================================================
 // 過去案件・写真取得（同一店舗の履歴参照）
 // ============================================================
+export async function linkMatchingCasesToStoreMaster(
+  storeId: number,
+  storeCode: string | null | undefined,
+  storeName: string,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const normalizedCode = storeCode?.trim();
+  const normalizedName = storeName.trim();
+  const matchCondition = normalizedCode
+    ? or(eq(cases.storeCode, normalizedCode), eq(cases.storeName, normalizedName))
+    : eq(cases.storeName, normalizedName);
+
+  await db
+    .update(cases)
+    .set({ storeId })
+    .where(and(isNull(cases.storeId), matchCondition));
+}
+
 export async function listCasesByStoreId(storeId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -1512,6 +1633,31 @@ export async function listCasesByStoreId(storeId: number) {
     .from(cases)
     .where(eq(cases.storeId, storeId))
     .orderBy(desc(cases.createdAt));
+}
+
+export async function listDocumentsByStoreId(storeId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db
+    .select({
+      id: documents.id,
+      caseId: documents.caseId,
+      fileName: documents.fileName,
+      fileKey: documents.fileKey,
+      fileUrl: documents.fileUrl,
+      mimeType: documents.mimeType,
+      fileSize: documents.fileSize,
+      category: documents.category,
+      memo: documents.memo,
+      createdAt: documents.createdAt,
+      requestNumber: cases.requestNumber,
+      requestContent: cases.requestContent,
+    })
+    .from(documents)
+    .innerJoin(cases, eq(documents.caseId, cases.id))
+    .where(eq(cases.storeId, storeId))
+    .orderBy(desc(documents.createdAt));
 }
 
 export async function listPhotosByStoreId(storeId: number, limit = 50) {

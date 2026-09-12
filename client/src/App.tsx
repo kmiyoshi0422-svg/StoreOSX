@@ -37,6 +37,7 @@ const Partners = lazy(() => import("./pages/Partners"));
 const PartnerDetail = lazy(() => import("./pages/PartnerDetail"));
 const PartnerView = lazy(() => import("./pages/PartnerView"));
 const StoresList = lazy(() => import("./pages/StoresList"));
+const StoreDetail = lazy(() => import("./pages/StoreDetail"));
 const Workload = lazy(() => import("./pages/Workload"));
 const FullwidthExclusions = lazy(() => import("./pages/FullwidthExclusions"));
 const ImpressionSettings = lazy(() => import("./pages/ImpressionSettings"));
@@ -108,6 +109,9 @@ function Router() {
                   <AdminOnly><CompletedReports /></AdminOnly>
                 </Route>
                 <Route path={"/stores"} component={StoresList} />
+                <Route path={"/stores/:id"}>
+                  {(params) => <StoreDetail id={Number(params.id)} />}
+                </Route>
                 <Route path={"/workload"} component={Workload} />
                 <Route path={"/cross-schedule"} component={CrossSchedule} />
                 <Route path={"/effectiveness"}>

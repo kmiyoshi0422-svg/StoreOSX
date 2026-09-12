@@ -49,6 +49,9 @@ import {
   Loader2,
   BarChart3,
   PieChart as PieChartIcon,
+  Camera,
+  FileCheck,
+  ChevronRight,
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -139,7 +142,9 @@ export default function Home() {
   const isAdmin = user?.role === "admin" || user?.role === "owner";
   const isPartner = user?.role === "partner";
   const { data: dashboard, isLoading, error } = trpc.dashboard.overview.useQuery();
-  const { data: alerts = [], isLoading: alertsLoading } = trpc.reports.kpiAlerts.useQuery();
+  const { data: alerts = [], isLoading: alertsLoading } = trpc.reports.kpiAlerts.useQuery(undefined, {
+    enabled: !isPartner,
+  });
   const pdfRef = useRef<HTMLDivElement>(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [pdfProgress, setPdfProgress] = useState("");
@@ -149,6 +154,11 @@ export default function Home() {
   const recent = (dashboard?.recentCases ?? []) as DashboardCase[];
   const kpis = dashboard?.kpis;
   const financials = dashboard?.financials;
+
+  // partner向けダッシュボードを表示
+  if (isPartner) {
+    return <PartnerDashboard cases={cases} isLoading={isLoading} setLocation={setLocation} userName={user?.name ?? "協力業者"} />;
+  }
 
   const openDrilldown = (key: string, label?: string) => {
     let rows: DashboardCase[] = [];
@@ -520,3 +530,235 @@ const DashboardPdfDocument = ({ ref, dashboard, alerts, isAdmin, isPartner }: { 
     </div>
   );
 };
+
+// 再訪ゼロ率KPIカード
+function RevisitZeroCard({ cases }: { cases: any[] }) {
+  // 現調実施済み（surveyDateあり）の案件を対象
+  const surveyed = cases.filter((c) => c.surveyDate);
+  const noRevisit = surveyed.filter((c) => (c.revisitCount ?? 0) === 0);
+  const rate = surveyed.length > 0 ? Math.round((noRevisit.length / surveyed.length) * 100) : 100;
+  return (
+    <Card
+      className="cursor-pointer transition-all duration-200 hover:shadow-md hover:border-emerald-200 active:scale-[0.97]"
+      onClick={() => {}}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="p-1.5 rounded-md bg-emerald-50">
+            <ShieldCheck className="h-4 w-4 text-emerald-600" />
+          </div>
+          <span className="text-xs text-muted-foreground">再訪ゼロ率</span>
+        </div>
+        <p className="text-2xl font-bold text-emerald-600">{rate}%</p>
+        <p className="text-[10px] text-muted-foreground mt-1">
+          {noRevisit.length}/{surveyed.length}件 一発完了
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Partner Dashboard ─────────────────────────────────────────
+function PartnerDashboard({
+  cases,
+  isLoading,
+  setLocation,
+  userName,
+}: {
+  cases: any[];
+  isLoading: boolean;
+  setLocation: (path: string) => void;
+  userName: string;
+}) {
+  const total = cases.length;
+  const inProgress = cases.filter((c: any) =>
+    ["現調中", "見積中", "施工待ち", "施工中"].includes(c.status)
+  ).length;
+  const urgent = cases.filter((c: any) => c.urgency === "S" || c.urgency === "A").length;
+  const completed = cases.filter((c: any) => c.status === "完了").length;
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* ヘッダー */}
+      <div className="border-b border-border/60 pb-5">
+        <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-2">
+          Partner Dashboard
+        </p>
+        <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
+          {userName}さんの担当案件
+        </h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          担当案件の進捗状況を確認できます
+        </p>
+      </div>
+
+      {/* KPIカード */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card className="border-border/60">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-1.5 text-primary mb-2">
+              <ClipboardList className="h-4 w-4" />
+              <span className="text-xs font-medium">担当案件</span>
+            </div>
+            <p className="text-3xl font-bold">{total}</p>
+          </CardContent>
+        </Card>
+        <Card className="border-border/60">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-1.5 text-amber-600 mb-2">
+              <Clock className="h-4 w-4" />
+              <span className="text-xs font-medium">進行中</span>
+            </div>
+            <p className="text-3xl font-bold text-amber-600">{inProgress}</p>
+          </CardContent>
+        </Card>
+        <Card className="border-border/60">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-1.5 text-red-600 mb-2">
+              <AlertCircle className="h-4 w-4" />
+              <span className="text-xs font-medium">緊急/高</span>
+            </div>
+            <p className="text-3xl font-bold text-red-600">{urgent}</p>
+          </CardContent>
+        </Card>
+        <Card className="border-border/60">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-1.5 text-emerald-600 mb-2">
+              <CheckCircle2 className="h-4 w-4" />
+              <span className="text-xs font-medium">完了</span>
+            </div>
+            <p className="text-3xl font-bold text-emerald-600">{completed}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 対応が必要な案件 */}
+      {cases.filter((c: any) => c.status === "受付" || c.urgency === "S" || c.urgency === "A").length > 0 && (
+        <Card className="border-amber-200 bg-amber-50/50">
+          <CardContent className="p-4">
+            <h3 className="font-semibold text-amber-800 mb-3 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" />
+              対応が必要な案件
+            </h3>
+            <div className="space-y-2">
+              {cases
+                .filter((c: any) => c.status === "受付" || c.urgency === "S" || c.urgency === "A")
+                .slice(0, 5)
+                .map((c: any) => (
+                  <div
+                    key={c.id}
+                    className="flex items-center justify-between bg-white rounded-lg p-3 border border-amber-200 cursor-pointer hover:shadow-sm transition-shadow"
+                    onClick={() => setLocation(`/cases/${c.id}`)}
+                  >
+                    <div className="flex items-center gap-3">
+                      {c.urgency && (
+                        <Badge className={`text-xs ${URGENCY_COLORS[c.urgency] || ""}`}>
+                          {URGENCY_LABEL[c.urgency] || c.urgency}
+                        </Badge>
+                      )}
+                      <div>
+                        <p className="font-medium text-sm">{c.storeName}</p>
+                        <p className="text-xs text-muted-foreground">{c.requestNumber}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className={`text-xs ${STATUS_COLORS[c.status] || ""}`}>
+                        {c.status}
+                      </Badge>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 担当案件一覧 */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold text-lg">全担当案件</h2>
+          <Button variant="outline" size="sm" onClick={() => setLocation("/cases")}>
+            案件一覧へ
+            <ArrowUpRight className="h-3.5 w-3.5 ml-1" />
+          </Button>
+        </div>
+
+        {cases.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center text-muted-foreground">
+              <ClipboardList className="h-12 w-12 mx-auto mb-3 opacity-30" />
+              <p>担当案件はまだありません</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-2">
+            {cases.map((c: any) => (
+              <Card
+                key={c.id}
+                className="border-border/60 cursor-pointer hover:shadow-md hover:border-primary/30 transition-all duration-200 active:scale-[0.99]"
+                onClick={() => setLocation(`/cases/${c.id}`)}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {c.urgency && (
+                        <Badge className={`text-xs shrink-0 ${URGENCY_COLORS[c.urgency] || ""}`}>
+                          {URGENCY_LABEL[c.urgency] || c.urgency}
+                        </Badge>
+                      )}
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">{c.storeName}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-muted-foreground">{c.requestNumber}</span>
+                          {c.brand && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{c.brand}</Badge>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge variant="outline" className={`text-xs ${STATUS_COLORS[c.status] || ""}`}>
+                        {c.status}
+                      </Badge>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </div>
+                  {/* クイックアクション */}
+                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/40">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={(e) => { e.stopPropagation(); setLocation(`/cases/${c.id}/survey-report`); }}
+                    >
+                      <FileCheck className="h-3 w-3 mr-1" />
+                      報告書
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={(e) => { e.stopPropagation(); setLocation(`/cases/${c.id}?tab=photos`); }}
+                    >
+                      <Camera className="h-3 w-3 mr-1" />
+                      写真
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

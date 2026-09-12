@@ -23,7 +23,9 @@ import {
   ChevronRight,
   TrendingUp,
   Receipt,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
 
 type SortKey = "latest" | "caseCount" | "openCount" | "totalActual";
 
@@ -52,6 +54,7 @@ function daysSince(d: Date | string | null): number | null {
 export default function StoresList() {
   const [, setLocation] = useLocation();
   const { data: stores = [], isLoading } = trpc.stores.list.useQuery();
+  const { data: storeMasters = [] } = trpc.storeMaster.list.useQuery();
   const [q, setQ] = useState("");
   const [tab, setTab] = useState<"all" | "multi" | "openOnly">("all");
   const [sort, setSort] = useState<SortKey>("latest");
@@ -88,6 +91,46 @@ export default function StoresList() {
     });
     return list;
   }, [stores, q, tab, sort]);
+
+  const masterByStoreKey = useMemo(() => {
+    const byCode = new Map<string, (typeof storeMasters)[number]>();
+    const byName = new Map<string, (typeof storeMasters)[number]>();
+    for (const master of storeMasters) {
+      if (master.storeCode?.trim()) byCode.set(master.storeCode.trim(), master);
+      byName.set(master.storeName.trim(), master);
+    }
+    return { byCode, byName };
+  }, [storeMasters]);
+
+  const createMasterMutation = trpc.storeMaster.create.useMutation({
+    onSuccess: ({ id }) => {
+      setLocation(`/stores/${id}`);
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const openStoreDetail = (store: (typeof stores)[number]) => {
+    const master =
+      (store.storeCode?.trim()
+        ? masterByStoreKey.byCode.get(store.storeCode.trim())
+        : undefined) ?? masterByStoreKey.byName.get(store.storeName.trim());
+
+    if (master) {
+      setLocation(`/stores/${master.id}`);
+      return;
+    }
+
+    const brand =
+      store.brand === "ほっともっと" || store.brand === "やよい軒"
+        ? store.brand
+        : "その他";
+    createMasterMutation.mutate({
+      storeCode: store.storeCode || null,
+      storeName: store.storeName,
+      brand,
+      address: store.address || null,
+    });
+  };
 
   const totalStats = useMemo(() => {
     const totalStores = stores.length;
@@ -308,17 +351,30 @@ export default function StoresList() {
                       </div>
                     </div>
 
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        setLocation(`/cases?store=${encodeURIComponent(s.storeName)}`)
-                      }
-                      className="shrink-0"
-                    >
-                      案件を見る
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </Button>
+                    <div className="flex shrink-0 flex-col gap-1.5 sm:flex-row md:flex-col">
+                      <Button
+                        size="sm"
+                        onClick={() => openStoreDetail(s)}
+                        disabled={createMasterMutation.isPending}
+                      >
+                        {createMasterMutation.isPending ? (
+                          <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Building2 className="mr-1 h-3.5 w-3.5" />
+                        )}
+                        店舗情報
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          setLocation(`/cases?store=${encodeURIComponent(s.storeName)}`)
+                        }
+                      >
+                        案件を見る
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
