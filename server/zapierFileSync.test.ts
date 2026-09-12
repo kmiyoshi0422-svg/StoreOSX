@@ -4,6 +4,7 @@ import {
   buildZapierFilePayload,
   isAllowedZapierWebhookUrl,
   parseDocumentTags,
+  splitDocumentFileName,
   ZAPIER_FILE_TABLE_ID,
 } from "./zapierFileSync";
 
@@ -23,6 +24,15 @@ describe("Zapier file sync", () => {
     expect(parseDocumentTags('["図面","厨房",3]')).toEqual(["図面", "厨房"]);
     expect(parseDocumentTags("invalid")).toEqual([]);
     expect(parseDocumentTags(null)).toEqual([]);
+  });
+
+  it("splits the last file extension for Google Drive naming", () => {
+    expect(splitDocumentFileName("現調報告.final.pdf")).toEqual({
+      fileStem: "現調報告.final",
+      fileExtension: "pdf",
+    });
+    expect(splitDocumentFileName("README")).toEqual({ fileStem: "README", fileExtension: "" });
+    expect(splitDocumentFileName(".env")).toEqual({ fileStem: ".env", fileExtension: "" });
   });
 
   it("builds a complete Zapier payload without embedding file bytes", () => {
@@ -69,6 +79,8 @@ describe("Zapier file sync", () => {
       request_number: "REQ-007",
       store_name: "テスト店舗",
       file_name: "現調報告.pdf",
+      file_stem: "現調報告",
+      file_extension: "pdf",
       tags: ["現調", "2026"],
       source_file_url: "https://storage.example.com/signed.pdf",
       storeosx_url: "https://store.example.com/document-library",

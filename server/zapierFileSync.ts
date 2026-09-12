@@ -21,6 +21,8 @@ export type ZapierFilePayload = {
   request_number: string | null;
   store_name: string | null;
   file_name: string;
+  file_stem: string;
+  file_extension: string;
   mime_type: string | null;
   file_size: number | null;
   category: string;
@@ -61,6 +63,20 @@ export function parseDocumentTags(tags: string | null | undefined): string[] {
   }
 }
 
+export function splitDocumentFileName(fileName: string): {
+  fileStem: string;
+  fileExtension: string;
+} {
+  const lastDot = fileName.lastIndexOf(".");
+  if (lastDot <= 0 || lastDot === fileName.length - 1) {
+    return { fileStem: fileName, fileExtension: "" };
+  }
+  return {
+    fileStem: fileName.slice(0, lastDot),
+    fileExtension: fileName.slice(lastDot + 1),
+  };
+}
+
 export function buildZapierFilePayload(input: {
   sync: { id: number; eventId: string; callbackToken: string };
   document: Document;
@@ -69,6 +85,7 @@ export function buildZapierFilePayload(input: {
   origin: string;
 }): ZapierFilePayload {
   const { sync, document, caseData, sourceFileUrl, origin } = input;
+  const { fileStem, fileExtension } = splitDocumentFileName(document.fileName);
   return {
     event_id: sync.eventId,
     callback_token: sync.callbackToken,
@@ -78,6 +95,8 @@ export function buildZapierFilePayload(input: {
     request_number: caseData?.requestNumber ?? null,
     store_name: caseData?.storeName ?? null,
     file_name: document.fileName,
+    file_stem: fileStem,
+    file_extension: fileExtension,
     mime_type: document.mimeType ?? null,
     file_size: document.fileSize ?? null,
     category: document.category,
