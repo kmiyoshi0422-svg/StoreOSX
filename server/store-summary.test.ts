@@ -32,6 +32,8 @@ describe("店舗一覧DB集約（提案44）", () => {
 
   it("案件全列を取得せず、店舗集約結果だけを返す", () => {
     expect(normalizedSql).not.toContain("select *");
-    expect(normalizedSql).toContain("order by latestrequestat desc");
+    expect(normalizedSql).toContain(
+      "order by max(case when `latest_rank` = 1 then `request_at` end) desc",
+    );
   });
 });

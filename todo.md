@@ -1134,7 +1134,7 @@
 - [x] 切替前に全Vitest・型チェック・本番ビルドを再確認
 - [ ] 誤って接続したkmiyoshi0422-svg/Store-OSXをManus設定から解除
 - [x] CLIからkmiyoshi0422-svg/StoreOSX mainへの管理権限と共通祖先を確認
-- [ ] StoreOSX mainの最新12コミットを既存変更を保持して統合
+- [x] StoreOSX mainの最新12コミットを既存変更を保持して統合
 - [ ] 正しいStoreOSX mainへCLIで反映
 - [ ] 既存公開ドメインへ反映して画面確認
 

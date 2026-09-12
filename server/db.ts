@@ -232,6 +232,8 @@ export function buildStoreSummariesQuery(db: StoreSummaryDatabase) {
     .from(cases)
     .as("ranked_cases");
 
+  const latestRequestAt = sql<Date | null>`MAX(CASE WHEN ${rankedCases.latestRank} = 1 THEN ${rankedCases.requestAt} END)`;
+
   return db
     .select({
       key: rankedCases.storeKey,
@@ -245,13 +247,13 @@ export function buildStoreSummariesQuery(db: StoreSummaryDatabase) {
       urgentCount: sql<number>`SUM(CASE WHEN ${rankedCases.urgency} IN ('S', 'A') THEN 1 ELSE 0 END)`.mapWith(Number),
       totalEstimated: sql<number>`COALESCE(SUM(${rankedCases.estimatedCost}), 0)`.mapWith(Number),
       totalActual: sql<number>`COALESCE(SUM(${rankedCases.actualCost}), 0)`.mapWith(Number),
-      latestRequestAt: sql<Date | null>`MAX(CASE WHEN ${rankedCases.latestRank} = 1 THEN ${rankedCases.requestAt} END)`,
+      latestRequestAt,
       latestStatus: sql<string | null>`MAX(CASE WHEN ${rankedCases.latestRank} = 1 THEN ${rankedCases.status} END)`,
       latestStage: sql<string | null>`MAX(CASE WHEN ${rankedCases.latestRank} = 1 THEN ${rankedCases.progressStage} END)`,
     })
     .from(rankedCases)
     .groupBy(rankedCases.storeKey)
-    .orderBy(desc(sql`latestRequestAt`));
+    .orderBy(desc(latestRequestAt));
 }
 
 export async function listStoreSummaries(): Promise<StoreSummaryRow[]> {
