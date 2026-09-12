@@ -1203,4 +1203,4 @@
 - [x] meta descriptionを82文字に追加
 - [x] 文字数・キーワード数を自動テストで固定
 - [x] TypeScript・308 Vitest・本番ビルド・生成HTMLを確認
-- [ ] StoreOSX mainと既存公開ドメインへ反映
+- [x] StoreOSX mainと既存公開ドメインへ反映（152f6db、公開HTML検証済み）
