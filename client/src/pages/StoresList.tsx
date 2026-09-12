@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -24,8 +26,10 @@ import {
   TrendingUp,
   Receipt,
   Loader2,
+  Link2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 type SortKey = "latest" | "caseCount" | "openCount" | "totalActual";
 
@@ -53,11 +57,47 @@ function daysSince(d: Date | string | null): number | null {
 
 export default function StoresList() {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin" || user?.role === "owner";
   const { data: stores = [], isLoading } = trpc.stores.list.useQuery();
   const { data: storeMasters = [] } = trpc.storeMaster.list.useQuery();
   const [q, setQ] = useState("");
   const [tab, setTab] = useState<"all" | "multi" | "openOnly">("all");
   const [sort, setSort] = useState<SortKey>("latest");
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [selectedCaseIds, setSelectedCaseIds] = useState<number[]>([]);
+  const [selectedNewStoreKeys, setSelectedNewStoreKeys] = useState<string[]>([]);
+  const utils = trpc.useUtils();
+  const bulkPreview = trpc.storeMaster.bulkLinkPreview.useQuery(undefined, {
+    enabled: bulkOpen && isAdmin,
+  });
+  const bulkExecute = trpc.storeMaster.bulkLinkExecute.useMutation({
+    onSuccess: async (result) => {
+      toast.success(`${result.linked}件の案件を紐付け、${result.createdStores}件の店舗マスタを新規登録しました`);
+      setBulkOpen(false);
+      setSelectedCaseIds([]);
+      setSelectedNewStoreKeys([]);
+      await Promise.all([
+        utils.storeMaster.bulkLinkPreview.invalidate(),
+        utils.storeMaster.list.invalidate(),
+        utils.stores.list.invalidate(),
+        utils.cases.list.invalidate(),
+      ]);
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  useEffect(() => {
+    if (bulkPreview.data) {
+      setSelectedCaseIds(bulkPreview.data.candidates.map((item) => item.caseId));
+      setSelectedNewStoreKeys([]);
+    }
+  }, [bulkPreview.data]);
+
+  const selectedNewCaseCount = bulkPreview.data?.newStores
+    .filter((item) => selectedNewStoreKeys.includes(item.key))
+    .reduce((sum, item) => sum + item.caseIds.length, 0) ?? 0;
+  const selectedLinkCount = selectedCaseIds.length + selectedNewCaseCount;
 
   const filtered = useMemo(() => {
     let list = stores.slice();
@@ -142,7 +182,7 @@ export default function StoresList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between border-b border-border/60 pb-6">
+      <div className="flex items-end justify-between gap-4 flex-wrap border-b border-border/60 pb-6">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-2">Stores</p>
           <h1 className="font-serif-jp text-3xl font-semibold tracking-tight">店舗一覧</h1>
@@ -150,6 +190,11 @@ export default function StoresList() {
             {filtered.length} / {stores.length} 店舗
           </p>
         </div>
+        {isAdmin && (
+          <Button onClick={() => setBulkOpen(true)}>
+            <Link2 className="h-4 w-4 mr-1.5" />既存案件を一括紐付け
+          </Button>
+        )}
       </div>
 
       {/* サマリー */}
@@ -382,6 +427,94 @@ export default function StoresList() {
           })}
         </div>
       )}
+
+      <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
+        <DialogContent className="max-w-4xl max-h-[88vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>既存案件を店舗マスタへ一括紐付け</DialogTitle>
+            <DialogDescription>店舗コードを優先し、一致しない場合だけ店舗名で照合します。曖昧な候補と紐付け済み案件は自動更新しません。</DialogDescription>
+          </DialogHeader>
+
+          {bulkPreview.isLoading ? (
+            <div className="py-16 flex items-center justify-center gap-2 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />候補を照合中...</div>
+          ) : bulkPreview.error ? (
+            <div className="py-12 text-center text-red-600">{bulkPreview.error.message}</div>
+          ) : bulkPreview.data ? (
+            <div className="min-h-0 flex-1 space-y-4 overflow-hidden">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="bg-muted/60 p-3"><p className="text-xs text-muted-foreground">紐付け済み</p><p className="text-xl font-semibold">{bulkPreview.data.alreadyLinked}</p></div>
+                <div className="bg-muted/60 p-3"><p className="text-xs text-muted-foreground">未紐付け</p><p className="text-xl font-semibold">{bulkPreview.data.totalUnlinked}</p></div>
+                <div className="bg-emerald-50 p-3"><p className="text-xs text-emerald-700">既存マスタ候補</p><p className="text-xl font-semibold text-emerald-800">{bulkPreview.data.candidates.length}</p></div>
+                <div className="bg-blue-50 p-3"><p className="text-xs text-blue-700">新規店舗候補</p><p className="text-xl font-semibold text-blue-800">{bulkPreview.data.newStores.length}</p></div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium">実行対象 {selectedLinkCount}案件</p>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setSelectedCaseIds(bulkPreview.data!.candidates.map((item) => item.caseId))}>すべて選択</Button>
+                  <Button variant="ghost" size="sm" onClick={() => { setSelectedCaseIds([]); setSelectedNewStoreKeys([]); }}>選択解除</Button>
+                </div>
+              </div>
+
+              <div className="border overflow-y-auto max-h-[390px] divide-y">
+                {bulkPreview.data.candidates.length === 0 ? (
+                  <div className="p-10 text-center text-muted-foreground">安全に自動紐付けできる候補はありません</div>
+                ) : bulkPreview.data.candidates.map((item) => {
+                  const checked = selectedCaseIds.includes(item.caseId);
+                  return (
+                    <label key={item.caseId} className="p-3 flex items-center gap-3 cursor-pointer hover:bg-muted/40">
+                      <Checkbox checked={checked} onCheckedChange={() => setSelectedCaseIds((current) => checked ? current.filter((id) => id !== item.caseId) : [...current, item.caseId])} />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium truncate">{item.requestNumber} · {item.caseStoreName}</p>
+                        <p className="text-xs text-muted-foreground truncate">→ {item.masterStoreName} {item.masterStoreCode ? `(${item.masterStoreCode})` : ""}</p>
+                      </div>
+                      <Badge variant={item.matchType === "storeCode" ? "default" : "outline"}>{item.matchType === "storeCode" ? "店舗コード一致" : "店舗名一致"}</Badge>
+                    </label>
+                  );
+                })}
+              </div>
+
+              {bulkPreview.data.newStores.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">新規店舗マスタを作成して紐付け</p>
+                    <Button variant="outline" size="sm" onClick={() => setSelectedNewStoreKeys(bulkPreview.data!.newStores.map((item) => item.key))}>新規候補をすべて選択</Button>
+                  </div>
+                  <div className="border overflow-y-auto max-h-[220px] divide-y">
+                    {bulkPreview.data.newStores.map((item) => {
+                      const checked = selectedNewStoreKeys.includes(item.key);
+                      return (
+                        <label key={item.key} className="p-3 flex items-center gap-3 cursor-pointer hover:bg-muted/40">
+                          <Checkbox checked={checked} onCheckedChange={() => setSelectedNewStoreKeys((current) => checked ? current.filter((key) => key !== item.key) : [...current, item.key])} />
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium truncate">{item.storeName} {item.storeCode ? `(${item.storeCode})` : ""}</p>
+                            <p className="text-xs text-muted-foreground">対象案件 {item.caseIds.length}件 · {item.requestNumbers.slice(0, 3).join("、")}{item.requestNumbers.length > 3 ? "…" : ""}</p>
+                          </div>
+                          <Badge variant="outline">新規登録</Badge>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {bulkPreview.data.ambiguous.length > 0 && (
+                <p className="text-xs text-amber-700">候補が重複する {bulkPreview.data.ambiguous.length}件は自動変更せず、個別確認用に残します。</p>
+              )}
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkOpen(false)}>キャンセル</Button>
+            <Button
+              disabled={selectedLinkCount === 0 || bulkExecute.isPending}
+              onClick={() => bulkExecute.mutate({ caseIds: selectedCaseIds, newStoreKeys: selectedNewStoreKeys })}
+            >
+              {bulkExecute.isPending && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+              選択した{selectedLinkCount}案件を紐付け
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

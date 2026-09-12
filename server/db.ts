@@ -37,6 +37,8 @@ import {
   InsertRainLeakCheckItem,
   documents,
   InsertDocument,
+  pdfGenerationHistory,
+  InsertPdfGenerationHistory,
   projectFolders,
   InsertProjectFolder,
   projectFolderCases,
@@ -1201,6 +1203,91 @@ export async function listAllDocuments(opts: { category?: string; search?: strin
   const total = countResult.length;
 
   return { items, total };
+}
+
+// ============================================================
+// PDF Generation History（PDF生成履歴）
+// ============================================================
+export async function createPdfGenerationHistory(data: InsertPdfGenerationHistory) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const [result] = await db.insert(pdfGenerationHistory).values(data);
+  return result.insertId;
+}
+
+export async function getPdfGenerationHistoryById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select()
+    .from(pdfGenerationHistory)
+    .where(eq(pdfGenerationHistory.id, id))
+    .limit(1);
+  return rows[0];
+}
+
+export async function listPdfGenerationHistory(opts: {
+  reportType?: string;
+  search?: string;
+  startDate?: Date;
+  endDate?: Date;
+  limit?: number;
+  offset?: number;
+}) {
+  const db = await getDb();
+  if (!db) return { items: [], total: 0 };
+
+  const conditions = [];
+  if (opts.reportType) {
+    conditions.push(eq(pdfGenerationHistory.reportType, opts.reportType as any));
+  }
+  if (opts.startDate) conditions.push(gte(pdfGenerationHistory.createdAt, opts.startDate));
+  if (opts.endDate) conditions.push(lte(pdfGenerationHistory.createdAt, opts.endDate));
+  if (opts.search?.trim()) {
+    const pattern = `%${opts.search.trim()}%`;
+    conditions.push(or(
+      like(pdfGenerationHistory.fileName, pattern),
+      like(cases.requestNumber, pattern),
+      like(cases.storeName, pattern),
+      like(pdfGenerationHistory.generatedByName, pattern),
+    ));
+  }
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+  const offset = Math.max(opts.offset ?? 0, 0);
+
+  const baseQuery = db
+    .select({
+      id: pdfGenerationHistory.id,
+      caseId: pdfGenerationHistory.caseId,
+      requestNumber: cases.requestNumber,
+      storeName: cases.storeName,
+      reportType: pdfGenerationHistory.reportType,
+      fileName: pdfGenerationHistory.fileName,
+      fileKey: pdfGenerationHistory.fileKey,
+      fileUrl: pdfGenerationHistory.fileUrl,
+      fileSize: pdfGenerationHistory.fileSize,
+      generatedBy: pdfGenerationHistory.generatedBy,
+      generatedByName: pdfGenerationHistory.generatedByName,
+      periodStart: pdfGenerationHistory.periodStart,
+      periodEnd: pdfGenerationHistory.periodEnd,
+      metadata: pdfGenerationHistory.metadata,
+      createdAt: pdfGenerationHistory.createdAt,
+    })
+    .from(pdfGenerationHistory)
+    .leftJoin(cases, eq(pdfGenerationHistory.caseId, cases.id));
+
+  const items = await (where ? baseQuery.where(where) : baseQuery)
+    .orderBy(desc(pdfGenerationHistory.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  const countQuery = db
+    .select({ total: count() })
+    .from(pdfGenerationHistory)
+    .leftJoin(cases, eq(pdfGenerationHistory.caseId, cases.id));
+  const totalRows = await (where ? countQuery.where(where) : countQuery);
+  return { items, total: Number(totalRows[0]?.total ?? 0) };
 }
 
 // List shared (common) documents by tag

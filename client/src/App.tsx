@@ -46,6 +46,7 @@ const DocumentLibrary = lazy(() => import("./pages/DocumentLibrary"));
 const CrossSchedule = lazy(() => import("./pages/CrossSchedule"));
 const Effectiveness = lazy(() => import("./pages/Effectiveness"));
 const CompletedReports = lazy(() => import("./pages/CompletedReports"));
+const PdfHistory = lazy(() => import("./pages/PdfHistory"));
 
 // ─── Loading fallback ─────────────────────────────────────
 function PageLoader() {
@@ -108,6 +109,7 @@ function Router() {
                 <Route path={"/reports/completed"}>
                   <AdminOnly><CompletedReports /></AdminOnly>
                 </Route>
+                <Route path={"/pdf-history"} component={PdfHistory} />
                 <Route path={"/stores"} component={StoresList} />
                 <Route path={"/stores/:id"}>
                   {(params) => <StoreDetail id={Number(params.id)} />}

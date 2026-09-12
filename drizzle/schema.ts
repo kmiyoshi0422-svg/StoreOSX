@@ -559,6 +559,42 @@ export const documents = mysqlTable("documents", {
 export type Document = typeof documents.$inferSelect;
 export type InsertDocument = typeof documents.$inferInsert;
 
+/**
+ * PDF生成履歴（報告書・写真台帳・ダッシュボード等）
+ * PDF本体はS3へ保存し、DBには検索・再ダウンロード用メタデータのみ保持する。
+ */
+export const pdfGenerationHistory = mysqlTable("pdf_generation_history", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("case_id"),
+  reportType: mysqlEnum("report_type", [
+    "現場調査報告書",
+    "施工完了報告書",
+    "写真台帳",
+    "写真台帳一括",
+    "ダッシュボード",
+    "効果検証",
+    "横断工程表",
+    "その他",
+  ]).notNull(),
+  fileName: varchar("file_name", { length: 500 }).notNull(),
+  fileKey: varchar("file_key", { length: 500 }).notNull(),
+  fileUrl: varchar("file_url", { length: 1000 }).notNull(),
+  fileSize: int("file_size"),
+  generatedBy: int("generated_by").notNull(),
+  generatedByName: varchar("generated_by_name", { length: 128 }),
+  periodStart: timestamp("period_start"),
+  periodEnd: timestamp("period_end"),
+  metadata: text("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  caseIdx: index("idx_pdf_history_case").on(t.caseId),
+  typeCreatedIdx: index("idx_pdf_history_type_created").on(t.reportType, t.createdAt),
+  generatedByIdx: index("idx_pdf_history_generated_by").on(t.generatedBy),
+  createdAtIdx: index("idx_pdf_history_created_at").on(t.createdAt),
+}));
+export type PdfGenerationHistory = typeof pdfGenerationHistory.$inferSelect;
+export type InsertPdfGenerationHistory = typeof pdfGenerationHistory.$inferInsert;
+
 // ============================================================
 // Project Folders (共通資料を案件グループに紐づけ)
 // ============================================================

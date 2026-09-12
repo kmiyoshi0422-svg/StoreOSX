@@ -92,6 +92,9 @@ import {
   listDocumentsByCaseForPartner,
   listSharedDocumentsByTag,
   updateDocumentTags,
+  createPdfGenerationHistory,
+  getPdfGenerationHistoryById,
+  listPdfGenerationHistory,
   listProjectFolders,
   getProjectFolder,
   createProjectFolder,
@@ -170,6 +173,7 @@ import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_
 import { BUDGET_RATIO, calcBudget } from "../shared/budget";
 import { calcCaseProfit } from "../shared/profit";
 import { buildDashboardOverview } from "../shared/dashboard";
+import { buildStoreBulkLinkPreview } from "../shared/storeBulkLink";
 import { detectPrefecture } from "../shared/prefecture";
 import { resolveStageStatus, syncStageFromStatus } from "../shared/stageStatus";
 import type { ProgressStage, CaseStatus } from "../shared/stageStatus";
@@ -323,15 +327,25 @@ export const appRouter = router({
   }),
 
   dashboard: router({
-    overview: protectedProcedure.query(async ({ ctx }) => {
+    overview: protectedProcedure
+      .input(z.object({ fromMs: z.number().int().optional(), toMs: z.number().int().optional() }).optional())
+      .query(async ({ ctx, input }) => {
       const allCases = await listCasesSummary();
       const visibleCases = ctx.user.role === "partner"
         ? await filterCasesForPartner(allCases, ctx.user.id)
         : allCases;
+      const periodCases = visibleCases.filter((item) => {
+        const value = item.requestDate ?? item.createdAt;
+        if (!value) return !input?.fromMs && !input?.toMs;
+        const time = new Date(value).getTime();
+        if (input?.fromMs !== undefined && time < input.fromMs) return false;
+        if (input?.toMs !== undefined && time > input.toMs) return false;
+        return true;
+      });
       const users = await getAllUsers();
       const userNames = new Map(users.map((user) => [user.id, user.name ?? `User ${user.id}`]));
       const isAdmin = ctx.user.role === "admin" || ctx.user.role === "owner";
-      const caseRows = visibleCases.map((item) => {
+      const caseRows = periodCases.map((item) => {
         const row = {
           ...item,
           assigneeName: item.assigneeId ? userNames.get(item.assigneeId) ?? null : null,
@@ -339,8 +353,123 @@ export const appRouter = router({
         return ctx.user.role === "partner" ? stripFinancialFields(row) : row;
       });
 
-      return buildDashboardOverview(caseRows, { includeFinancials: isAdmin });
+      return {
+        ...buildDashboardOverview(caseRows, { includeFinancials: isAdmin }),
+        period: {
+          from: input?.fromMs ? new Date(input.fromMs) : null,
+          to: input?.toMs ? new Date(input.toMs) : null,
+        },
+      };
     }),
+  }),
+
+  pdfHistory: router({
+    upload: protectedProcedure
+      .input(z.object({
+        caseId: z.number().int().positive().nullish(),
+        reportType: z.enum([
+          "現場調査報告書",
+          "施工完了報告書",
+          "写真台帳",
+          "写真台帳一括",
+          "ダッシュボード",
+          "効果検証",
+          "横断工程表",
+          "その他",
+        ]),
+        fileName: z.string().min(1).max(500),
+        fileBase64: z.string().min(1),
+        fileSize: z.number().int().nonnegative().optional(),
+        periodStartMs: z.number().int().nullish(),
+        periodEndMs: z.number().int().nullish(),
+        metadata: z.record(z.string(), z.unknown()).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role === "partner") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "PDF履歴の保存権限がありません" });
+        }
+        const base64 = input.fileBase64.includes(",")
+          ? input.fileBase64.split(",")[1]
+          : input.fileBase64;
+        const buffer = Buffer.from(base64, "base64");
+        if (buffer.length === 0 || buffer.length > 30 * 1024 * 1024) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "PDFは30MB以下で保存してください" });
+        }
+        if (buffer.subarray(0, 4).toString("ascii") !== "%PDF") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "PDFファイル形式が正しくありません" });
+        }
+
+        const safeName = input.fileName
+          .replace(/[\\/:*?"<>|]/g, "_")
+          .replace(/\s+/g, "_");
+        const folder = input.caseId ? `case-${input.caseId}` : "shared";
+        const key = `pdf-history/${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`;
+        const stored = await storagePut(key, buffer, "application/pdf");
+        const id = await createPdfGenerationHistory({
+          caseId: input.caseId ?? null,
+          reportType: input.reportType,
+          fileName: input.fileName,
+          fileKey: stored.key,
+          fileUrl: stored.url,
+          fileSize: input.fileSize ?? buffer.length,
+          generatedBy: ctx.user.id,
+          generatedByName: ctx.user.name ?? ctx.user.email ?? `User ${ctx.user.id}`,
+          periodStart: input.periodStartMs ? new Date(input.periodStartMs) : null,
+          periodEnd: input.periodEndMs ? new Date(input.periodEndMs) : null,
+          metadata: input.metadata ? JSON.stringify(input.metadata) : null,
+        });
+        return { id, url: storageUrlForRead(stored.key, stored.url) };
+      }),
+
+    list: protectedProcedure
+      .input(z.object({
+        reportType: z.enum([
+          "現場調査報告書",
+          "施工完了報告書",
+          "写真台帳",
+          "写真台帳一括",
+          "ダッシュボード",
+          "効果検証",
+          "横断工程表",
+          "その他",
+        ]).optional(),
+        search: z.string().max(200).optional(),
+        startMs: z.number().int().optional(),
+        endMs: z.number().int().optional(),
+        limit: z.number().int().min(1).max(200).default(50),
+        offset: z.number().int().min(0).default(0),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        if (ctx.user.role === "partner") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "PDF履歴の閲覧権限がありません" });
+        }
+        const result = await listPdfGenerationHistory({
+          reportType: input?.reportType,
+          search: input?.search,
+          startDate: input?.startMs ? new Date(input.startMs) : undefined,
+          endDate: input?.endMs ? new Date(input.endMs) : undefined,
+          limit: input?.limit,
+          offset: input?.offset,
+        });
+        return {
+          ...result,
+          items: result.items.map((item) => ({
+            ...item,
+            fileUrl: storageUrlForRead(item.fileKey, item.fileUrl),
+          })),
+        };
+      }),
+
+    getDownloadUrl: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        if (ctx.user.role === "partner") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "PDF履歴の閲覧権限がありません" });
+        }
+        const item = await getPdfGenerationHistoryById(input.id);
+        if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "PDF履歴が見つかりません" });
+        return { url: storageUrlForRead(item.fileKey, item.fileUrl), fileName: item.fileName };
+      }),
   }),
 
   users: router({
@@ -3554,11 +3683,21 @@ export const appRouter = router({
       }),
 
     // KPIアラート: 期限超過・期限間近の案件を返す
-    kpiAlerts: protectedProcedure.query(async ({ ctx }) => {
+    kpiAlerts: protectedProcedure
+      .input(z.object({ fromMs: z.number().int().optional(), toMs: z.number().int().optional() }).optional())
+      .query(async ({ ctx, input }) => {
       const rawCases = await listCases();
-      const allCases = ctx.user.role === "partner"
+      const visibleCases = ctx.user.role === "partner"
         ? await filterCasesForPartner(rawCases, ctx.user.id)
         : rawCases;
+      const allCases = visibleCases.filter((item) => {
+        const value = item.requestDate ?? item.createdAt;
+        if (!value) return !input?.fromMs && !input?.toMs;
+        const time = new Date(value).getTime();
+        if (input?.fromMs !== undefined && time < input.fromMs) return false;
+        if (input?.toMs !== undefined && time > input.toMs) return false;
+        return true;
+      });
       const dbInstance = await getDb();
       if (!dbInstance) return [];
 
@@ -4544,6 +4683,76 @@ JSONスキーマに従って回答してください。`,
           store.storeName,
         );
         return { success: true };
+      }),
+    bulkLinkPreview: adminProcedure.query(async () => {
+      const [allCases, stores] = await Promise.all([listCases(), listStoreMaster()]);
+      const unlinkedCases = allCases
+        .filter((item) => !item.storeId)
+        .map((item) => ({
+          id: item.id,
+          requestNumber: item.requestNumber,
+          storeCode: item.storeCode,
+          storeName: item.storeName,
+          brand: item.brand,
+          prefecture: item.prefecture,
+          address: item.address,
+        }));
+      return {
+        alreadyLinked: allCases.length - unlinkedCases.length,
+        totalUnlinked: unlinkedCases.length,
+        ...buildStoreBulkLinkPreview(unlinkedCases, stores),
+      };
+    }),
+    bulkLinkExecute: adminProcedure
+      .input(z.object({
+        caseIds: z.array(z.number().int().positive()).max(2000).default([]),
+        newStoreKeys: z.array(z.string().min(1)).max(2000).default([]),
+      }).refine((value) => value.caseIds.length > 0 || value.newStoreKeys.length > 0, {
+        message: "紐付け対象を選択してください",
+      }))
+      .mutation(async ({ input }) => {
+        const [allCases, stores] = await Promise.all([listCases(), listStoreMaster()]);
+        const unlinkedCases = allCases
+          .filter((item) => !item.storeId)
+          .map((item) => ({
+            id: item.id,
+            requestNumber: item.requestNumber,
+            storeCode: item.storeCode,
+            storeName: item.storeName,
+            brand: item.brand,
+            prefecture: item.prefecture,
+            address: item.address,
+          }));
+        const preview = buildStoreBulkLinkPreview(unlinkedCases, stores);
+        const selected = new Set(input.caseIds);
+        const approved = preview.candidates.filter((item) => selected.has(item.caseId));
+        for (const item of approved) {
+          await updateCase(item.caseId, { storeId: item.storeId });
+        }
+        const selectedNewStores = new Set(input.newStoreKeys);
+        const newStores = preview.newStores.filter((item) => selectedNewStores.has(item.key));
+        let createdStores = 0;
+        let linkedNewCases = 0;
+        for (const item of newStores) {
+          const brand = item.brand === "ほっともっと" || item.brand === "やよい軒" ? item.brand : "その他";
+          const storeId = await createStoreMaster({
+            storeCode: item.storeCode,
+            storeName: item.storeName,
+            brand,
+            prefecture: item.prefecture,
+            address: item.address,
+          });
+          createdStores += 1;
+          for (const caseId of item.caseIds) {
+            await updateCase(caseId, { storeId });
+            linkedNewCases += 1;
+          }
+        }
+        return {
+          linked: approved.length + linkedNewCases,
+          createdStores,
+          skipped: input.caseIds.length - approved.length,
+        };
       }),
     pastCases: protectedProcedure
       .input(z.object({ storeId: z.number() }))

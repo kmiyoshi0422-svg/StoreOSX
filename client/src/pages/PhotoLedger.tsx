@@ -12,6 +12,7 @@ import {
   reportLabel as _reportLabel,
 } from "../../../shared/reportText";
 import { inlineImages, PLACEHOLDER_DATA_URL } from "@/lib/imageDataUrl";
+import { usePdfHistoryRecorder } from "@/hooks/usePdfHistoryRecorder";
 
 // PDF/写真台帳の全角化・括弧除去の対象外にする除外辞書（コンポーネントからsetReportExclusionsで注入）。
 let _exclusions: string[] = [];
@@ -34,6 +35,7 @@ export default function PhotoLedger({ id }: { id: number }) {
   const { data: exclusionRows = [] } = trpc.fullwidthExclusions.list.useQuery();
   setReportExclusions(exclusionRows.map((r) => r.term));
   const containerRef = useRef<HTMLDivElement>(null);
+  const { recordPdf } = usePdfHistoryRecorder();
   const [generating, setGenerating] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
 
@@ -83,7 +85,20 @@ export default function PhotoLedger({ id }: { id: number }) {
         /[\\/:*?"<>|]/g,
         "_"
       );
-      pdf.save(`写真台帳_${safeName}.pdf`);
+      const fileName = `写真台帳_${safeName}.pdf`;
+      pdf.save(fileName);
+      try {
+        await recordPdf({
+          pdf,
+          fileName,
+          reportType: "写真台帳",
+          caseId: id,
+          metadata: { pageCount: pages.length, photoCount: photos.length },
+        });
+      } catch (historyError) {
+        console.error("[PDF history] failed:", historyError);
+        toast.warning("PDFはダウンロードしましたが、生成履歴の保存に失敗しました");
+      }
       toast.success("PDFをダウンロードしました");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "PDF生成に失敗しました";

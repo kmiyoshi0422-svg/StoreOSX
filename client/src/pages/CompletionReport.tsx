@@ -39,6 +39,7 @@ import { toast } from "sonner";
 import { clearDataUrlCache, inlineImages } from "@/lib/imageDataUrl";
 import { fileToUprightDataUrl } from "@/lib/imageOrientation";
 import { getReportPdfProfile, isLowMemoryBrowser } from "@/lib/reportPdfProfile";
+import { usePdfHistoryRecorder } from "@/hooks/usePdfHistoryRecorder";
 import { SignaturePad } from "@/components/SignaturePad";
 import { Lightbox, useLightbox } from "@/components/Lightbox";
 import type { Photo, Case, CaseSignature } from "../../../drizzle/schema";
@@ -153,6 +154,7 @@ export default function CompletionReport({ id }: { id: number }) {
   setReportExclusions(exclusionRows.map((r) => r.term));
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const { recordPdf } = usePdfHistoryRecorder();
   const [generating, setGenerating] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [signerName, setSignerName] = useState("");
@@ -394,7 +396,20 @@ export default function CompletionReport({ id }: { id: number }) {
         canvas.height = 0;
       }
       const safe = `${caseData.requestNumber}_${caseData.storeName}`.replace(/[\\/:*?"<>|]/g, "_");
-      pdf.save(`工事完了報告書_${safe}.pdf`);
+      const fileName = `工事完了報告書_${safe}.pdf`;
+      pdf.save(fileName);
+      try {
+        await recordPdf({
+          pdf,
+          fileName,
+          reportType: "施工完了報告書",
+          caseId: id,
+          metadata: { pageCount: pages.length, photoCount: reportPhotos.length },
+        });
+      } catch (historyError) {
+        console.error("[PDF history] failed:", historyError);
+        toast.warning("PDFはダウンロードしましたが、生成履歴の保存に失敗しました");
+      }
       toast.success("PDFをダウンロードしました");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "PDF生成に失敗しました");

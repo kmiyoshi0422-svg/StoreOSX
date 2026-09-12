@@ -2,6 +2,8 @@ import { useMemo, useRef, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -52,7 +54,9 @@ import {
   Camera,
   FileCheck,
   ChevronRight,
+  CalendarDays,
 } from "lucide-react";
+import { usePdfHistoryRecorder } from "@/hooks/usePdfHistoryRecorder";
 
 const STATUS_COLORS: Record<string, string> = {
   受付: "bg-slate-100 text-slate-700 border-slate-200",
@@ -136,16 +140,56 @@ function csvCell(value: unknown) {
   return `"${text}"`;
 }
 
+type PeriodPreset = "all" | "thisMonth" | "lastMonth" | "threeMonths" | "sixMonths" | "custom";
+
+function periodRange(preset: PeriodPreset, customStart: string, customEnd: string) {
+  const now = new Date();
+  let from: Date | null = null;
+  let to: Date | null = null;
+  let label = "全期間";
+  if (preset === "thisMonth") {
+    from = new Date(now.getFullYear(), now.getMonth(), 1);
+    to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    label = "今月";
+  } else if (preset === "lastMonth") {
+    from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    to = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    label = "先月";
+  } else if (preset === "threeMonths" || preset === "sixMonths") {
+    const months = preset === "threeMonths" ? 3 : 6;
+    from = new Date(now.getFullYear(), now.getMonth() - months + 1, 1);
+    to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    label = `過去${months}か月`;
+  } else if (preset === "custom") {
+    from = customStart ? new Date(`${customStart}T00:00:00`) : null;
+    to = customEnd ? new Date(`${customEnd}T23:59:59.999`) : null;
+    label = [customStart || "開始指定なし", customEnd || "終了指定なし"].join("〜");
+  }
+  return { from, to, label };
+}
+
 export default function Home() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "owner";
   const isPartner = user?.role === "partner";
-  const { data: dashboard, isLoading, error } = trpc.dashboard.overview.useQuery();
-  const { data: alerts = [], isLoading: alertsLoading } = trpc.reports.kpiAlerts.useQuery(undefined, {
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>("all");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const selectedPeriod = useMemo(
+    () => periodRange(periodPreset, customStart, customEnd),
+    [periodPreset, customStart, customEnd],
+  );
+  const periodInput = useMemo(() => ({
+    fromMs: selectedPeriod.from?.getTime(),
+    toMs: selectedPeriod.to?.getTime(),
+  }), [selectedPeriod.from, selectedPeriod.to]);
+  const { data: dashboard, isLoading, error } = trpc.dashboard.overview.useQuery(periodInput);
+  const { data: alerts = [], isLoading: alertsLoading } = trpc.reports.kpiAlerts.useQuery(periodInput, {
     enabled: !isPartner,
   });
   const pdfRef = useRef<HTMLDivElement>(null);
+  const { recordPdf } = usePdfHistoryRecorder();
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [pdfProgress, setPdfProgress] = useState("");
   const [drilldown, setDrilldown] = useState<DrilldownState>(null);
@@ -155,9 +199,37 @@ export default function Home() {
   const kpis = dashboard?.kpis;
   const financials = dashboard?.financials;
 
+  const periodControls = (
+    <Card>
+      <CardContent className="py-4 flex items-end gap-3 flex-wrap">
+        <div className="min-w-[180px]">
+          <label className="text-xs text-muted-foreground flex items-center gap-1 mb-1"><CalendarDays className="h-3.5 w-3.5" />集計期間</label>
+          <Select value={periodPreset} onValueChange={(value) => setPeriodPreset(value as PeriodPreset)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全期間</SelectItem>
+              <SelectItem value="thisMonth">今月</SelectItem>
+              <SelectItem value="lastMonth">先月</SelectItem>
+              <SelectItem value="threeMonths">過去3か月</SelectItem>
+              <SelectItem value="sixMonths">過去6か月</SelectItem>
+              <SelectItem value="custom">任意期間</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {periodPreset === "custom" && (
+          <>
+            <div><label className="text-xs text-muted-foreground mb-1 block">開始日</label><Input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} /></div>
+            <div><label className="text-xs text-muted-foreground mb-1 block">終了日</label><Input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} /></div>
+          </>
+        )}
+        <Badge variant="secondary" className="mb-1">{selectedPeriod.label}</Badge>
+      </CardContent>
+    </Card>
+  );
+
   // partner向けダッシュボードを表示
   if (isPartner) {
-    return <PartnerDashboard cases={cases} isLoading={isLoading} setLocation={setLocation} userName={user?.name ?? "協力業者"} />;
+    return <div className="space-y-6">{periodControls}<PartnerDashboard cases={cases} isLoading={isLoading} setLocation={setLocation} userName={user?.name ?? "協力業者"} /></div>;
   }
 
   const openDrilldown = (key: string, label?: string) => {
@@ -186,6 +258,7 @@ export default function Home() {
     if (!dashboard) return;
     const rows: unknown[][] = [
       ["Store OSX ダッシュボード", new Date(dashboard.generatedAt).toLocaleString("ja-JP")],
+      ["集計期間", selectedPeriod.label],
       [],
       ["KPI", "値"],
       ["案件総数", dashboard.kpis.total],
@@ -244,7 +317,7 @@ export default function Home() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `StoreOSX_ダッシュボード_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}.csv`;
+    link.download = `StoreOSX_ダッシュボード_${selectedPeriod.label}_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}.csv`;
     link.click();
     URL.revokeObjectURL(url);
     toast.success("ダッシュボードCSVをダウンロードしました");
@@ -278,7 +351,22 @@ export default function Home() {
         canvas.height = 0;
       }
 
-      pdf.save(`StoreOSX_ダッシュボード_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}.pdf`);
+      const fileName = `StoreOSX_ダッシュボード_${selectedPeriod.label}_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}.pdf`;
+      pdf.save(fileName);
+      try {
+        setPdfProgress("生成履歴を保存中...");
+        await recordPdf({
+          pdf,
+          fileName,
+          reportType: "ダッシュボード",
+          periodStart: selectedPeriod.from,
+          periodEnd: selectedPeriod.to,
+          metadata: { periodLabel: selectedPeriod.label, caseCount: cases.length, pageCount: pages.length },
+        });
+      } catch (historyError) {
+        console.error("[PDF history] failed:", historyError);
+        toast.warning("PDFはダウンロードしましたが、生成履歴の保存に失敗しました");
+      }
       toast.success("ダッシュボードPDFをダウンロードしました");
     } catch (pdfError) {
       toast.error(pdfError instanceof Error ? pdfError.message : "PDF生成に失敗しました");
@@ -331,6 +419,8 @@ export default function Home() {
           </Button>
         </div>
       </div>
+
+      {periodControls}
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
         <KpiCard icon={<ClipboardList className="h-4 w-4" />} label="案件総数" value={kpis?.total ?? 0} accent="text-primary" secondary="全案件の内訳" onClick={() => openDrilldown("all", "案件総数の内訳")} />

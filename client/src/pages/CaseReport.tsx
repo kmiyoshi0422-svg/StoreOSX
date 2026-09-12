@@ -32,6 +32,7 @@ import { toast } from "sonner";
 import { clearDataUrlCache, inlineImages } from "@/lib/imageDataUrl";
 import { fileToUprightDataUrl } from "@/lib/imageOrientation";
 import { getReportPdfProfile, isLowMemoryBrowser } from "@/lib/reportPdfProfile";
+import { usePdfHistoryRecorder } from "@/hooks/usePdfHistoryRecorder";
 import { SignaturePad } from "@/components/SignaturePad";
 import { Lightbox, useLightbox } from "@/components/Lightbox";
 import {
@@ -170,6 +171,7 @@ export default function CaseReport({
   setReportExclusions(exclusionRows.map((r) => r.term));
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const { recordPdf } = usePdfHistoryRecorder();
   const [generating, setGenerating] = useState(false);
   const [pdfProgress, setPdfProgress] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -816,7 +818,21 @@ export default function CaseReport({
         /[\\/:*?"<>|]/g,
         "_",
       );
-      pdf.save(`${config.fileLabel}_${safe}.pdf`);
+      const fileName = `${config.fileLabel}_${safe}.pdf`;
+      pdf.save(fileName);
+      try {
+        setPdfProgress("生成履歴を保存中...");
+        await recordPdf({
+          pdf,
+          fileName,
+          reportType: reportType === "survey" ? "現場調査報告書" : "施工完了報告書",
+          caseId: id,
+          metadata: { pageCount: totalPages, photoCount: reportPhotos.length },
+        });
+      } catch (historyError) {
+        console.error("[PDF history] failed:", historyError);
+        toast.warning("PDFはダウンロードしましたが、生成履歴の保存に失敗しました");
+      }
       toast.success("PDFをダウンロードしました");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "PDF生成に失敗しました");
