@@ -33,7 +33,7 @@ flowchart LR
 
 ## 4. Zapierワークフロー
 
-Zap名は **「StoreOSX｜資料をDrive保存＋ファイル台帳記録」** とします。トリガーにはWebhooks by ZapierのCatch Hookを使用します。Catch Hookは外部アプリからPOSTされたJSONを解析し、後続ステップで各項目を利用できます。[1]
+Zap名は **「StoreOSX ファイル保存・台帳登録」** です。トリガーにはWebhooks by ZapierのCatch Hookを使用します。Catch Hookは外部アプリからPOSTされたJSONを解析し、後続ステップで各項目を利用できます。[1]
 
 | 順番 | Zapierアプリ／イベント | 主な設定 |
 |---:|---|---|
@@ -94,6 +94,19 @@ Zapierが未設定または一時的に失敗しても、StoreOSX S3と資料DB�
 | Zapier Tables | 15列の台帳レコードが1件追加される |
 | コールバック | StoreOSX表示が「Drive保存済」に更新される |
 | 再送 | Zapier停止後の失敗データを再送して正常完了できる |
+
+## 9. 稼働情報
+
+| 項目 | 現在値 |
+|---|---|
+| Zap ID | `379890976` |
+| Zapバージョン | `v1` |
+| 公開状態 | 公開済み・稼働中 |
+| Google Drive接続 | `k.miyoshi0422@gmail.com` |
+| Google Drive保存フォルダ | `StoreOSX`（Folder ID: `1rXINhx3atczbHbKB4Weg_qNTZIaWyT06`） |
+| Zapier Tables | `StoreOSX ファイル台帳`（Table ID: `01M2AS20424Z7E7P4GT4197QYC`） |
+| StoreOSX設定 | 本番環境の「資料DB庫」からCatch Hook URL登録済み |
+| 公開日 | 2026-09-12 |
 
 ## References
 

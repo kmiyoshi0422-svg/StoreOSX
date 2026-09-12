@@ -1007,10 +1007,10 @@ function UploadDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs font-medium">ファイル *</Label>
-            <div
-              className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
-              onClick={() => fileInputRef.current?.click()}
+            <Label htmlFor="document-upload-files" className="text-xs font-medium">ファイル *</Label>
+            <label
+              htmlFor="document-upload-files"
+              className="block border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20"
             >
               <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
               {files.length > 0 ? (
@@ -1022,15 +1022,16 @@ function UploadDialog({
               ) : (
                 <p className="text-sm text-muted-foreground">クリックしてファイルを選択</p>
               )}
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              multiple
-              accept=".pdf,.jpg,.jpeg,.png,.gif,.dwg,.dxf,.doc,.docx,.xls,.xlsx,.zip,.txt,.csv"
-              onChange={handleFileChange}
-            />
+              <input
+                id="document-upload-files"
+                ref={fileInputRef}
+                type="file"
+                className="sr-only"
+                multiple
+                accept=".pdf,.jpg,.jpeg,.png,.gif,.dwg,.dxf,.doc,.docx,.xls,.xlsx,.zip,.txt,.csv"
+                onChange={handleFileChange}
+              />
+            </label>
           </div>
 
           <div className="space-y-1.5">
