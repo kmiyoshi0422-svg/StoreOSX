@@ -25,6 +25,11 @@ export type DashboardCaseInput = {
   requestDate?: Date | string | null;
   createdAt?: Date | string | null;
   constructionDate?: Date | string | null;
+  requestContent?: string | null;
+  categoryLarge?: string | null;
+  categoryMedium?: string | null;
+  categorySmall?: string | null;
+  notes?: string | null;
   surveyDate?: Date | string | null;
   revisitCount?: number | null;
   assigneeId?: number | null;
@@ -40,6 +45,16 @@ export type DashboardBreakdownRow = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+export const LEAKAGE_RELATED_KEYWORDS = [
+  "漏電",
+  "ブレーカー",
+  "停電",
+  "絶縁",
+  "ヒューズ",
+  "電気が落ち",
+  "電源が落ち",
+] as const;
 
 function startOfDay(value: Date | string) {
   const date = new Date(value);
@@ -57,6 +72,24 @@ function constructionWeek(value?: Date | string | null) {
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekStart.getDate() + 6);
   return { constructionDate: date, constructionWeekStart: weekStart, constructionWeekEnd: weekEnd };
+}
+
+function subtractCalendarMonths(date: Date, months: number) {
+  const result = new Date(date.getFullYear(), date.getMonth() - months, 1);
+  const lastDay = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate();
+  result.setDate(Math.min(date.getDate(), lastDay));
+  return result;
+}
+
+export function isLeakageRelated(item: DashboardCaseInput) {
+  const searchable = [
+    item.requestContent,
+    item.categoryLarge,
+    item.categoryMedium,
+    item.categorySmall,
+    item.notes,
+  ].filter(Boolean).join(" ").toLowerCase();
+  return LEAKAGE_RELATED_KEYWORDS.some((keyword) => searchable.includes(keyword.toLowerCase()));
 }
 
 export function selectPreferredConstructionDate(
@@ -82,14 +115,13 @@ export function buildDashboardOverview(
   const completed = cases.filter((item) => item.status === "完了" || item.status === "クローズ");
   const surveyed = cases.filter((item) => Boolean(item.surveyDate));
   const noRevisit = surveyed.filter((item) => (item.revisitCount ?? 0) === 0);
-  const overdueRequestCases = cases
+  const unfinishedCases = cases
     .filter((item) => item.status !== "完了" && item.status !== "クローズ")
     .map((item) => {
       const requestedAt = item.requestDate ?? item.createdAt;
       const requestDay = requestedAt ? startOfDay(requestedAt) : null;
       if (!requestDay) return null;
       const daysElapsed = Math.floor((today.getTime() - requestDay.getTime()) / DAY_MS);
-      if (daysElapsed < 14) return null;
       return {
         ...item,
         requestDate: requestDay,
@@ -99,6 +131,16 @@ export function buildDashboardOverview(
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item))
     .sort((a, b) => b.daysElapsed - a.daysElapsed);
+  const oneMonthAgo = subtractCalendarMonths(today, 1);
+  const threeMonthsAgo = subtractCalendarMonths(today, 3);
+  const attentionCases = {
+    threeMonthsOrMore: unfinishedCases.filter((item) => item.requestDate.getTime() <= threeMonthsAgo.getTime()),
+    oneToThreeMonths: unfinishedCases.filter((item) => {
+      const time = item.requestDate.getTime();
+      return time <= oneMonthAgo.getTime() && time > threeMonthsAgo.getTime();
+    }),
+    leakageRelated: unfinishedCases.filter(isLeakageRelated),
+  };
 
   const statusBreakdown: DashboardBreakdownRow[] = DASHBOARD_STATUS_ORDER.map((status) => ({
     key: status,
@@ -147,6 +189,6 @@ export function buildDashboardOverview(
       : null,
     cases,
     recentCases: cases.slice(0, 6),
-    overdueRequestCases,
+    attentionCases,
   };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDashboardOverview, selectPreferredConstructionDate, type DashboardCaseInput } from "../shared/dashboard";
+import { buildDashboardOverview, isLeakageRelated, selectPreferredConstructionDate, type DashboardCaseInput } from "../shared/dashboard";
 
 const cases: DashboardCaseInput[] = [
   {
@@ -71,7 +71,7 @@ describe("buildDashboardOverview", () => {
     expect(result.financials).toBeNull();
   });
 
-  it("依頼日から14日以上経過した未完了案件と施工予定週を返す", () => {
+  it("未完了案件を3か月以上・1か月以上3か月未満・漏電関係に分ける", () => {
     const result = buildDashboardOverview([
       {
         id: 10,
@@ -79,16 +79,16 @@ describe("buildDashboardOverview", () => {
         storeName: "店舗D",
         status: "施工待ち",
         urgency: "B",
-        requestDate: new Date("2026-08-25T12:00:00+09:00"),
+        requestDate: new Date("2026-06-12T12:00:00+09:00"),
         constructionDate: new Date("2026-09-16T10:00:00+09:00"),
       },
       {
         id: 11,
         requestNumber: "REQ-011",
         storeName: "店舗E",
-        status: "完了",
+        status: "見積中",
         urgency: "C",
-        requestDate: new Date("2026-08-01T12:00:00+09:00"),
+        requestDate: new Date("2026-06-13T12:00:00+09:00"),
       },
       {
         id: 12,
@@ -96,38 +96,85 @@ describe("buildDashboardOverview", () => {
         storeName: "店舗F",
         status: "受付",
         urgency: "A",
-        requestDate: new Date("2026-09-01T12:00:00+09:00"),
+        requestDate: new Date("2026-08-12T12:00:00+09:00"),
+        requestContent: "厨房のブレーカーが落ちるため確認希望",
+      },
+      {
+        id: 13,
+        requestNumber: "REQ-013",
+        storeName: "店舗G",
+        status: "受付",
+        urgency: "B",
+        requestDate: new Date("2026-08-13T12:00:00+09:00"),
+        categorySmall: "漏電",
+      },
+      {
+        id: 14,
+        requestNumber: "REQ-014",
+        storeName: "店舗H",
+        status: "完了",
+        urgency: "B",
+        requestDate: new Date("2026-05-01T12:00:00+09:00"),
+        requestContent: "漏電調査",
       },
     ], { includeFinancials: false, now: new Date("2026-09-12T15:00:00+09:00") });
 
-    expect(result.overdueRequestCases).toHaveLength(1);
-    expect(result.overdueRequestCases[0]).toMatchObject({
-      id: 10,
-      daysElapsed: 18,
-    });
-    expect(result.overdueRequestCases[0].constructionDate?.getDate()).toBe(16);
-    expect(result.overdueRequestCases[0].constructionWeekStart?.getDate()).toBe(14);
-    expect(result.overdueRequestCases[0].constructionWeekEnd?.getDate()).toBe(20);
+    expect(result.attentionCases.threeMonthsOrMore).toHaveLength(1);
+    expect(result.attentionCases.threeMonthsOrMore[0]).toMatchObject({ id: 10, daysElapsed: 92 });
+    expect(result.attentionCases.threeMonthsOrMore[0].constructionDate?.getDate()).toBe(16);
+    expect(result.attentionCases.threeMonthsOrMore[0].constructionWeekStart?.getDate()).toBe(14);
+    expect(result.attentionCases.threeMonthsOrMore[0].constructionWeekEnd?.getDate()).toBe(20);
+    expect(result.attentionCases.oneToThreeMonths.map((item) => item.id)).toEqual([11, 12]);
+    expect(result.attentionCases.leakageRelated.map((item) => item.id)).toEqual([12, 13]);
   });
 
-  it("14日経過でも施工予定日が未設定なら週情報をnullで返す", () => {
+  it("1か月以上でも施工予定日が未設定なら週情報をnullで返す", () => {
     const result = buildDashboardOverview([
       {
         id: 20,
         requestNumber: "REQ-020",
-        storeName: "店舗G",
+        storeName: "店舗I",
         status: "見積中",
         urgency: "B",
-        requestDate: new Date("2026-08-20T12:00:00+09:00"),
+        requestDate: new Date("2026-07-20T12:00:00+09:00"),
       },
     ], { includeFinancials: false, now: new Date("2026-09-12T15:00:00+09:00") });
 
-    expect(result.overdueRequestCases[0]).toMatchObject({
+    expect(result.attentionCases.oneToThreeMonths[0]).toMatchObject({
       id: 20,
       constructionDate: null,
       constructionWeekStart: null,
       constructionWeekEnd: null,
     });
+  });
+});
+
+describe("isLeakageRelated", () => {
+  it.each([
+    [{ requestContent: "漏電の疑いがあります" }],
+    [{ requestContent: "ブレーカーが頻繁に落ちます" }],
+    [{ notes: "絶縁抵抗を確認予定" }],
+    [{ categorySmall: "ヒューズ交換" }],
+  ])("漏電関連キーワードを検出する", (fields) => {
+    expect(isLeakageRelated({
+      id: 1,
+      requestNumber: "REQ-LEAK",
+      storeName: "店舗",
+      status: "受付",
+      urgency: "A",
+      ...fields,
+    })).toBe(true);
+  });
+
+  it("一般的な設備不具合は漏電関係に含めない", () => {
+    expect(isLeakageRelated({
+      id: 2,
+      requestNumber: "REQ-NORMAL",
+      storeName: "店舗",
+      status: "受付",
+      urgency: "B",
+      requestContent: "水栓から水漏れしています",
+    })).toBe(false);
   });
 });
 

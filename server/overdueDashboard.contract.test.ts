@@ -6,9 +6,11 @@ const root = resolve(import.meta.dirname, "..");
 const homeSource = readFileSync(resolve(root, "client/src/pages/Home.tsx"), "utf8");
 const routerSource = readFileSync(resolve(root, "server/routers.ts"), "utf8");
 
-describe("依頼日14日経過案件ダッシュボード", () => {
-  it("依頼日・経過日数・施工予定日・予定週・未設定を表示する", () => {
-    expect(homeSource).toContain("依頼から14日以上経過した案件");
+describe("経過案件3区分ダッシュボード", () => {
+  it("3か月以上・1か月以上・漏電関係と施工予定週を表示する", () => {
+    expect(homeSource).toContain("3か月以上");
+    expect(homeSource).toContain("1か月以上");
+    expect(homeSource).toContain("漏電関係");
     expect(homeSource).toContain("施工予定日（予定週）");
     expect(homeSource).toContain("施工予定日 未設定");
     expect(homeSource).toContain("row.daysElapsed");

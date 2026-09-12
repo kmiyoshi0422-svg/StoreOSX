@@ -292,6 +292,7 @@ export async function listCasesSummary() {
       actualCost: cases.actualCost,
       categoryLarge: cases.categoryLarge,
       categoryMedium: cases.categoryMedium,
+      categorySmall: cases.categorySmall,
       requestContent: cases.requestContent,
       requesterName: cases.requesterName,
       createdAt: cases.createdAt,
