@@ -166,6 +166,7 @@ import { TRPCError } from "@trpc/server";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { BUDGET_RATIO, calcBudget } from "../shared/budget";
 import { calcCaseProfit } from "../shared/profit";
+import { buildDashboardOverview } from "../shared/dashboard";
 import { detectPrefecture } from "../shared/prefecture";
 import { resolveStageStatus, syncStageFromStatus } from "../shared/stageStatus";
 import type { ProgressStage, CaseStatus } from "../shared/stageStatus";
@@ -306,6 +307,27 @@ export const appRouter = router({
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
+    }),
+  }),
+
+  dashboard: router({
+    overview: protectedProcedure.query(async ({ ctx }) => {
+      const allCases = await listCasesSummary();
+      const visibleCases = ctx.user.role === "partner"
+        ? await filterCasesForPartner(allCases, ctx.user.id)
+        : allCases;
+      const users = await getAllUsers();
+      const userNames = new Map(users.map((user) => [user.id, user.name ?? `User ${user.id}`]));
+      const isAdmin = ctx.user.role === "admin" || ctx.user.role === "owner";
+      const caseRows = visibleCases.map((item) => {
+        const row = {
+          ...item,
+          assigneeName: item.assigneeId ? userNames.get(item.assigneeId) ?? null : null,
+        };
+        return ctx.user.role === "partner" ? stripFinancialFields(row) : row;
+      });
+
+      return buildDashboardOverview(caseRows, { includeFinancials: isAdmin });
     }),
   }),
 

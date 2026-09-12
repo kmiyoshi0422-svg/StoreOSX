@@ -36,8 +36,9 @@ import { PdfPreviewModal } from "@/components/PdfPreviewModal";
 import html2canvas from "html2canvas-pro";
 import jsPDF from "jspdf";
 import { toast } from "sonner";
-import { inlineImages } from "@/lib/imageDataUrl";
+import { clearDataUrlCache, inlineImages } from "@/lib/imageDataUrl";
 import { fileToUprightDataUrl } from "@/lib/imageOrientation";
+import { getReportPdfProfile, isLowMemoryBrowser } from "@/lib/reportPdfProfile";
 import { SignaturePad } from "@/components/SignaturePad";
 import { Lightbox, useLightbox } from "@/components/Lightbox";
 import type { Photo, Case, CaseSignature } from "../../../drizzle/schema";
@@ -351,8 +352,21 @@ export default function CompletionReport({ id }: { id: number }) {
   const handleDownloadPDF = async () => {
     if (!containerRef.current || !caseData) return;
     setGenerating(true);
-    const restore = await inlineImages(containerRef.current).catch(() => () => {});
+    let restore = () => {};
     try {
+      const pages = containerRef.current.querySelectorAll<HTMLElement>(".report-page");
+      if (pages.length === 0) throw new Error("報告書ページが見つかりません");
+      const profile = getReportPdfProfile(
+        pages.length,
+        reportPhotos.length,
+        isLowMemoryBrowser(),
+      );
+      restore = await inlineImages(containerRef.current, {
+        maxEdge: profile.maxImageEdge,
+        quality: profile.imageQuality,
+        concurrency: profile.imageConcurrency,
+      });
+
       // フォントの読み込みを待つ（日本語フォントが未ロードだと文字化けする）
       if (document.fonts && document.fonts.ready) {
         await document.fonts.ready;
@@ -362,19 +376,22 @@ export default function CompletionReport({ id }: { id: number }) {
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
-      const pages = containerRef.current.querySelectorAll<HTMLElement>(".report-page");
       for (let i = 0; i < pages.length; i++) {
         const canvas = await html2canvas(pages[i], {
-          scale: 2,
+          scale: profile.renderScale,
           useCORS: true,
           allowTaint: false,
           backgroundColor: "#ffffff",
           logging: false,
           windowWidth: 800,
+          imageTimeout: 30_000,
+          removeContainer: true,
         });
-        const imgData = canvas.toDataURL("image/jpeg", 0.92);
+        const imgData = canvas.toDataURL("image/jpeg", profile.jpegQuality);
         if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
+        pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight, undefined, "FAST");
+        canvas.width = 0;
+        canvas.height = 0;
       }
       const safe = `${caseData.requestNumber}_${caseData.storeName}`.replace(/[\\/:*?"<>|]/g, "_");
       pdf.save(`工事完了報告書_${safe}.pdf`);
@@ -383,6 +400,7 @@ export default function CompletionReport({ id }: { id: number }) {
       toast.error(e instanceof Error ? e.message : "PDF生成に失敗しました");
     } finally {
       restore();
+      clearDataUrlCache();
       setGenerating(false);
     }
   };
