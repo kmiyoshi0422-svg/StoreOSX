@@ -131,6 +131,7 @@ export default function CasesList() {
   const { user } = useAuth();
   const isPartner = user?.role === 'partner';
   const canViewFinancials = user?.role === 'owner' || user?.role === 'admin' || user?.role === 'executive';
+  const canViewProfit = user?.role === 'owner';
   const { data: cases = [], isLoading } = trpc.cases.listSummary.useQuery();
   const { data: users = [] } = trpc.users.list.useQuery();
   const userMap = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
@@ -1053,7 +1054,7 @@ export default function CasesList() {
                                 </p>
                               </div>
                             )}
-                            {canViewFinancials && (
+                            {canViewProfit && (
                             <div className={`rounded-md border px-3 py-1.5 ${gp > 0 ? "bg-emerald-50/70 border-emerald-200" : gp < 0 ? "bg-red-50/70 border-red-200" : "bg-stone-50/80"}`}>
                               <p className="text-[10px] text-muted-foreground leading-none mb-1">
                                 粗利

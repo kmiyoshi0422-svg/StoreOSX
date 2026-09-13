@@ -158,6 +158,7 @@ export default function CaseDetail({ id }: { id: number }) {
   const isPartner = user?.role === 'partner';
   const isOwnerOrAdmin = user?.role === 'owner' || user?.role === 'admin';
   const canViewFinancials = isOwnerOrAdmin || user?.role === 'executive';
+  const canViewProfit = user?.role === 'owner';
   const canManageCase = isOwnerOrAdmin || user?.role === 'executive' || user?.role === 'user';
   const utils = trpc.useUtils();
   const [activeTab, setActiveTab] = useState("info");
@@ -385,7 +386,7 @@ export default function CaseDetail({ id }: { id: number }) {
         </TabsContent>
 
         <TabsContent value="profit">
-          {activeTab === "profit" && <React.Suspense fallback={<LazyTabFallback />}><ProfitTab caseData={caseData} onUpdated={() => utils.cases.get.invalidate({ id })} isPartner={isPartner} /></React.Suspense>}
+          {activeTab === "profit" && <React.Suspense fallback={<LazyTabFallback />}><ProfitTab caseData={caseData} onUpdated={() => utils.cases.get.invalidate({ id })} isPartner={isPartner} canViewProfit={canViewProfit} /></React.Suspense>}
         </TabsContent>
 
         <TabsContent value="expenses">

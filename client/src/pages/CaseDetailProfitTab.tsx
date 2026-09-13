@@ -133,7 +133,7 @@ const PHOTO_TYPES = [
   "その他",
 ] as const;
 
-export default function ProfitTab({ caseData, onUpdated, isPartner = false }: { caseData: Case; onUpdated: () => void; isPartner?: boolean }) {
+export default function ProfitTab({ caseData, onUpdated, isPartner = false, canViewProfit = false }: { caseData: Case; onUpdated: () => void; isPartner?: boolean; canViewProfit?: boolean }) {
   const { data: estimates = [] } = trpc.estimates.listByCase.useQuery({ caseId: caseData.id });
   const { data: expenses = [] } = trpc.expenses.listByCase.useQuery({ caseId: caseData.id });
 
@@ -368,7 +368,7 @@ export default function ProfitTab({ caseData, onUpdated, isPartner = false }: { 
             <h3 className="font-medium">個別案件 収支</h3>
           </div>
 
-          <div className={`grid ${isPartner ? 'sm:grid-cols-2 lg:grid-cols-3' : 'sm:grid-cols-2 lg:grid-cols-4'} gap-3`}>
+          <div className={`grid ${isPartner ? 'sm:grid-cols-2 lg:grid-cols-3' : canViewProfit ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-2 lg:grid-cols-3'} gap-3`}>
             {!isPartner && (
             <div className="rounded-md border p-3 bg-blue-50 border-blue-200">
               <div className="text-xs text-blue-700 mb-1">売上・プレナス提出額</div>
@@ -393,7 +393,7 @@ export default function ProfitTab({ caseData, onUpdated, isPartner = false }: { 
                 <div className="text-xl font-semibold tracking-tight">{yen(overheadTotal)}</div>
               </div>
             )}
-            {!isPartner && (
+            {canViewProfit && (
             <div className={`rounded-md border p-3 ${grossProfit >= 0 ? "bg-violet-50 border-violet-200" : "bg-red-50 border-red-200"}`}>
               <div className="text-xs mb-1 text-muted-foreground">粗利・売上−原価</div>
               <div className={`text-xl font-semibold tracking-tight ${grossProfit >= 0 ? "text-violet-700" : "text-red-700"}`}>
@@ -410,7 +410,7 @@ export default function ProfitTab({ caseData, onUpdated, isPartner = false }: { 
           <div className="text-xs text-muted-foreground space-y-1 leading-relaxed pt-2 border-t">
             <div>・売上：プレナスへ提出した見積金額。未入力時は協力業者額から想定表示</div>
             <div>・原価：協力業者見積額 ＋ 領収書経費 ＋ 管理費・現場経費</div>
-            <div>・粗利・粗利率は金額を保存すると即時に反映されます</div>
+            {canViewProfit && <div>・粗利・粗利率は金額を保存すると即時に反映されます</div>}
           </div>
           )}
         </CardContent>

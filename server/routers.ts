@@ -198,7 +198,9 @@ import {
   canAccessPrefecture,
   canManageCases,
   canViewInternalFinancials,
+  canViewProfit,
   filterCasesByArea,
+  maskProfitValues,
 } from "../shared/accessPolicy";
 import { resolveStageStatus, syncStageFromStatus } from "../shared/stageStatus";
 import type { ProgressStage, CaseStatus } from "../shared/stageStatus";
@@ -257,7 +259,9 @@ async function applyCaseVisibility<T>(
   rows: T[],
   user: CaseAccessUser,
 ): Promise<T[]> {
-  const areaVisible = user.role === "partner"
+  const partnerUsesSelectedAreas =
+    user.role === "partner" && user.areaAccessMode === "selected";
+  const areaVisible = user.role === "partner" && !partnerUsesSelectedAreas
     ? await filterCasesForPartner(rows, user.id)
     : filterCasesByArea(rows, user);
   return areaVisible.map((row) => applyFinancialVisibility(row, user.role));
@@ -2472,7 +2476,7 @@ export const appRouter = router({
         const caseData = await getCaseById(input.caseId);
         if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
         await assertCaseAccess(caseData, ctx.user);
-        if (!canViewInternalFinancials(ctx.user.role) && ctx.user.role !== "partner") {
+        if (!canViewInternalFinancials(ctx.user.role)) {
           throw new TRPCError({ code: "FORBIDDEN", message: "見積金額の閲覧権限がありません" });
         }
         return listEstimatesByCase(input.caseId);
@@ -3956,7 +3960,8 @@ export const appRouter = router({
           }),
           { revenue: 0, cost: 0, profit: 0, caseCount: 0, completedCount: 0 },
         );
-        return { rows, totals };
+        const result = { rows, totals };
+        return canViewProfit(ctx.user.role) ? result : maskProfitValues(result);
       }),
     byAssignee: financialProcedure.query(async ({ ctx }) => {
       const allCases = filterCasesByArea(await listCases(), ctx.user);
@@ -4004,7 +4009,8 @@ export const appRouter = router({
           return { ...r, profit, margin };
         })
         .sort((a, b) => b.profit - a.profit);
-            return { rows };
+            const result = { rows };
+            return canViewProfit(ctx.user.role) ? result : maskProfitValues(result);
     }),
     // 効果測定ダッシュボード用集計
     effectiveness: financialProcedure

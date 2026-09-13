@@ -6,7 +6,7 @@ import { calcCaseProfit } from "@shared/profit";
 
 type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
 
-function createAuthContext(role: "user" | "admin" = "user"): TrpcContext {
+function createAuthContext(role: "user" | "admin" | "owner" = "user"): TrpcContext {
   const user: AuthenticatedUser = {
     id: 1,
     openId: "test-user",
@@ -27,6 +27,10 @@ function createAuthContext(role: "user" | "admin" = "user"): TrpcContext {
 
 function createAdminContext(): TrpcContext {
   return createAuthContext("admin");
+}
+
+function createOwnerContext(): TrpcContext {
+  return createAuthContext("owner");
 }
 
 describe("cases router", () => {
@@ -812,7 +816,7 @@ describe("v17: 個別案件 収支計算", () => {
 
 describe("v19: reports.monthly 月別実績レポート", () => {
   it("デフォルト6ヶ月の月別行と合計を返す", async () => {
-    const caller = appRouter.createCaller(createAdminContext());
+    const caller = appRouter.createCaller(createOwnerContext());
     const res = await caller.reports.monthly();
     expect(res).toHaveProperty("rows");
     expect(res).toHaveProperty("totals");
@@ -836,6 +840,16 @@ describe("v19: reports.monthly 月別実績レポート", () => {
     expect(res.totals.profit).toBe(sumRevenue - sumCost);
   });
 
+  it("管理者には売上・原価を返すが利益と粗利率は返さない", async () => {
+    const caller = appRouter.createCaller(createAdminContext());
+    const res = await caller.reports.monthly({ months: 1 });
+    expect(typeof res.totals.revenue).toBe("number");
+    expect(typeof res.totals.cost).toBe("number");
+    expect(res.totals.profit).toBeNull();
+    expect(res.rows[0]?.profit).toBeNull();
+    expect(res.rows[0]?.margin).toBeNull();
+  });
+
   it("3ヶ月を指定すると行数が3になる", async () => {
     const caller = appRouter.createCaller(createAdminContext());
     const res = await caller.reports.monthly({ months: 3 });
@@ -851,7 +865,7 @@ describe("v19: reports.monthly 月別実績レポート", () => {
 
 describe("v19: reports.byAssignee 担当者別成績", () => {
   it("担当者別の集計を取得できる（rowsプロパティを返す）", async () => {
-    const caller = appRouter.createCaller(createAdminContext());
+    const caller = appRouter.createCaller(createOwnerContext());
     const res = await caller.reports.byAssignee();
     expect(res).toHaveProperty("rows");
     expect(Array.isArray(res.rows)).toBe(true);

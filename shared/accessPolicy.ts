@@ -19,6 +19,10 @@ export function canViewInternalFinancials(role: string) {
   return role === "owner" || role === "admin" || role === "executive";
 }
 
+export function canViewProfit(role: string) {
+  return role === "owner";
+}
+
 export function canManageAccess(role: string) {
   return role === "owner" || role === "admin";
 }
@@ -91,10 +95,22 @@ export function stripInternalFinancialFields<T>(row: T): T {
 
 export function applyFinancialVisibility<T>(row: T, role: string): T {
   if (canViewInternalFinancials(role)) return row;
-  const original = row as Record<string, unknown>;
-  const masked = stripInternalFinancialFields(row) as Record<string, unknown>;
-  if (role === "partner" && original.amountApproved === true && "estimatedCost" in original) {
-    masked.estimatedCost = original.estimatedCost;
+  return stripInternalFinancialFields(row);
+}
+
+export function maskProfitValues<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => maskProfitValues(item)) as T;
   }
-  return masked as T;
+  if (!value || typeof value !== "object") return value;
+
+  const result: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (["profit", "margin", "grossProfit", "grossMargin", "totalProfit", "profitMargin"].includes(key)) {
+      result[key] = null;
+    } else {
+      result[key] = maskProfitValues(item);
+    }
+  }
+  return result as T;
 }

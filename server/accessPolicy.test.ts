@@ -4,8 +4,10 @@ import {
   canManageAccess,
   canManageCases,
   canViewInternalFinancials,
+  canViewProfit,
   applyFinancialVisibility,
   filterCasesByArea,
+  maskProfitValues,
   stripInternalFinancialFields,
 } from "../shared/accessPolicy";
 
@@ -17,6 +19,22 @@ describe("role and area access policy", () => {
     expect(canViewInternalFinancials("user")).toBe(false);
     expect(canViewInternalFinancials("partner")).toBe(false);
     expect(canViewInternalFinancials("customer")).toBe(false);
+  });
+
+  it("利益と粗利率は最高管理者だけが閲覧できる", () => {
+    expect(canViewProfit("owner")).toBe(true);
+    expect(canViewProfit("admin")).toBe(false);
+    expect(canViewProfit("executive")).toBe(false);
+    expect(canViewProfit("user")).toBe(false);
+  });
+
+  it("管理者向けレスポンスでは売上・原価を残し利益だけをマスクする", () => {
+    expect(maskProfitValues({ revenue: 100, cost: 80, profit: 20, margin: 20 })).toEqual({
+      revenue: 100,
+      cost: 80,
+      profit: null,
+      margin: null,
+    });
   });
 
   it("権限管理はowner/admin、案件操作はowner/admin/executive/userだけ", () => {
@@ -53,7 +71,7 @@ describe("role and area access policy", () => {
     expect(masked.requestContent).toBe("漏電修理");
   });
 
-  it("協力業者は公開承認済みの指値だけ見え、顧客には同じ金額も見せない", () => {
+  it("協力業者と顧客には承認状態にかかわらず社内金額を一切見せない", () => {
     const row = {
       estimatedCost: 75000,
       plenusQuoteAmount: 100000,
@@ -61,7 +79,7 @@ describe("role and area access policy", () => {
       amountApproved: true,
     };
     const partner = applyFinancialVisibility(row, "partner");
-    expect(partner.estimatedCost).toBe(75000);
+    expect(partner.estimatedCost).toBeNull();
     expect(partner.plenusQuoteAmount).toBeNull();
     expect(partner.actualCost).toBeNull();
     const customer = applyFinancialVisibility(row, "customer");

@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import {
@@ -31,6 +32,8 @@ const yen = (n: number | null | undefined) =>
   n != null ? `¥${Math.round(n).toLocaleString()}` : "—";
 
 export default function Reports() {
+  const { user } = useAuth();
+  const canViewProfit = user?.role === "owner";
   const [months, setMonths] = useState<3 | 6 | 12>(6);
   const monthly = trpc.reports.monthly.useQuery({ months });
   const byAssignee = trpc.reports.byAssignee.useQuery();
@@ -41,7 +44,7 @@ export default function Reports() {
         eyebrow="Reports"
         title="実績レポート"
         icon={<TrendingUp className="h-7 w-7 text-primary" />}
-        description="月別の売上・原価・粗利、および担当者別の成績を可視化します。売上はプレナス提出見積額、未入力は協力業者額÷0.75、原価は協力業者見積額＋経費の合計です。"
+        description={canViewProfit ? "月別の売上・原価・粗利、および担当者別の成績を可視化します。" : "月別の売上・原価、および担当者別の実績を可視化します。利益・粗利率は最高管理者だけが閲覧できます。"}
       />
 
       <Tabs defaultValue="monthly" className="space-y-5">
@@ -85,13 +88,13 @@ export default function Reports() {
                 <Inbox className="h-10 w-10 opacity-60" />
                 <div className="font-medium text-foreground">該当期間の実績がまだありません</div>
                 <div className="text-sm max-w-sm">
-                  案件を登録し、収支タブでプレナス提出額・協力業者額や経費を入力すると、月ごとの売上・原価・粗利が自動で集計されます。
+                  案件を登録し、収支タブでプレナス提出額・協力業者額や経費を入力すると、月ごとの売上・原価が自動で集計されます。
                 </div>
               </CardContent>
             </Card>
           ) : !monthly.data ? null : (
             <>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className={`grid sm:grid-cols-2 ${canViewProfit ? "lg:grid-cols-4" : "lg:grid-cols-3"} gap-3`}>
                 <KpiCard
                   label="売上合計"
                   value={yen(monthly.data.totals.revenue)}
@@ -102,11 +105,11 @@ export default function Reports() {
                   value={yen(monthly.data.totals.cost)}
                   hue="amber"
                 />
-                <KpiCard
+                {canViewProfit && <KpiCard
                   label="粗利合計"
                   value={yen(monthly.data.totals.profit)}
                   hue={monthly.data.totals.profit >= 0 ? "violet" : "red"}
-                />
+                />}
                 <KpiCard
                   label="件数・完了"
                   value={`${monthly.data.totals.caseCount}件 完了${monthly.data.totals.completedCount}`}
@@ -151,7 +154,7 @@ export default function Reports() {
                 </CardContent>
               </Card>
 
-              <Card>
+              {canViewProfit && <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
                     <TrendingUp className="h-4 w-4" /> 月別 粗利推移
@@ -189,7 +192,7 @@ export default function Reports() {
                     </ResponsiveContainer>
                   </div>
                 </CardContent>
-              </Card>
+              </Card>}
 
               <Card>
                 <CardHeader className="pb-2">
@@ -205,8 +208,8 @@ export default function Reports() {
                           <th className="text-right px-3 py-2 font-medium">完了</th>
                           <th className="text-right px-3 py-2 font-medium">売上</th>
                           <th className="text-right px-3 py-2 font-medium">原価</th>
-                          <th className="text-right px-3 py-2 font-medium">粗利</th>
-                          <th className="text-right px-3 py-2 font-medium">粗利率</th>
+                          {canViewProfit && <th className="text-right px-3 py-2 font-medium">粗利</th>}
+                          {canViewProfit && <th className="text-right px-3 py-2 font-medium">粗利率</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -225,16 +228,16 @@ export default function Reports() {
                             <td className="px-3 py-2 text-right tabular-nums">
                               {yen(r.cost)}
                             </td>
-                            <td
+                            {canViewProfit && <td
                               className={`px-3 py-2 text-right tabular-nums font-medium ${
                                 r.profit >= 0 ? "text-violet-700" : "text-red-700"
                               }`}
                             >
                               {yen(r.profit)}
-                            </td>
-                            <td className="px-3 py-2 text-right tabular-nums">
+                            </td>}
+                            {canViewProfit && <td className="px-3 py-2 text-right tabular-nums">
                               {r.margin.toFixed(1)}%
-                            </td>
+                            </td>}
                           </tr>
                         ))}
                       </tbody>
@@ -260,7 +263,7 @@ export default function Reports() {
                 <Users className="h-10 w-10 opacity-60" />
                 <div className="font-medium text-foreground">担当者別データがまだありません</div>
                 <div className="text-sm max-w-sm">
-                  案件に担当者をアサインすると、ここに個人別の売上・粗利・粗利率が表示されます。
+                  案件に担当者をアサインすると、ここに個人別の売上実績が表示されます。
                 </div>
               </CardContent>
             </Card>
@@ -269,7 +272,7 @@ export default function Reports() {
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
-                    <Wallet className="h-4 w-4" /> 担当者別 売上・粗利
+                    <Wallet className="h-4 w-4" /> 担当者別 売上{canViewProfit ? "・粗利" : ""}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -279,7 +282,7 @@ export default function Reports() {
                         data={byAssignee.data.rows.map((r) => ({
                           name: r.name,
                           売上: r.revenue,
-                          粗利: r.profit,
+                          ...(canViewProfit ? { 粗利: r.profit } : {}),
                         }))}
                         margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                       >
@@ -296,7 +299,7 @@ export default function Reports() {
                         />
                         <Legend />
                         <Bar dataKey="売上" fill="#3b82f6" />
-                        <Bar dataKey="粗利" fill="#7c3aed" />
+                        {canViewProfit && <Bar dataKey="粗利" fill="#7c3aed" />}
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -317,8 +320,8 @@ export default function Reports() {
                           <th className="text-right px-3 py-2 font-medium">完了</th>
                           <th className="text-right px-3 py-2 font-medium">売上</th>
                           <th className="text-right px-3 py-2 font-medium">原価</th>
-                          <th className="text-right px-3 py-2 font-medium">粗利</th>
-                          <th className="text-right px-3 py-2 font-medium">粗利率</th>
+                          {canViewProfit && <th className="text-right px-3 py-2 font-medium">粗利</th>}
+                          {canViewProfit && <th className="text-right px-3 py-2 font-medium">粗利率</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -342,16 +345,16 @@ export default function Reports() {
                             <td className="px-3 py-2 text-right tabular-nums">
                               {yen(r.cost)}
                             </td>
-                            <td
+                            {canViewProfit && <td
                               className={`px-3 py-2 text-right tabular-nums font-medium ${
                                 r.profit >= 0 ? "text-violet-700" : "text-red-700"
                               }`}
                             >
                               {yen(r.profit)}
-                            </td>
-                            <td className="px-3 py-2 text-right tabular-nums">
+                            </td>}
+                            {canViewProfit && <td className="px-3 py-2 text-right tabular-nums">
                               <Badge variant="outline">{r.margin.toFixed(1)}%</Badge>
-                            </td>
+                            </td>}
                           </tr>
                         ))}
                       </tbody>
