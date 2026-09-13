@@ -196,6 +196,7 @@ import {
   INTERNAL_FINANCIAL_FIELDS,
   applyFinancialVisibility,
   canAccessPrefecture,
+  canEditSurveyImpression,
   canManageCases,
   canViewInternalFinancials,
   canViewProfit,
@@ -351,6 +352,16 @@ const caseInputSchema = z.object({
   revisitCount: z.number().int().min(0).default(0),
   partnerNotes: z.string().nullish(),
   expenseBudget: z.number().int().nullish(),
+});
+
+const caseUpdateSchema = caseInputSchema.partial().extend({
+  workType: z.enum(["入替", "修理", "納品", "見積り", "新規"]).optional(),
+  costBearer: z.enum(["店舗", "営業部", "その他"]).optional(),
+  status: z.enum(["受付", "現調中", "見積中", "施工待ち", "施工中", "完了", "クローズ", "失注"]).optional(),
+  progressStage: z.enum(["未対応", "現調済", "見積提出済", "承認済"]).optional(),
+  urgency: z.enum(["S", "A", "B", "C"]).optional(),
+  is10mYen: z.boolean().optional(),
+  revisitCount: z.number().int().min(0).optional(),
 });
 
 const dashboardConstructionDateSchema = z
@@ -1243,7 +1254,7 @@ export const appRouter = router({
     }),
 
     update: protectedProcedure
-      .input(z.object({ id: z.number(), data: caseInputSchema.partial(), forceStage: z.boolean().optional() }))
+      .input(z.object({ id: z.number(), data: caseUpdateSchema, forceStage: z.boolean().optional() }))
       .mutation(async ({ ctx, input }) => {
         let data = { ...input.data };
         const currentCase = await getCaseById(input.id);
@@ -1251,6 +1262,11 @@ export const appRouter = router({
         await assertCaseAccess(currentCase, ctx.user);
         if (ctx.user.role === "customer") {
           throw new TRPCError({ code: "FORBIDDEN", message: "顧客アカウントは案件を変更できません" });
+        }
+        const includesSurveyImpression =
+          data.surveyImpression !== undefined || data.surveyImpressionAuthor !== undefined;
+        if (includesSurveyImpression && !canEditSurveyImpression(ctx.user.role)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "所感を保存する権限がありません" });
         }
         if (!canViewInternalFinancials(ctx.user.role)) {
           const disallowedFinancials = Object.keys(data).filter((key) =>
@@ -1260,13 +1276,13 @@ export const appRouter = router({
             throw new TRPCError({ code: "FORBIDDEN", message: "金額情報を変更する権限がありません" });
           }
         }
-        // partnerロールはステータス/進捗ステージ/緊急度の変更のみ許可
+        // partnerロールはステータス/進捗ステージ/緊急度/作業メモの変更のみ許可
         if (ctx.user.role === 'partner') {
-          const allowedKeys = ['status', 'progressStage', 'urgency', 'partnerNotes', 'surveyImpression', 'surveyImpressionAuthor'];
+          const allowedKeys = ['status', 'progressStage', 'urgency', 'partnerNotes'];
           const keys = Object.keys(data).filter(k => (data as any)[k] !== undefined);
           const disallowed = keys.filter(k => !allowedKeys.includes(k));
           if (disallowed.length > 0) {
-            throw new TRPCError({ code: 'FORBIDDEN', message: '協力業者はステータス・緊急度の変更のみ可能です' });
+            throw new TRPCError({ code: 'FORBIDDEN', message: '協力業者はステータス・緊急度・作業メモの変更のみ可能です' });
           }
         }
         // 進捗ステージ⇔ステータスの連動（前進専用）
@@ -1791,8 +1807,12 @@ export const appRouter = router({
         pendingTaskId: z.number().optional(), // 再試行時に渡される
       }))
       .mutation(async ({ input, ctx }) => {
+        if (!canEditSurveyImpression(ctx.user.role)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "所感を生成する権限がありません" });
+        }
         const c = await getCaseById(input.caseId);
         if (!c) throw new Error("案件が見つかりません");
+        await assertCaseAccess(c, ctx.user);
 
         // トーン設定
         const toneMap = {

@@ -31,6 +31,10 @@ export function canManageCases(role: string) {
   return role === "owner" || role === "admin" || role === "executive" || role === "user";
 }
 
+export function canEditSurveyImpression(role: string) {
+  return role === "owner" || role === "admin" || role === "user";
+}
+
 export function parseAllowedPrefectures(value: string | string[] | null | undefined): string[] {
   if (Array.isArray(value)) return value.filter(Boolean);
   if (!value) return [];

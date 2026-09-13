@@ -3,8 +3,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { useLocation } from "wouter";
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   Download,
@@ -49,6 +50,7 @@ import {
   toFullWidthDigits as _toFullWidthDigits,
   reportLabel as _reportLabel,
 } from "../../../shared/reportText";
+import { canEditSurveyImpression } from "../../../shared/accessPolicy";
 
 // PDF/報告書の全角化・括弧除去の対象外にする除外辞書（コンポーネントからsetReportExclusionsで注入）。
 let _exclusions: string[] = [];
@@ -158,6 +160,8 @@ export default function CaseReport({
   const [, setLocation] = useLocation();
   const utils = trpc.useUtils();
   const config = REPORT_CONFIG[reportType];
+  const { user } = useAuth();
+  const canEditImpression = canEditSurveyImpression(user?.role ?? "");
 
   const { data: caseData, isLoading: caseLoading } = trpc.cases.get.useQuery({ id });
   const { data: photos = [], isLoading: photosLoading } = trpc.photos.listByCase.useQuery({
@@ -205,6 +209,11 @@ export default function CaseReport({
   const generateImpressionMut = trpc.cases.generateImpression.useMutation();
   const updateCaseMut = trpc.cases.update.useMutation();
 
+  useEffect(() => {
+    setImpressionText(caseData?.surveyImpression ?? "");
+    setImpressionAuthor(caseData?.surveyImpressionAuthor ?? "");
+  }, [caseData?.surveyImpression, caseData?.surveyImpressionAuthor]);
+
   // 報告書完了mutation
   const markCompleteMut = trpc.cases.markReportComplete.useMutation({
     onSuccess: () => {
@@ -232,6 +241,10 @@ export default function CaseReport({
   const presetTemplates: string[] = (impressionTemplatesData?.value as string[] | null) ?? [];
 
   const handleGenerateImpression = async (pendingTaskId?: number) => {
+    if (!canEditImpression) {
+      toast.error("所感を生成する権限がありません");
+      return;
+    }
     setGeneratingImpression(true);
     try {
       const cfg = impressionConfigData?.value as { tone?: string; length?: string } | null;
@@ -258,6 +271,10 @@ export default function CaseReport({
   };
 
   const handleSaveImpression = async () => {
+    if (!canEditImpression) {
+      toast.error("所感を保存する権限がありません");
+      return;
+    }
     setSavingImpression(true);
     try {
       await updateCaseMut.mutateAsync({
@@ -277,6 +294,10 @@ export default function CaseReport({
   };
 
   const handleClearImpression = async () => {
+    if (!canEditImpression) {
+      toast.error("所感を削除する権限がありません");
+      return;
+    }
     setSavingImpression(true);
     try {
       await updateCaseMut.mutateAsync({
@@ -946,7 +967,7 @@ export default function CaseReport({
       )}
 
       {/* 所感入力セクション（現調報告書のみ） */}
-      {reportType === "survey" && (
+      {reportType === "survey" && canEditImpression && (
         <div className="no-print max-w-[800px] mx-auto mb-6">
           <Card>
             <CardContent className="pt-6 space-y-4">

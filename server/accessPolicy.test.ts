@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canAccessPrefecture,
+  canEditSurveyImpression,
   canManageAccess,
   canManageCases,
   canViewInternalFinancials,
@@ -12,6 +13,17 @@ import {
 } from "../shared/accessPolicy";
 
 describe("role and area access policy", () => {
+  it.each([
+    ["owner", true],
+    ["admin", true],
+    ["user", true],
+    ["executive", false],
+    ["partner", false],
+    ["customer", false],
+  ])("%s の所感編集可否は %s", (role, expected) => {
+    expect(canEditSurveyImpression(role)).toBe(expected);
+  });
+
   it("管理者と役員だけが社内金額を閲覧できる", () => {
     expect(canViewInternalFinancials("owner")).toBe(true);
     expect(canViewInternalFinancials("admin")).toBe(true);

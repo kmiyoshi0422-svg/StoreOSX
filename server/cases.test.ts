@@ -6,7 +6,7 @@ import { calcCaseProfit } from "@shared/profit";
 
 type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
 
-function createAuthContext(role: "user" | "admin" | "owner" = "user"): TrpcContext {
+function createAuthContext(role: AuthenticatedUser["role"] = "user"): TrpcContext {
   const user: AuthenticatedUser = {
     id: 1,
     openId: "test-user",
@@ -39,6 +39,50 @@ describe("cases router", () => {
     const result = await caller.cases.list();
     expect(Array.isArray(result)).toBe(true);
   });
+});
+
+describe("現調報告書の所感保存権限", () => {
+  it("最高管理者・管理者・社員は保存でき、役員・協力業者・顧客は保存できない", async () => {
+    const ownerCaller = appRouter.createCaller(createOwnerContext());
+    const created = await ownerCaller.cases.create({
+      requestNumber: `IMPRESSION-${Date.now()}`,
+      brand: "その他",
+      storeName: "所感権限テスト店",
+    });
+
+    try {
+      const allowedRoles: AuthenticatedUser["role"][] = ["owner", "admin", "user"];
+      for (const role of allowedRoles) {
+        const caller = appRouter.createCaller(createAuthContext(role));
+        await expect(caller.cases.update({
+          id: created.id,
+          data: {
+            surveyImpression: `${role}の所感`,
+            surveyImpressionAuthor: role,
+          },
+        })).resolves.toMatchObject({ success: true });
+      }
+
+      const deniedRoles: AuthenticatedUser["role"][] = ["executive", "partner", "customer"];
+      for (const role of deniedRoles) {
+        const caller = appRouter.createCaller(createAuthContext(role));
+        await expect(caller.cases.update({
+          id: created.id,
+          data: {
+            surveyImpression: `${role}の所感`,
+            surveyImpressionAuthor: role,
+          },
+        })).rejects.toThrow();
+        await expect(caller.cases.generateImpression({ caseId: created.id })).rejects.toThrow();
+      }
+
+      const saved = await ownerCaller.cases.get({ id: created.id });
+      expect(saved?.surveyImpression).toBe("userの所感");
+      expect(saved?.surveyImpressionAuthor).toBe("user");
+    } finally {
+      await ownerCaller.cases.delete({ id: created.id });
+    }
+  }, 30000);
 });
 
 describe("checklist template", () => {
