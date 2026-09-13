@@ -101,6 +101,12 @@ import {
 } from "../../../shared/checklist-template";
 import type { Case, ChecklistItem, Photo } from "../../../drizzle/schema";
 import { PREFECTURES, detectPrefecture } from "@shared/prefecture";
+import {
+  appendShortImpressionTemplate,
+  PARTNER_SHORT_IMPRESSION_MAX_LENGTH,
+  PARTNER_SHORT_IMPRESSION_TEMPLATES,
+  PARTNER_SHORT_IMPRESSION_WARNING_LENGTH,
+} from "@shared/short-impression";
 import { StoreEquipmentPanel } from "./StoreEquipmentPanel";
 import { StoreMasterLinkPanel } from "./StoreMasterLinkPanel";
 
@@ -1908,6 +1914,15 @@ function PartnerNotesCard({ caseId, partnerNotes, partnerNotesUpdatedAt, partner
     updateMutation.mutate({ id: caseId, data: { partnerNotes: value.trim() || null } as any });
   };
 
+  const handleTemplate = (template: string) => {
+    const next = appendShortImpressionTemplate(value, template);
+    if (next.length > PARTNER_SHORT_IMPRESSION_MAX_LENGTH) {
+      toast.error(`短文所感は${PARTNER_SHORT_IMPRESSION_MAX_LENGTH}文字以内です`);
+      return;
+    }
+    setValue(next);
+  };
+
   return (
     <Card>
       <CardContent className="p-5 space-y-3">
@@ -1935,14 +1950,30 @@ function PartnerNotesCard({ caseId, partnerNotes, partnerNotesUpdatedAt, partner
         </div>
 
         {editing ? (
-          <Textarea
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder="現場の状況・判断・申し送りを200文字以内で入力してください"
-            maxLength={200}
-            rows={3}
-            className="resize-y"
-          />
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {PARTNER_SHORT_IMPRESSION_TEMPLATES.map((template) => (
+                <Button
+                  key={template}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => handleTemplate(template)}
+                >
+                  {template}
+                </Button>
+              ))}
+            </div>
+            <Textarea
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder={`現場の状況・判断・申し送りを${PARTNER_SHORT_IMPRESSION_MAX_LENGTH}文字以内で入力してください`}
+              maxLength={PARTNER_SHORT_IMPRESSION_MAX_LENGTH}
+              rows={3}
+              className="resize-y"
+            />
+          </div>
         ) : (
           <div className="text-sm whitespace-pre-wrap min-h-[40px] p-3 rounded-md bg-muted/30 border">
             {partnerNotes || <span className="text-muted-foreground italic">短文所感なし</span>}
@@ -1950,9 +1981,12 @@ function PartnerNotesCard({ caseId, partnerNotes, partnerNotesUpdatedAt, partner
         )}
 
         <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-          <span>
+          <span className={isPartner && editing && value.length >= PARTNER_SHORT_IMPRESSION_WARNING_LENGTH
+            ? value.length >= PARTNER_SHORT_IMPRESSION_MAX_LENGTH ? "font-semibold text-red-600" : "font-medium text-amber-600"
+            : undefined}
+          >
             {isPartner
-              ? `現場の状況や申し送りを200文字以内で記録できます。${value.length}/200文字`
+              ? `現場の状況や申し送りを${PARTNER_SHORT_IMPRESSION_MAX_LENGTH}文字以内で記録できます。${value.length}/${PARTNER_SHORT_IMPRESSION_MAX_LENGTH}文字`
               : "協力業者が記録した短文所感です。社内正式所感とは分けて管理されます。"}
           </span>
           {partnerNotesUpdatedAt && (

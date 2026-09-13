@@ -1,5 +1,6 @@
 import { COOKIE_NAME } from "@shared/const";
 import { DEFAULT_CHECKLIST } from "../shared/checklist-template";
+import { PARTNER_SHORT_IMPRESSION_MAX_LENGTH } from "../shared/short-impression";
 import { z } from "zod";
 import {
   createCase,
@@ -69,6 +70,10 @@ import {
   listPartnerAssignmentNotificationsByUser,
   markPartnerAssignmentNotificationRead,
   markAllPartnerAssignmentNotificationsRead,
+  createInternalCaseNotifications,
+  listInternalCaseNotificationsByUser,
+  markInternalCaseNotificationRead,
+  markAllInternalCaseNotificationsRead,
   updatePhoto,
   getAppSetting,
   setAppSetting,
@@ -350,7 +355,10 @@ const caseInputSchema = z.object({
   surveyImpression: z.string().nullish(),
   surveyImpressionAuthor: z.string().nullish(),
   revisitCount: z.number().int().min(0).default(0),
-  partnerNotes: z.string().trim().max(200, "短文所感は200文字以内で入力してください").nullish(),
+  partnerNotes: z.string().trim().max(
+    PARTNER_SHORT_IMPRESSION_MAX_LENGTH,
+    `短文所感は${PARTNER_SHORT_IMPRESSION_MAX_LENGTH}文字以内で入力してください`,
+  ).nullish(),
   expenseBudget: z.number().int().nullish(),
 });
 
@@ -773,6 +781,32 @@ export const appRouter = router({
       }
       const updated = await markAllPartnerAssignmentNotificationsRead(ctx.user.id);
       return { success: true as const, updated };
+    }),
+    internalNotifications: protectedProcedure.query(async ({ ctx }) => {
+      if (!(["owner", "admin", "user"] as const).includes(ctx.user.role as "owner" | "admin" | "user")) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "社内向け通知の閲覧権限がありません" });
+      }
+      const items = await listInternalCaseNotificationsByUser(ctx.user.id, 30);
+      return {
+        items,
+        unreadCount: items.filter((item) => !item.readAt).length,
+      };
+    }),
+    markInternalNotificationRead: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        if (!(["owner", "admin", "user"] as const).includes(ctx.user.role as "owner" | "admin" | "user")) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "社内向け通知の操作権限がありません" });
+        }
+        const success = await markInternalCaseNotificationRead(input.id, ctx.user.id);
+        return { success };
+      }),
+    markAllInternalNotificationsRead: protectedProcedure.mutation(async ({ ctx }) => {
+      if (!(["owner", "admin", "user"] as const).includes(ctx.user.role as "owner" | "admin" | "user")) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "社内向け通知の操作権限がありません" });
+      }
+      await markAllInternalCaseNotificationsRead(ctx.user.id);
+      return { success: true as const };
     }),
   }),
 
@@ -1334,7 +1368,27 @@ export const appRouter = router({
           (data as any).partnerNotesUpdatedBy = ctx.user.name ?? '不明';
         }
         await updateCase(input.id, data);
-                return { success: true };
+        const nextPartnerNotes = typeof data.partnerNotes === "string" ? data.partnerNotes.trim() : "";
+        if (
+          ctx.user.role === "partner"
+          && nextPartnerNotes.length > 0
+          && nextPartnerNotes !== (currentCase.partnerNotes ?? "").trim()
+        ) {
+          const recipients = (await getAllUsers()).filter((user) =>
+            (["owner", "admin", "user"] as const).includes(user.role as "owner" | "admin" | "user")
+            && canAccessPrefecture(user, currentCase.prefecture),
+          );
+          await createInternalCaseNotifications(recipients.map((recipient) => ({
+            recipientUserId: recipient.id,
+            caseId: input.id,
+            notificationType: "partner_short_impression" as const,
+            title: "協力業者から短文所感が届きました",
+            message: nextPartnerNotes,
+            actorUserId: ctx.user.id,
+            actorName: ctx.user.name ?? "協力業者",
+          })));
+        }
+        return { success: true };
       }),
     // 再訪記録の更新
     markRevisit: protectedProcedure

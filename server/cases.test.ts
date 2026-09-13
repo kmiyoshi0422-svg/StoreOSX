@@ -86,8 +86,15 @@ describe("現調報告書の所感保存権限", () => {
 });
 
 describe("協力業者の短文所感", () => {
-  it("許可エリア案件へ200文字以内で保存でき、正式所感は変更できない", async () => {
+  it("許可エリア案件へ100文字以内で保存でき、社内通知が作成され、正式所感は変更できない", async () => {
     const ownerCaller = appRouter.createCaller(createOwnerContext());
+    const internalUsers = await ownerCaller.users.accessList();
+    const recipient = internalUsers.find((user) => user.role === "owner")
+      ?? internalUsers.find((user) => user.role === "admin" || user.role === "user");
+    expect(recipient).toBeTruthy();
+    const recipientContext = createAuthContext(recipient!.role);
+    recipientContext.user = { ...recipientContext.user, ...recipient! };
+    const recipientCaller = appRouter.createCaller(recipientContext);
     const created = await ownerCaller.cases.create({
       requestNumber: `PARTNER-SHORT-IMPRESSION-${Date.now()}`,
       brand: "その他",
@@ -110,10 +117,23 @@ describe("協力業者の短文所感", () => {
       expect(saved?.partnerNotesUpdatedBy).toBe("Test User");
       expect(saved?.partnerNotesUpdatedAt).toBeTruthy();
 
+      const notificationData = await recipientCaller.dashboard.internalNotifications();
+      const notification = notificationData.items.find((item) => item.caseId === created.id);
+      expect(notification).toMatchObject({
+        notificationType: "partner_short_impression",
+        message: "現地確認済み。部材手配後に再訪予定です。",
+      });
+      expect(notification?.readAt).toBeNull();
+      await recipientCaller.dashboard.markInternalNotificationRead({ id: notification!.id });
+      const readData = await recipientCaller.dashboard.internalNotifications();
+      expect(readData.items.find((item) => item.id === notification!.id)?.readAt).toBeTruthy();
+
       await expect(partnerCaller.cases.update({
         id: created.id,
-        data: { partnerNotes: "あ".repeat(201) },
-      })).rejects.toThrow("短文所感は200文字以内で入力してください");
+        data: { partnerNotes: "あ".repeat(101) },
+      })).rejects.toThrow("短文所感は100文字以内で入力してください");
+
+      await expect(partnerCaller.dashboard.internalNotifications()).rejects.toThrow("社内向け通知の閲覧権限がありません");
 
       await expect(partnerCaller.cases.update({
         id: created.id,
@@ -144,6 +164,23 @@ describe("協力業者の短文所感", () => {
       })).rejects.toThrow("この案件へのアクセス権がありません");
     } finally {
       await ownerCaller.cases.delete({ id: created.id });
+    }
+  }, 30000);
+
+  it("社内通知APIは最高管理者・管理者・社員だけが閲覧できる", async () => {
+    const allowedRoles: AuthenticatedUser["role"][] = ["owner", "admin", "user"];
+    for (const role of allowedRoles) {
+      const caller = appRouter.createCaller(createAuthContext(role));
+      await expect(caller.dashboard.internalNotifications()).resolves.toMatchObject({
+        unreadCount: expect.any(Number),
+        items: expect.any(Array),
+      });
+    }
+
+    const deniedRoles: AuthenticatedUser["role"][] = ["executive", "partner", "customer"];
+    for (const role of deniedRoles) {
+      const caller = appRouter.createCaller(createAuthContext(role));
+      await expect(caller.dashboard.internalNotifications()).rejects.toThrow("社内向け通知の閲覧権限がありません");
     }
   }, 30000);
 });

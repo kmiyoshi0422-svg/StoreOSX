@@ -51,6 +51,12 @@ import {
   reportLabel as _reportLabel,
 } from "../../../shared/reportText";
 import { canEditSurveyImpression } from "../../../shared/accessPolicy";
+import {
+  appendShortImpressionTemplate,
+  PARTNER_SHORT_IMPRESSION_MAX_LENGTH,
+  PARTNER_SHORT_IMPRESSION_TEMPLATES,
+  PARTNER_SHORT_IMPRESSION_WARNING_LENGTH,
+} from "../../../shared/short-impression";
 
 // PDF/報告書の全角化・括弧除去の対象外にする除外辞書（コンポーネントからsetReportExclusionsで注入）。
 let _exclusions: string[] = [];
@@ -340,6 +346,15 @@ export default function CaseReport({
     } finally {
       setSavingPartnerShortImpression(false);
     }
+  };
+
+  const handlePartnerShortImpressionTemplate = (template: string) => {
+    const next = appendShortImpressionTemplate(partnerShortImpression, template);
+    if (next.length > PARTNER_SHORT_IMPRESSION_MAX_LENGTH) {
+      toast.error(`短文所感は${PARTNER_SHORT_IMPRESSION_MAX_LENGTH}文字以内です`);
+      return;
+    }
+    setPartnerShortImpression(next);
   };
 
   // 写真管理
@@ -1003,24 +1018,50 @@ export default function CaseReport({
                   <PenLine className="h-4 w-4 text-muted-foreground" />
                   <h3 className="font-serif-jp text-base font-semibold">協力業者 短文所感</h3>
                 </div>
-                <Badge variant="outline">最大200文字</Badge>
+                <Badge variant="outline">最大{PARTNER_SHORT_IMPRESSION_MAX_LENGTH}文字</Badge>
               </div>
               <p className="text-xs text-muted-foreground">
                 現場の状況・判断・申し送りを簡潔に共有します。社内の正式所感とは分けて保存され、PDFへは直接掲載されません。
               </p>
               {isPartner ? (
                 <>
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-foreground">よく使う定型文</p>
+                    <div className="flex flex-wrap gap-2">
+                      {PARTNER_SHORT_IMPRESSION_TEMPLATES.map((template) => (
+                        <Button
+                          key={template}
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => handlePartnerShortImpressionTemplate(template)}
+                        >
+                          {template}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
                   <Textarea
                     value={partnerShortImpression}
                     onChange={(e) => setPartnerShortImpression(e.target.value)}
-                    placeholder="例：現地確認済み。部材手配後、再訪して対応予定です。"
-                    maxLength={200}
+                    placeholder="例：現調完了しました。写真をアップロードしました。"
+                    maxLength={PARTNER_SHORT_IMPRESSION_MAX_LENGTH}
                     rows={3}
                     className="text-sm resize-y"
                   />
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs text-muted-foreground">
-                      {partnerShortImpression.length}/200文字
+                    <span
+                      aria-live="polite"
+                      className={`text-xs ${
+                        partnerShortImpression.length >= PARTNER_SHORT_IMPRESSION_MAX_LENGTH
+                          ? "font-semibold text-red-600"
+                          : partnerShortImpression.length >= PARTNER_SHORT_IMPRESSION_WARNING_LENGTH
+                            ? "font-medium text-amber-600"
+                            : "text-muted-foreground"
+                      }`}
+                    >
+                      {partnerShortImpression.length}/{PARTNER_SHORT_IMPRESSION_MAX_LENGTH}文字
                     </span>
                     <Button
                       size="sm"

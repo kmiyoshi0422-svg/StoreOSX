@@ -29,6 +29,8 @@ import {
   partners,
   partnerAssignmentNotifications,
   InsertPartnerAssignmentNotification,
+  internalCaseNotifications,
+  InsertInternalCaseNotification,
   photos,
   routeAssignments,
   teamSettings,
@@ -453,6 +455,7 @@ export async function updateCase(id: number, data: Partial<InsertCase>) {
 export async function deleteCase(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  await db.delete(internalCaseNotifications).where(eq(internalCaseNotifications.caseId, id));
   await db.delete(cases).where(eq(cases.id, id));
   await db.delete(checklistItems).where(eq(checklistItems.caseId, id));
   await db.delete(photos).where(eq(photos.caseId, id));
@@ -648,6 +651,66 @@ export async function markAllPartnerAssignmentNotificationsRead(userId: number) 
       isNull(partnerAssignmentNotifications.readAt),
     ));
   return partnerRows.length;
+}
+
+export async function createInternalCaseNotifications(data: InsertInternalCaseNotification[]) {
+  if (data.length === 0) return 0;
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(internalCaseNotifications).values(data);
+  return data.length;
+}
+
+export async function listInternalCaseNotificationsByUser(userId: number, limit = 30) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: internalCaseNotifications.id,
+      recipientUserId: internalCaseNotifications.recipientUserId,
+      caseId: internalCaseNotifications.caseId,
+      notificationType: internalCaseNotifications.notificationType,
+      title: internalCaseNotifications.title,
+      message: internalCaseNotifications.message,
+      actorUserId: internalCaseNotifications.actorUserId,
+      actorName: internalCaseNotifications.actorName,
+      readAt: internalCaseNotifications.readAt,
+      createdAt: internalCaseNotifications.createdAt,
+      requestNumber: cases.requestNumber,
+      storeName: cases.storeName,
+      status: cases.status,
+    })
+    .from(internalCaseNotifications)
+    .innerJoin(cases, eq(internalCaseNotifications.caseId, cases.id))
+    .where(eq(internalCaseNotifications.recipientUserId, userId))
+    .orderBy(desc(internalCaseNotifications.createdAt))
+    .limit(limit);
+}
+
+export async function markInternalCaseNotificationRead(id: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(internalCaseNotifications)
+    .set({ readAt: new Date() })
+    .where(and(
+      eq(internalCaseNotifications.id, id),
+      eq(internalCaseNotifications.recipientUserId, userId),
+    ));
+  return true;
+}
+
+export async function markAllInternalCaseNotificationsRead(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(internalCaseNotifications)
+    .set({ readAt: new Date() })
+    .where(and(
+      eq(internalCaseNotifications.recipientUserId, userId),
+      isNull(internalCaseNotifications.readAt),
+    ));
+  return true;
 }
 
 export async function deletePartner(id: number) {

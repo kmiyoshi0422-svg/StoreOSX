@@ -19,16 +19,25 @@ describe("所感保存権限のコード契約", () => {
     expect(source).toContain('reportType === "survey" && canEditImpression');
   });
 
-  it("協力業者短文所感は正式所感と分離し200文字に制限する", () => {
+  it("協力業者短文所感は正式所感と分離し100文字・定型文・警告色・社内通知に対応する", () => {
     const routerSource = fs.readFileSync(path.join(root, "server/routers.ts"), "utf8");
     const reportSource = fs.readFileSync(path.join(root, "client/src/pages/CaseReport.tsx"), "utf8");
     const detailSource = fs.readFileSync(path.join(root, "client/src/pages/CaseDetail.tsx"), "utf8");
+    const homeSource = fs.readFileSync(path.join(root, "client/src/pages/Home.tsx"), "utf8");
 
-    expect(routerSource).toContain('partnerNotes: z.string().trim().max(200');
+    expect(routerSource).toContain("PARTNER_SHORT_IMPRESSION_MAX_LENGTH");
     expect(reportSource).toContain('const isPartner = user?.role === "partner"');
     expect(reportSource).toContain("協力業者 短文所感");
     expect(reportSource).toContain("短文所感を保存");
-    expect(reportSource).toContain("maxLength={200}");
+    expect(reportSource).toContain("PARTNER_SHORT_IMPRESSION_TEMPLATES.map");
+    expect(reportSource).toContain("PARTNER_SHORT_IMPRESSION_WARNING_LENGTH");
+    expect(reportSource).toContain("maxLength={PARTNER_SHORT_IMPRESSION_MAX_LENGTH}");
     expect(detailSource).toContain("社内正式所感とは分けて管理されます");
+    expect(detailSource).toContain("PARTNER_SHORT_IMPRESSION_TEMPLATES.map");
+    expect(homeSource).toContain("trpc.dashboard.internalNotifications.useQuery");
+    expect(homeSource).toContain("協力業者からの短文所感");
+    expect(homeSource).toContain("未読 {data?.unreadCount}件");
+    expect(routerSource).toContain("internalNotifications: protectedProcedure");
+    expect(routerSource).toContain("markInternalNotificationRead: protectedProcedure");
   });
 });

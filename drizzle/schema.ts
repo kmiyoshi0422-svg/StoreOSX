@@ -331,6 +331,29 @@ export type PartnerAssignmentNotification = typeof partnerAssignmentNotification
 export type InsertPartnerAssignmentNotification = typeof partnerAssignmentNotifications.$inferInsert;
 
 /**
+ * 社内ユーザー向け案件アクティビティ通知
+ */
+export const internalCaseNotifications = mysqlTable("internal_case_notifications", {
+  id: int("id").autoincrement().primaryKey(),
+  recipientUserId: int("recipientUserId").notNull(),
+  caseId: int("caseId").notNull(),
+  notificationType: mysqlEnum("notificationType", ["partner_short_impression"]).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message"),
+  actorUserId: int("actorUserId"),
+  actorName: varchar("actorName", { length: 128 }),
+  readAt: timestamp("readAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  recipientCreatedIdx: index("idx_internal_case_notifications_recipient_created").on(t.recipientUserId, t.createdAt),
+  recipientReadIdx: index("idx_internal_case_notifications_recipient_read").on(t.recipientUserId, t.readAt),
+  caseIdx: index("idx_internal_case_notifications_case").on(t.caseId),
+}));
+
+export type InternalCaseNotification = typeof internalCaseNotifications.$inferSelect;
+export type InsertInternalCaseNotification = typeof internalCaseNotifications.$inferInsert;
+
+/**
  * チーム設定（v13: チームA/Bの担当者割り振り）
  * 全システムで全グローバルシングルトンとして保持（1行/チーム）
  */

@@ -237,6 +237,7 @@ export default function Home() {
   const isPartner = user?.role === "partner";
   const canViewFinancials = isAdmin || user?.role === "executive";
   const canManageCases = isAdmin || user?.role === "executive" || user?.role === "user";
+  const canViewInternalNotifications = user?.role === "owner" || user?.role === "admin" || user?.role === "user";
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>("all");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
@@ -496,6 +497,8 @@ export default function Home() {
       </div>
 
       {periodControls}
+
+      {canViewInternalNotifications && <InternalShortImpressionNotifications setLocation={setLocation} />}
 
       <AttentionCases groups={attentionCases} setLocation={setLocation} canEditSchedule={canManageCases} />
 
@@ -1278,6 +1281,76 @@ function RevisitZeroCard({ cases }: { cases: any[] }) {
         <p className="text-[10px] text-muted-foreground mt-1">
           {noRevisit.length}/{surveyed.length}件 一発完了
         </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function InternalShortImpressionNotifications({ setLocation }: { setLocation: (path: string) => void }) {
+  const utils = trpc.useUtils();
+  const { data, isLoading } = trpc.dashboard.internalNotifications.useQuery(undefined, { refetchInterval: 30_000 });
+  const markRead = trpc.dashboard.markInternalNotificationRead.useMutation({
+    onSuccess: () => utils.dashboard.internalNotifications.invalidate(),
+  });
+  const markAllRead = trpc.dashboard.markAllInternalNotificationsRead.useMutation({
+    onSuccess: () => utils.dashboard.internalNotifications.invalidate(),
+    onError: (error) => toast.error(error.message || "既読にできませんでした"),
+  });
+  const items = data?.items ?? [];
+
+  const openNotification = (item: (typeof items)[number]) => {
+    if (!item.readAt) markRead.mutate({ id: item.id });
+    setLocation(`/cases/${item.caseId}/survey-report`);
+  };
+
+  return (
+    <Card className="border-amber-200 bg-amber-50/40">
+      <CardContent className="p-0">
+        <div className="p-4 border-b border-amber-100 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <BellRing className="h-5 w-5 text-amber-700" />
+            <div>
+              <h2 className="font-semibold">協力業者からの短文所感</h2>
+              <p className="text-xs text-muted-foreground">保存された現場の状況・判断・申し送りを確認できます</p>
+            </div>
+            {(data?.unreadCount ?? 0) > 0 && <Badge className="bg-amber-600">未読 {data?.unreadCount}件</Badge>}
+          </div>
+          {(data?.unreadCount ?? 0) > 0 && (
+            <Button type="button" size="sm" variant="outline" onClick={() => markAllRead.mutate()} disabled={markAllRead.isPending}>
+              すべて既読
+            </Button>
+          )}
+        </div>
+        {isLoading ? (
+          <div className="p-5 text-sm text-muted-foreground">新着通知を読み込み中です</div>
+        ) : items.length === 0 ? (
+          <div className="p-5 text-sm text-muted-foreground">短文所感の新着通知はありません</div>
+        ) : (
+          <div className="divide-y divide-amber-100 max-h-[320px] overflow-auto">
+            {items.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => openNotification(item)}
+                className={`w-full p-4 text-left flex items-start gap-3 hover:bg-amber-50 ${item.readAt ? "opacity-70" : "bg-white"}`}
+              >
+                <span className={`mt-1 h-2.5 w-2.5 rounded-full shrink-0 ${item.readAt ? "bg-slate-300" : "bg-amber-500"}`} />
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <strong className="text-sm">{item.title}</strong>
+                    <span className="font-mono text-[11px] text-muted-foreground">{item.requestNumber}</span>
+                  </span>
+                  <span className="block text-sm mt-1">{item.storeName}</span>
+                  {item.message && <span className="block text-sm mt-1 line-clamp-2">{item.message}</span>}
+                  <span className="block text-[10px] text-muted-foreground mt-1.5">
+                    {item.actorName ? `${item.actorName} ／ ` : ""}{new Date(item.createdAt).toLocaleString("ja-JP")}
+                  </span>
+                </span>
+                <ChevronRight className="h-4 w-4 text-muted-foreground mt-1" />
+              </button>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
