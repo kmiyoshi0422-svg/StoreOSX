@@ -57,6 +57,14 @@ import {
   PARTNER_SHORT_IMPRESSION_TEMPLATES,
   PARTNER_SHORT_IMPRESSION_WARNING_LENGTH,
 } from "../../../shared/short-impression";
+import {
+  StandardDocumentHeader,
+  StandardReportFooter,
+  StandardReportTd,
+  StandardReportTh,
+  StandardSectionBand,
+  StandardSignatureBlock,
+} from "@/components/reports/StandardReportLayout";
 
 // PDF/報告書の全角化・括弧除去の対象外にする除外辞書（コンポーネントからsetReportExclusionsで注入）。
 let _exclusions: string[] = [];
@@ -919,6 +927,17 @@ export default function CaseReport({
   }
 
   const hasSig = !!signature;
+  const bodyText = caseData.requestContent || "";
+  const notesText = caseData.notes || "";
+  const bodyLines = bodyText.split("\n").length;
+  const notesLines = notesText.split("\n").length;
+  const totalTextLines = bodyLines + (notesText ? notesLines + 2 : 0);
+  const totalChars = bodyText.length + notesText.length;
+  const needsSplit = totalTextLines > 15 || totalChars > 800;
+  const infoPageCount = needsSplit ? 2 : 1;
+  const photoPageCount = Math.max(photoPages.length, 1);
+  const totalReportPages = infoPageCount + photoPageCount + 1;
+  const closingPageNo = totalReportPages;
 
   return (
     <div>
@@ -1563,41 +1582,16 @@ export default function CaseReport({
       <div ref={containerRef} className="report-container mx-auto">
         {/* 1ページ目：基本情報 */}
         {(() => {
-          // 本文の行数でページ分割を判定（約800文字以上または15行以上で分割）
-          const bodyText = caseData.requestContent || "";
-          const notesText = caseData.notes || "";
-          const impText = (reportType === "survey" ? caseData.surveyImpression : null) || "";
-          const bodyLines = bodyText.split("\n").length;
-          const notesLines = notesText.split("\n").length;
-          const impLines = impText ? impText.split("\n").length + 2 : 0;
-          const totalTextLines = bodyLines + (notesText ? notesLines + 2 : 0) + impLines;
-          const totalChars = bodyText.length + notesText.length + impText.length;
-          const needsSplit = totalTextLines > 15 || totalChars > 800;
-
           const headerBlock = (
-            <>
-              <div className="text-center pb-3 mb-6">
-                <h1 className="font-serif-jp text-[28px] font-bold tracking-[0.18em] text-primary">
-                  {config.title}
-                </h1>
-                <p className="text-[10.5px] tracking-[0.3em] text-muted-foreground uppercase mt-1">
-                  {config.eyebrow}
-                </p>
-                <div className="mt-3 h-[3px] bg-primary rounded-full" />
-              </div>
-              <div className="flex items-end justify-between mb-5">
-                <div>
-                  <p className="text-[15.5px] mb-1">
-                    <strong className="font-serif-jp">{caseData.storeName}</strong>　御中
-                  </p>
-                  <p className="text-[11.5px] text-muted-foreground">{config.leadText}</p>
-                </div>
-                <div className="text-[11.5px] text-muted-foreground text-right space-y-0.5 tabular-nums">
-                  <p>案件番号：{toFullWidthDigits(caseData.requestNumber)}</p>
-                  <p>報告日：{fmtDate(new Date())}</p>
-                </div>
-              </div>
-            </>
+            <StandardDocumentHeader
+              title={config.title}
+              eyebrow={config.eyebrow}
+              storeName={reportLabel(caseData.storeName)}
+              leadText={config.leadText}
+              requestNumber={toFullWidthDigits(caseData.requestNumber)}
+              reportDate={fmtDate(new Date())}
+              status={reportType === "survey" ? "現地調査" : "施工完了"}
+            />
           );
 
           const tableBlock = (
@@ -1670,133 +1664,165 @@ export default function CaseReport({
             </>
           );
 
-          const impressionBlock = reportType === "survey" && caseData.surveyImpression ? (
-            <section className="report-page bg-white border border-border/60 shadow-sm mb-6 flex flex-col">
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <SectionBand>所感</SectionBand>
-                <p className="text-[12.5px] whitespace-pre-wrap leading-[1.7] mb-4 px-0.5">
-                  {reportLabel(caseData.surveyImpression)}
-                </p>
-                {caseData.surveyImpressionAuthor && (
-                  <p className="text-[11px] text-right text-muted-foreground mb-7 px-0.5">
-                    記入者：{caseData.surveyImpressionAuthor}
-                  </p>
-                )}
-              </div>
-            </section>
-          ) : null;
-
           if (!needsSplit) {
             // 1ページに収まる場合
             return (
-              <>
-                <section className="report-page bg-white border border-border/60 shadow-sm mb-6 flex flex-col">
-                  <div className="flex-1 min-h-0 overflow-hidden">
-                    {headerBlock}
-                    {tableBlock}
-                    {bodyBlock}
-                  </div>
-                  <div className="shrink-0 pt-4">
-                    <SignatureBlock signature={signature} />
-                  </div>
-                </section>
-                {impressionBlock}
-              </>
+              <section className="report-page bg-white border border-border/60 shadow-sm mb-6 flex flex-col">
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  {headerBlock}
+                  {tableBlock}
+                  {bodyBlock}
+                </div>
+                <StandardReportFooter
+                  documentTitle={config.title}
+                  requestNumber={toFullWidthDigits(caseData.requestNumber)}
+                  pageNo={1}
+                  totalPages={totalReportPages}
+                />
+              </section>
             );
           } else {
-            // 2ページに分割：1ページ目=ヘッダー+テーブル、2ページ目=本文+確認欄
+            // 2ページに分割：1ページ目=ヘッダー+テーブル、2ページ目=本文
             return (
               <>
                 <section className="report-page bg-white border border-border/60 shadow-sm mb-6 flex flex-col">
-                  <div className="flex-1 min-h-0">
+                  <div className="flex-1 min-h-0 overflow-hidden">
                     {headerBlock}
                     {tableBlock}
                   </div>
+                  <StandardReportFooter
+                    documentTitle={config.title}
+                    requestNumber={toFullWidthDigits(caseData.requestNumber)}
+                    pageNo={1}
+                    totalPages={totalReportPages}
+                  />
                 </section>
                 <section className="report-page bg-white border border-border/60 shadow-sm mb-6 flex flex-col">
                   <div className="flex-1 min-h-0 overflow-hidden">
                     {bodyBlock}
                   </div>
-                  <div className="shrink-0 pt-4">
-                    <SignatureBlock signature={signature} />
-                  </div>
+                  <StandardReportFooter
+                    documentTitle={config.title}
+                    requestNumber={toFullWidthDigits(caseData.requestNumber)}
+                    pageNo={2}
+                    totalPages={totalReportPages}
+                  />
                 </section>
-                {impressionBlock}
               </>
             );
           }
         })()}
 
-        {/* 写真ページ：両報告書とも羅列レイアウト（A4縦固定） */}
+        {/* 写真ページ：A4縦固定・統一標準レイアウト */}
         {photoPages.length === 0 ? (
-          <section className="report-page bg-white border border-border/60 shadow-sm mb-6">
-            <p className="text-center text-sm text-muted-foreground py-12">
-              {reportType === "completion"
-                ? "掲載する写真が登録されていません。施工前（現調）・施工後の写真を取り込んでください。"
-                : "現場調査写真（現調／施工前）が登録されていません。"}
-            </p>
+          <section className="report-page bg-white border border-border/60 shadow-sm mb-6 flex flex-col">
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <SectionBand>現場写真</SectionBand>
+              <div className="mt-8 border border-dashed border-[#cbd5e1] bg-[#f8fafc] px-6 py-12 text-center text-[12px] text-[#667085]">
+                現場調査写真（現調／施工前）が登録されていません。
+              </div>
+            </div>
+            <StandardReportFooter
+              documentTitle={config.title}
+              requestNumber={toFullWidthDigits(caseData.requestNumber)}
+              pageNo={infoPageCount + 1}
+              totalPages={totalReportPages}
+            />
           </section>
         ) : (
           photoPages.map((pagePhotos, pi) => (
             <section
               key={pi}
-              className="report-page bg-white border border-border/60 shadow-sm mb-6"
+              className="report-page bg-white border border-border/60 shadow-sm mb-6 flex flex-col"
             >
-              <div className="flex items-end justify-between mb-4 pb-2 border-b-2 border-primary">
-                <h2 className="font-serif-jp text-[15px] font-semibold text-primary">
-                  {config.title}　写真
-                  <span className="ml-2 text-[10px] tracking-widest text-muted-foreground font-sans">
-                    {toFullWidthDigits(caseData.requestNumber)}
-                  </span>
-                </h2>
-                <span className="text-[11px] text-muted-foreground tabular-nums">
-                  ページ {toFullWidthDigits(pi + 1)} / {toFullWidthDigits(photoPages.length)}
-                </span>
-              </div>
-
-              <div
-                className={`grid grid-cols-2 ${perPage === 6 ? "gap-x-4 gap-y-3" : "gap-x-5 gap-y-4"}`}
-                style={{ gridTemplateRows: `repeat(${perPage / 2}, 1fr)`, height: "265mm" }}
-              >
-                {pagePhotos.map((photo) => (
-                  <div
-                    key={photo.id}
-                    className="border border-border/60 rounded overflow-hidden flex flex-col min-h-0"
-                  >
-                    <div className="flex-1 min-h-0 bg-muted overflow-hidden">
-                      <img
-                        src={photo.fileUrl}
-                        alt=""
-                        className="w-full h-full object-contain cursor-zoom-in"
-                        style={{
-                          imageOrientation: "from-image",
-                          transform: photo.rotation
-                            ? `rotate(${photo.rotation}deg)`
-                            : undefined,
-                        }}
-                        onClick={() => {
-                          const idx = reportPhotos.findIndex((rp) => rp.id === photo.id);
-                          if (idx >= 0) lightbox.open(idx);
-                        }}
-                      />
-                    </div>
-                    <div className="text-[11.5px] px-2 py-1.5 space-y-0.5 border-t border-border/60 shrink-0">
-                      <p className="font-semibold font-serif-jp text-primary">▲ {photo.photoType}</p>
-                      {photo.workItem && (
-                        <p className="text-muted-foreground truncate">{reportLabel(photo.workItem)}</p>
-                      )}
-                      {photo.memo && (
-                        <p className="text-muted-foreground leading-snug whitespace-pre-wrap line-clamp-2">
-                          {reportLabel(photo.memo)}
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <StandardSectionBand aside={`写真 ${toFullWidthDigits(pi * perPage + 1)}〜${toFullWidthDigits(pi * perPage + pagePhotos.length)}`}>
+                  現場写真
+                </StandardSectionBand>
+                <div
+                  className={`grid grid-cols-2 ${perPage === 6 ? "gap-x-4 gap-y-3" : "gap-x-5 gap-y-4"}`}
+                  style={{ gridTemplateRows: `repeat(${perPage / 2}, 1fr)`, height: "250mm" }}
+                >
+                  {pagePhotos.map((photo, pageIndex) => (
+                    <div
+                      key={photo.id}
+                      className="border border-[#cbd5e1] overflow-hidden flex flex-col min-h-0 bg-white"
+                    >
+                      <div className="flex-1 min-h-0 bg-[#f8fafc] overflow-hidden">
+                        <img
+                          src={photo.fileUrl}
+                          alt={`現場写真 ${pi * perPage + pageIndex + 1}`}
+                          className="w-full h-full object-contain cursor-zoom-in"
+                          style={{
+                            imageOrientation: "from-image",
+                            transform: photo.rotation
+                              ? `rotate(${photo.rotation}deg)`
+                              : undefined,
+                          }}
+                          onClick={() => {
+                            const idx = reportPhotos.findIndex((rp) => rp.id === photo.id);
+                            if (idx >= 0) lightbox.open(idx);
+                          }}
+                        />
+                      </div>
+                      <div className="text-[10px] px-2 py-1.5 space-y-0.5 border-t border-[#cbd5e1] shrink-0">
+                        <p className="font-semibold font-serif-jp text-[#17324d]">
+                          写真 {toFullWidthDigits(pi * perPage + pageIndex + 1)}｜{photo.photoType}
                         </p>
-                      )}
+                        {photo.workItem && (
+                          <p className="text-[#475467] truncate">{reportLabel(photo.workItem)}</p>
+                        )}
+                        {photo.memo && (
+                          <p className="text-[#667085] leading-snug whitespace-pre-wrap line-clamp-2">
+                            {reportLabel(photo.memo)}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
+              <StandardReportFooter
+                documentTitle={config.title}
+                requestNumber={toFullWidthDigits(caseData.requestNumber)}
+                pageNo={infoPageCount + pi + 1}
+                totalPages={totalReportPages}
+              />
             </section>
           ))
         )}
+
+        {/* 最終ページ：担当者所感と署名欄を必ず残す */}
+        <section className="report-page bg-white border border-border/60 shadow-sm mb-6 flex flex-col">
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <div className="mb-4 border-b-2 border-[#17324d] pb-2">
+              <p className="font-serif-jp text-[15px] font-semibold text-[#17324d]">{config.title}｜最終確認</p>
+              <p className="mt-1 text-[9px] text-[#667085]">案件番号：{toFullWidthDigits(caseData.requestNumber)}</p>
+            </div>
+            <SectionBand>担当者所感</SectionBand>
+            <div className="min-h-[48mm] border border-[#cbd5e1] bg-[#fbfcfd] px-4 py-3">
+              <p className="text-[11.5px] whitespace-pre-wrap leading-[1.75] text-[#1f2937]">
+                {caseData.surveyImpression
+                  ? reportLabel(caseData.surveyImpression)
+                  : "所感は未入力です。提出前に内容をご確認ください。"}
+              </p>
+              {caseData.surveyImpressionAuthor && (
+                <p className="mt-3 text-right text-[10px] text-[#667085]">
+                  記入者：{caseData.surveyImpressionAuthor}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="shrink-0 pt-4">
+            <SignatureBlock signature={signature} />
+          </div>
+          <StandardReportFooter
+            documentTitle={config.title}
+            requestNumber={toFullWidthDigits(caseData.requestNumber)}
+            pageNo={closingPageNo}
+            totalPages={totalReportPages}
+          />
+        </section>
       </div>
 
       <Lightbox
@@ -1847,22 +1873,11 @@ export default function CaseReport({
 }
 
 function SectionBand({ children }: { children: ReactNode }) {
-  return (
-    <div className="bg-primary text-primary-foreground font-serif-jp text-[14px] font-semibold px-3 py-1.5 mb-3 rounded-sm">
-      {children}
-    </div>
-  );
+  return <StandardSectionBand>{children}</StandardSectionBand>;
 }
 
 function ReportTh({ children, colSpan }: { children: ReactNode; colSpan?: number }) {
-  return (
-    <th
-      colSpan={colSpan}
-      className="py-2 px-2.5 border border-border/70 bg-muted/50 text-left font-semibold align-middle whitespace-nowrap"
-    >
-      {children}
-    </th>
-  );
+  return <StandardReportTh colSpan={colSpan}>{children}</StandardReportTh>;
 }
 
 function ReportTd({
@@ -1874,11 +1889,7 @@ function ReportTd({
   colSpan?: number;
   className?: string;
 }) {
-  return (
-    <td colSpan={colSpan} className={`py-2 px-2.5 border border-border/70 align-middle ${className}`}>
-      {children}
-    </td>
-  );
+  return <StandardReportTd colSpan={colSpan} className={className}>{children}</StandardReportTd>;
 }
 
 /**
@@ -1890,49 +1901,5 @@ function SignatureBlock({
 }: {
   signature: { fileUrl: string; signerName: string | null; signedAt: Date } | null | undefined;
 }) {
-  return (
-    <div>
-      <SectionBand>確認欄</SectionBand>
-      <div className="grid grid-cols-2 gap-5">
-        {/* プレナス責任者 */}
-        <div className="border border-border/70 rounded-sm p-3">
-          <p className="text-[11px] font-semibold mb-2">プレナス責任者</p>
-          <div className="relative h-20 border-b border-foreground/40 flex items-end justify-center">
-            {signature ? (
-              <img
-                src={signature.fileUrl}
-                alt="サイン"
-                className="max-h-[72px] object-contain pb-0.5"
-              />
-            ) : (
-              <span className="absolute left-1 bottom-1 text-[10px] text-muted-foreground/50">
-                サイン
-              </span>
-            )}
-          </div>
-          <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
-            <span>
-              氏名：
-              <span className="text-foreground">{signature?.signerName ?? "　　　　　　"}</span>
-            </span>
-            <span>
-              日付：
-              <span className="text-foreground tabular-nums">
-                {signature ? toFullWidthDigits(new Date(signature.signedAt).toLocaleDateString("ja-JP")) : "　年　月　日"}
-              </span>
-            </span>
-          </div>
-        </div>
-        {/* 先方確認欄（手書き用） */}
-        <div className="border border-border/70 rounded-sm p-3">
-          <p className="text-[11px] font-semibold mb-2">先方確認サイン</p>
-          <div className="h-20 border-b border-foreground/40" />
-          <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
-            <span>氏名：　　　　　　</span>
-            <span>日付：　年　月　日</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  return <StandardSignatureBlock signature={signature} />;
 }

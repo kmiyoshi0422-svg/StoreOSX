@@ -42,6 +42,7 @@ import { getReportPdfProfile, isLowMemoryBrowser } from "@/lib/reportPdfProfile"
 import { usePdfHistoryRecorder } from "@/hooks/usePdfHistoryRecorder";
 import { SignaturePad } from "@/components/SignaturePad";
 import { Lightbox, useLightbox } from "@/components/Lightbox";
+import { UnifiedCompletionReportPages } from "@/components/reports/UnifiedCompletionReportPages";
 import type { Photo, Case, CaseSignature } from "../../../drizzle/schema";
 import {
   toFullWidthDigits as _toFullWidthDigits,
@@ -898,7 +899,7 @@ function CompletionReportView(props: ViewProps) {
               </div>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              写真は「施工前（現調）→施工後」の順に上から並びます。ドラッグ＆ドロップまたは上下ボタンで並べ替えでき、各写真の区分を変更すると施工前／施工後のグループが移動します。
+              完了報告書では、同じ工事項目の施工前／施工後写真を優先して横並び表示します。工事項目がない場合は登録順で対応付け、片側しかない写真は存在しない写真を補わず単独写真として表示します。
             </p>
 
             {totalPhotos === 0 ? (
@@ -975,7 +976,7 @@ function CompletionReportView(props: ViewProps) {
           <CardContent className="pt-6 space-y-3">
             <div className="flex items-center gap-2">
               <PenLine className="h-4 w-4 text-muted-foreground" />
-              <h3 className="font-semibold text-base">確認サイン（任意）</h3>
+              <h3 className="font-semibold text-base">確認サイン（PDF最終ページに必ず表示）</h3>
             </div>
             {hasSig && !editingSig ? (
               <div className="space-y-3">
@@ -1013,16 +1014,17 @@ function CompletionReportView(props: ViewProps) {
       {/* ===== PDFソース（参考PDF準拠） ===== */}
       <div className="flex justify-center">
         <div ref={containerRef} className="report-container bg-white text-black shadow-lg">
-          <CompletionReportPages
+          <UnifiedCompletionReportPages
             caseData={caseData}
             content={content}
             photosByPhase={photosByPhase}
             captionMap={captionMap}
             signature={signature}
             workName={workName}
-            headerLine={headerLine}
-            footerLine={footerLine}
             completedAt={completedAt}
+            formatDate={fmtDate}
+            formatLabel={reportLabel}
+            formatDigits={toFullWidthDigits}
           />
         </div>
       </div>
