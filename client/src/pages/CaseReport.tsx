@@ -162,6 +162,7 @@ export default function CaseReport({
   const config = REPORT_CONFIG[reportType];
   const { user } = useAuth();
   const canEditImpression = canEditSurveyImpression(user?.role ?? "");
+  const isPartner = user?.role === "partner";
 
   const { data: caseData, isLoading: caseLoading } = trpc.cases.get.useQuery({ id });
   const { data: photos = [], isLoading: photosLoading } = trpc.photos.listByCase.useQuery({
@@ -206,6 +207,8 @@ export default function CaseReport({
   const [impressionAuthor, setImpressionAuthor] = useState(caseData?.surveyImpressionAuthor ?? "");
   const [generatingImpression, setGeneratingImpression] = useState(false);
   const [savingImpression, setSavingImpression] = useState(false);
+  const [partnerShortImpression, setPartnerShortImpression] = useState("");
+  const [savingPartnerShortImpression, setSavingPartnerShortImpression] = useState(false);
   const generateImpressionMut = trpc.cases.generateImpression.useMutation();
   const updateCaseMut = trpc.cases.update.useMutation();
 
@@ -213,6 +216,10 @@ export default function CaseReport({
     setImpressionText(caseData?.surveyImpression ?? "");
     setImpressionAuthor(caseData?.surveyImpressionAuthor ?? "");
   }, [caseData?.surveyImpression, caseData?.surveyImpressionAuthor]);
+
+  useEffect(() => {
+    setPartnerShortImpression(caseData?.partnerNotes ?? "");
+  }, [caseData?.partnerNotes]);
 
   // 報告書完了mutation
   const markCompleteMut = trpc.cases.markReportComplete.useMutation({
@@ -312,6 +319,26 @@ export default function CaseReport({
       toast.error(e instanceof Error ? e.message : "削除に失敗しました");
     } finally {
       setSavingImpression(false);
+    }
+  };
+
+  const handleSavePartnerShortImpression = async () => {
+    if (!isPartner) {
+      toast.error("短文所感を保存できるのは協力業者だけです");
+      return;
+    }
+    setSavingPartnerShortImpression(true);
+    try {
+      await updateCaseMut.mutateAsync({
+        id,
+        data: { partnerNotes: partnerShortImpression.trim() || null },
+      });
+      await utils.cases.get.invalidate({ id });
+      toast.success("短文所感を保存しました");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "短文所感の保存に失敗しました");
+    } finally {
+      setSavingPartnerShortImpression(false);
     }
   };
 
@@ -966,7 +993,62 @@ export default function CaseReport({
         </div>
       )}
 
-      {/* 所感入力セクション（現調報告書のみ） */}
+      {/* 協力業者の短文所感（社内正式所感とは分離し、PDFには直接出力しない） */}
+      {reportType === "survey" && (isPartner || Boolean(caseData?.partnerNotes)) && (
+        <div className="no-print max-w-[800px] mx-auto mb-6">
+          <Card>
+            <CardContent className="pt-6 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <PenLine className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="font-serif-jp text-base font-semibold">協力業者 短文所感</h3>
+                </div>
+                <Badge variant="outline">最大200文字</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                現場の状況・判断・申し送りを簡潔に共有します。社内の正式所感とは分けて保存され、PDFへは直接掲載されません。
+              </p>
+              {isPartner ? (
+                <>
+                  <Textarea
+                    value={partnerShortImpression}
+                    onChange={(e) => setPartnerShortImpression(e.target.value)}
+                    placeholder="例：現地確認済み。部材手配後、再訪して対応予定です。"
+                    maxLength={200}
+                    rows={3}
+                    className="text-sm resize-y"
+                  />
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-muted-foreground">
+                      {partnerShortImpression.length}/200文字
+                    </span>
+                    <Button
+                      size="sm"
+                      onClick={handleSavePartnerShortImpression}
+                      disabled={savingPartnerShortImpression}
+                    >
+                      {savingPartnerShortImpression && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />}
+                      短文所感を保存
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-md border bg-muted/30 p-3 text-sm whitespace-pre-wrap">
+                  {caseData?.partnerNotes}
+                </div>
+              )}
+              {caseData?.partnerNotesUpdatedAt && (
+                <p className="text-[11px] text-muted-foreground text-right">
+                  最終更新：{new Date(caseData.partnerNotesUpdatedAt).toLocaleString("ja-JP")}
+                  {caseData.partnerNotesUpdatedBy ? ` ／ ${caseData.partnerNotesUpdatedBy}` : ""}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* 社内正式所感入力セクション（現調報告書のみ） */}
       {reportType === "survey" && canEditImpression && (
         <div className="no-print max-w-[800px] mx-auto mb-6">
           <Card>

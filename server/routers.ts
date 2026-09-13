@@ -350,11 +350,12 @@ const caseInputSchema = z.object({
   surveyImpression: z.string().nullish(),
   surveyImpressionAuthor: z.string().nullish(),
   revisitCount: z.number().int().min(0).default(0),
-  partnerNotes: z.string().nullish(),
+  partnerNotes: z.string().trim().max(200, "短文所感は200文字以内で入力してください").nullish(),
   expenseBudget: z.number().int().nullish(),
 });
 
 const caseUpdateSchema = caseInputSchema.partial().extend({
+  brand: z.enum(["ほっともっと", "やよい軒", "その他"]).optional(),
   workType: z.enum(["入替", "修理", "納品", "見積り", "新規"]).optional(),
   costBearer: z.enum(["店舗", "営業部", "その他"]).optional(),
   status: z.enum(["受付", "現調中", "見積中", "施工待ち", "施工中", "完了", "クローズ", "失注"]).optional(),
@@ -1276,13 +1277,13 @@ export const appRouter = router({
             throw new TRPCError({ code: "FORBIDDEN", message: "金額情報を変更する権限がありません" });
           }
         }
-        // partnerロールはステータス/進捗ステージ/緊急度/作業メモの変更のみ許可
+        // partnerロールはステータス/進捗ステージ/緊急度/短文所感の変更のみ許可
         if (ctx.user.role === 'partner') {
           const allowedKeys = ['status', 'progressStage', 'urgency', 'partnerNotes'];
           const keys = Object.keys(data).filter(k => (data as any)[k] !== undefined);
           const disallowed = keys.filter(k => !allowedKeys.includes(k));
           if (disallowed.length > 0) {
-            throw new TRPCError({ code: 'FORBIDDEN', message: '協力業者はステータス・緊急度・作業メモの変更のみ可能です' });
+            throw new TRPCError({ code: 'FORBIDDEN', message: '協力業者はステータス・緊急度・短文所感の変更のみ可能です' });
           }
         }
         // 進捗ステージ⇔ステータスの連動（前進専用）

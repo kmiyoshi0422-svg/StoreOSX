@@ -1871,7 +1871,7 @@ function SurveySkipCard({
 
 
 // ============================================================
-// Partner Notes Card (協力業者作業メモ)
+// Partner Notes Card (協力業者短文所感)
 // ============================================================
 function PartnerNotesCard({ caseId, partnerNotes, partnerNotesUpdatedAt, partnerNotesUpdatedBy, isPartner, onUpdated }: {
   caseId: number;
@@ -1892,7 +1892,7 @@ function PartnerNotesCard({ caseId, partnerNotes, partnerNotesUpdatedAt, partner
 
   const updateMutation = trpc.cases.update.useMutation({
     onSuccess: () => {
-      toast.success("作業メモを保存しました");
+      toast.success("短文所感を保存しました");
       setEditing(false);
       setSaving(false);
       onUpdated();
@@ -1905,7 +1905,7 @@ function PartnerNotesCard({ caseId, partnerNotes, partnerNotesUpdatedAt, partner
 
   const handleSave = () => {
     setSaving(true);
-    updateMutation.mutate({ id: caseId, data: { partnerNotes: value || null } as any });
+    updateMutation.mutate({ id: caseId, data: { partnerNotes: value.trim() || null } as any });
   };
 
   return (
@@ -1914,7 +1914,7 @@ function PartnerNotesCard({ caseId, partnerNotes, partnerNotesUpdatedAt, partner
         <div className="flex items-center justify-between">
           <h3 className="font-serif-jp font-semibold flex items-center gap-2">
             <FileText className="h-4 w-4" />
-            協力業者 作業メモ
+            協力業者 短文所感
           </h3>
           {isPartner && !editing && (
             <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
@@ -1938,21 +1938,22 @@ function PartnerNotesCard({ caseId, partnerNotes, partnerNotesUpdatedAt, partner
           <Textarea
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            placeholder="現場の状況や作業内容をメモしてください..."
-            rows={5}
+            placeholder="現場の状況・判断・申し送りを200文字以内で入力してください"
+            maxLength={200}
+            rows={3}
             className="resize-y"
           />
         ) : (
           <div className="text-sm whitespace-pre-wrap min-h-[40px] p-3 rounded-md bg-muted/30 border">
-            {partnerNotes || <span className="text-muted-foreground italic">メモなし</span>}
+            {partnerNotes || <span className="text-muted-foreground italic">短文所感なし</span>}
           </div>
         )}
 
         <div className="flex items-center justify-between text-[11px] text-muted-foreground">
           <span>
             {isPartner
-              ? "現場の状況や作業内容をここに記録できます。管理者にもリアルタイムで共有されます。"
-              : "協力業者が記録した現場メモです。"}
+              ? `現場の状況や申し送りを200文字以内で記録できます。${value.length}/200文字`
+              : "協力業者が記録した短文所感です。社内正式所感とは分けて管理されます。"}
           </span>
           {partnerNotesUpdatedAt && (
             <span className="text-[10px] text-muted-foreground/70">

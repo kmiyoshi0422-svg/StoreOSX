@@ -18,4 +18,17 @@ describe("所感保存権限のコード契約", () => {
     expect(source).toContain("const canEditImpression = canEditSurveyImpression(user?.role ?? \"\")");
     expect(source).toContain('reportType === "survey" && canEditImpression');
   });
+
+  it("協力業者短文所感は正式所感と分離し200文字に制限する", () => {
+    const routerSource = fs.readFileSync(path.join(root, "server/routers.ts"), "utf8");
+    const reportSource = fs.readFileSync(path.join(root, "client/src/pages/CaseReport.tsx"), "utf8");
+    const detailSource = fs.readFileSync(path.join(root, "client/src/pages/CaseDetail.tsx"), "utf8");
+
+    expect(routerSource).toContain('partnerNotes: z.string().trim().max(200');
+    expect(reportSource).toContain('const isPartner = user?.role === "partner"');
+    expect(reportSource).toContain("協力業者 短文所感");
+    expect(reportSource).toContain("短文所感を保存");
+    expect(reportSource).toContain("maxLength={200}");
+    expect(detailSource).toContain("社内正式所感とは分けて管理されます");
+  });
 });

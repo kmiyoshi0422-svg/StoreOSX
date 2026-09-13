@@ -85,6 +85,69 @@ describe("現調報告書の所感保存権限", () => {
   }, 30000);
 });
 
+describe("協力業者の短文所感", () => {
+  it("許可エリア案件へ200文字以内で保存でき、正式所感は変更できない", async () => {
+    const ownerCaller = appRouter.createCaller(createOwnerContext());
+    const created = await ownerCaller.cases.create({
+      requestNumber: `PARTNER-SHORT-IMPRESSION-${Date.now()}`,
+      brand: "その他",
+      storeName: "短文所感テスト店",
+      prefecture: "福岡県",
+    });
+    const partnerContext = createAuthContext("partner");
+    partnerContext.user.areaAccessMode = "selected";
+    partnerContext.user.allowedPrefectures = JSON.stringify(["福岡県"]);
+    const partnerCaller = appRouter.createCaller(partnerContext);
+
+    try {
+      await expect(partnerCaller.cases.update({
+        id: created.id,
+        data: { partnerNotes: "現地確認済み。部材手配後に再訪予定です。" },
+      })).resolves.toMatchObject({ success: true });
+
+      const saved = await ownerCaller.cases.get({ id: created.id });
+      expect(saved?.partnerNotes).toBe("現地確認済み。部材手配後に再訪予定です。");
+      expect(saved?.partnerNotesUpdatedBy).toBe("Test User");
+      expect(saved?.partnerNotesUpdatedAt).toBeTruthy();
+
+      await expect(partnerCaller.cases.update({
+        id: created.id,
+        data: { partnerNotes: "あ".repeat(201) },
+      })).rejects.toThrow("短文所感は200文字以内で入力してください");
+
+      await expect(partnerCaller.cases.update({
+        id: created.id,
+        data: { surveyImpression: "正式所感を書き換える" },
+      })).rejects.toThrow("所感を保存する権限がありません");
+    } finally {
+      await ownerCaller.cases.delete({ id: created.id });
+    }
+  }, 30000);
+
+  it("許可エリア外の案件には保存できない", async () => {
+    const ownerCaller = appRouter.createCaller(createOwnerContext());
+    const created = await ownerCaller.cases.create({
+      requestNumber: `PARTNER-SHORT-IMPRESSION-DENY-${Date.now()}`,
+      brand: "その他",
+      storeName: "短文所感エリア外テスト店",
+      prefecture: "東京都",
+    });
+    const partnerContext = createAuthContext("partner");
+    partnerContext.user.areaAccessMode = "selected";
+    partnerContext.user.allowedPrefectures = JSON.stringify(["福岡県"]);
+    const partnerCaller = appRouter.createCaller(partnerContext);
+
+    try {
+      await expect(partnerCaller.cases.update({
+        id: created.id,
+        data: { partnerNotes: "エリア外の短文所感" },
+      })).rejects.toThrow("この案件へのアクセス権がありません");
+    } finally {
+      await ownerCaller.cases.delete({ id: created.id });
+    }
+  }, 30000);
+});
+
 describe("checklist template", () => {
   it("デフォルトチェックリストが業務フロー順で4フェーズ揃っている", () => {
     const phases = new Set(DEFAULT_CHECKLIST.map((i) => i.phase));
