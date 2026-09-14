@@ -103,6 +103,8 @@ import type { Case, ChecklistItem, Photo } from "../../../drizzle/schema";
 import { PREFECTURES, detectPrefecture } from "@shared/prefecture";
 import { StoreEquipmentPanel } from "./StoreEquipmentPanel";
 import { StoreMasterLinkPanel } from "./StoreMasterLinkPanel";
+import { PhotoClassificationReviewDialog } from "@/components/photos/PhotoClassificationReviewDialog";
+import { canUsePhotoClassification } from "@shared/photoClassification";
 
 const STATUS_COLORS: Record<string, string> = {
   受付: "bg-slate-100 text-slate-700 border-slate-200",
@@ -142,6 +144,8 @@ export default function PhotosTab({
   photos: Photo[];
   onUpdated: () => void;
 }) {
+  const { user } = useAuth();
+  const canUseAiClassification = canUsePhotoClassification(user?.role ?? "");
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -289,6 +293,18 @@ export default function PhotosTab({
             </Button>
           </div>
           <div className="flex items-center gap-2">
+            {canUseAiClassification && (
+              <PhotoClassificationReviewDialog
+                caseId={caseId}
+                photos={photos}
+                selectedPhotoIds={Array.from(selectedIds)}
+                onSaved={() => {
+                  onUpdated();
+                  setSelectedIds(new Set());
+                  setSelectionMode(false);
+                }}
+              />
+            )}
             <Button
               variant={selectionMode ? "default" : "outline"}
               size="sm"

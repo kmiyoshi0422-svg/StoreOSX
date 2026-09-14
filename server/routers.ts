@@ -75,6 +75,7 @@ import {
   markInternalCaseNotificationRead,
   markAllInternalCaseNotificationsRead,
   updatePhoto,
+  updatePhotoTypesAtomically,
   getAppSetting,
   setAppSetting,
   getAllAppSettings,
@@ -224,6 +225,13 @@ import {
   type CompletionReportContent,
 } from "../shared/completionReport";
 import { sanitizeManualPhotoPairs } from "../shared/reportPhotoPairs";
+import { classifyConstructionPhotos } from "./photoClassification";
+import {
+  canUsePhotoClassification,
+  isLowPhotoClassificationConfidence,
+  PHOTO_CLASSIFICATION_CATEGORIES,
+  resolvePersistedPhotoType,
+} from "../shared/photoClassification";
 
 function withReadableFileUrl<
   T extends { fileKey?: string | null; fileUrl?: string | null },
@@ -2175,6 +2183,89 @@ export const appRouter = router({
     get: protectedProcedure
       .input(z.object({ id: z.number() }))
       .query(({ input }) => getPhotoById(input.id)),
+    classify: protectedProcedure
+      .input(
+        z.object({
+          caseId: z.number().int().positive(),
+          photoIds: z.array(z.number().int().positive()).min(1).max(20),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        if (!canUsePhotoClassification(ctx.user.role)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "写真を分類する権限がありません" });
+        }
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
+
+        const requestedIds = Array.from(new Set(input.photoIds));
+        const casePhotos = await getPhotosByCaseId(input.caseId);
+        const requestedPhotos = casePhotos.filter((photo) => requestedIds.includes(photo.id));
+        if (requestedPhotos.length !== requestedIds.length) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "案件外または削除済みの写真が含まれています" });
+        }
+
+        try {
+          const suggestions = await classifyConstructionPhotos({
+            photos: requestedPhotos,
+            caseContext: caseData,
+          });
+          return suggestions.map((suggestion) => ({
+            ...suggestion,
+            requiresReview: isLowPhotoClassificationConfidence(suggestion.confidence),
+          }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error("[photos.classify] AI分類失敗:", message);
+          const quotaExceeded = message.includes("usage exhausted") || message.includes("412");
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: quotaExceeded
+              ? "AI利用上限に達したため分類できませんでした。時間をおいて再試行してください"
+              : "AI写真分類に失敗しました。写真区分は変更されていません",
+          });
+        }
+      }),
+    applyClassifications: protectedProcedure
+      .input(
+        z.object({
+          caseId: z.number().int().positive(),
+          updates: z.array(
+            z.object({
+              photoId: z.number().int().positive(),
+              category: z.enum(PHOTO_CLASSIFICATION_CATEGORIES),
+            }),
+          ).min(1).max(200),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        if (!canUsePhotoClassification(ctx.user.role)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "写真区分を保存する権限がありません" });
+        }
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
+
+        const updatesByPhotoId = new Map(
+          input.updates.map((update) => [update.photoId, update.category] as const),
+        );
+        const casePhotos = await getPhotosByCaseId(input.caseId);
+        const photosById = new Map(casePhotos.map((photo) => [photo.id, photo] as const));
+        const invalidPhotoIds = Array.from(updatesByPhotoId.keys()).filter(
+          (photoId) => !photosById.has(photoId),
+        );
+        if (invalidPhotoIds.length > 0) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "案件外または削除済みの写真が含まれています" });
+        }
+
+        await updatePhotoTypesAtomically(
+          Array.from(updatesByPhotoId.entries()).map(([photoId, category]) => ({
+            id: photoId,
+            photoType: resolvePersistedPhotoType(category, photosById.get(photoId)!.photoType),
+          })),
+        );
+        return { success: true, count: updatesByPhotoId.size };
+      }),
     bulkUpdateType: protectedProcedure
       .input(
         z.object({

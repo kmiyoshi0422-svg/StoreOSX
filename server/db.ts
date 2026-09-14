@@ -548,6 +548,21 @@ export async function updatePhoto(
   await db.update(photos).set(data).where(eq(photos.id, id));
 }
 
+export async function updatePhotoTypesAtomically(
+  updates: Array<{ id: number; photoType: InsertPhoto["photoType"] }>,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.transaction(async (tx) => {
+    for (const update of updates) {
+      await tx
+        .update(photos)
+        .set({ photoType: update.photoType })
+        .where(eq(photos.id, update.id));
+    }
+  });
+}
+
 export async function deletePhoto(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

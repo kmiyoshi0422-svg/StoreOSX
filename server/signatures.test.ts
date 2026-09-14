@@ -1,7 +1,6 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { listCases } from "./db";
 
 type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
 
@@ -25,22 +24,31 @@ function createAuthContext(): TrpcContext {
 }
 
 describe("signatures router", () => {
+  const caller = appRouter.createCaller(createAuthContext());
   let caseId = 0;
 
   beforeAll(async () => {
-    const rows = await listCases();
-    if (!rows[0]) throw new Error("署名テストに使用できる案件がありません");
-    caseId = rows[0].id;
+    const created = await caller.cases.create({
+      requestNumber: `TEST-SIGNATURE-${Date.now()}`,
+      brand: "その他",
+      storeName: "署名テスト店",
+      workType: "修理",
+      costBearer: "店舗",
+      requestDate: new Date(),
+    });
+    caseId = created.id;
+  });
+
+  afterAll(async () => {
+    if (caseId) await caller.cases.delete({ id: caseId });
   });
 
   it("getByCase は配列を返す", async () => {
-    const caller = appRouter.createCaller(createAuthContext());
     const result = await caller.signatures.getByCase({ caseId });
     expect(Array.isArray(result)).toBe(true);
   });
 
   it("担当者と先方の署名スロットを独立して取得できる", async () => {
-    const caller = appRouter.createCaller(createAuthContext());
     const staff = await caller.signatures.get({
       caseId,
       reportType: "survey",
@@ -56,7 +64,6 @@ describe("signatures router", () => {
   });
 
   it("不正な reportType は入力バリデーションで拒否される", async () => {
-    const caller = appRouter.createCaller(createAuthContext());
     await expect(
       // @ts-expect-error invalid enum value for test
       caller.signatures.get({ caseId: 1, reportType: "invalid" }),
@@ -64,7 +71,6 @@ describe("signatures router", () => {
   });
 
   it("save は reportType として survey/completion のみ受け付ける", async () => {
-    const caller = appRouter.createCaller(createAuthContext());
     await expect(
       caller.signatures.save({
         caseId: 1,
@@ -76,7 +82,6 @@ describe("signatures router", () => {
   });
 
   it("不正な signerRole は入力バリデーションで拒否される", async () => {
-    const caller = appRouter.createCaller(createAuthContext());
     await expect(caller.signatures.get({
       caseId,
       reportType: "survey",
