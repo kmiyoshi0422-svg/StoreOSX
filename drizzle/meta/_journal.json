@@ -281,6 +281,13 @@
       "when": 1789330564064,
       "tag": "0039_small_tiger_shark",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "5",
+      "when": 1789343330429,
+      "tag": "0040_whole_cyclops",
+      "breakpoints": true
     }
   ]
 }

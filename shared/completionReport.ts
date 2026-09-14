@@ -56,6 +56,8 @@ export type RiskRow = {
   level: string; // 注意度（低 / 中 / 高 など）
 };
 
+import type { ManualPhotoPair } from "./reportPhotoPairs";
+
 // 写真キャプション（photoId と紐付け）
 export type PhotoCaption = {
   photoId: number;
@@ -81,6 +83,7 @@ export type CompletionReportContent = {
   inspections: InspectionRow[]; // 8. 次回点検・予防保全プラン
   risks: RiskRow[]; // 9. 周辺部位の連鎖リスク評価
   photoCaptions: PhotoCaption[]; // 各写真の確認内容
+  manualPhotoPairs: ManualPhotoPair[]; // 手動で確定した施工前／施工後の組み合わせ
 };
 
 // 空のドラフト（生成前/初期値）
@@ -99,6 +102,7 @@ export const EMPTY_COMPLETION_CONTENT: CompletionReportContent = {
   inspections: [],
   risks: [],
   photoCaptions: [],
+  manualPhotoPairs: [],
 };
 
 // 保存済みJSONを安全にパースし、欠損項目を空で補完する
@@ -116,6 +120,14 @@ export function parseCompletionContent(raw: string | null | undefined): Completi
       inspections: obj.inspections ?? [],
       risks: obj.risks ?? [],
       photoCaptions: obj.photoCaptions ?? [],
+      manualPhotoPairs: Array.isArray(obj.manualPhotoPairs)
+        ? obj.manualPhotoPairs
+            .map((pair) => ({
+              beforePhotoId: typeof pair?.beforePhotoId === "number" ? pair.beforePhotoId : null,
+              afterPhotoId: typeof pair?.afterPhotoId === "number" ? pair.afterPhotoId : null,
+            }))
+            .filter((pair) => pair.beforePhotoId != null || pair.afterPhotoId != null)
+        : [],
     };
   } catch {
     return { ...EMPTY_COMPLETION_CONTENT };

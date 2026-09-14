@@ -223,6 +223,7 @@ import {
   parseCompletionContent,
   type CompletionReportContent,
 } from "../shared/completionReport";
+import { sanitizeManualPhotoPairs } from "../shared/reportPhotoPairs";
 
 function withReadableFileUrl<
   T extends { fileKey?: string | null; fileUrl?: string | null },
@@ -2200,13 +2201,18 @@ export const appRouter = router({
   }),
 
   // ==========================================================
-  // 報告書署名（v37: 現場調査報告書／施工完了報告書のプレナス責任者サイン）
+  // 報告書署名（担当者／先方の2スロットを案件・報告書単位で保存）
   // ==========================================================
   signatures: router({
     // 案件の署名一覧（survey/completion両方）を取得
     getByCase: protectedProcedure
       .input(z.object({ caseId: z.number() }))
-      .query(({ input }) => listSignaturesByCase(input.caseId)),
+      .query(async ({ input, ctx }) => {
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
+        return listSignaturesByCase(input.caseId);
+      }),
 
     // 案件×報告書種別で署名を1件取得
     get: protectedProcedure
@@ -2214,9 +2220,15 @@ export const appRouter = router({
         z.object({
           caseId: z.number(),
           reportType: z.enum(["survey", "completion"]),
+          signerRole: z.enum(["staff", "customer"]).default("staff"),
         })
       )
-      .query(({ input }) => getSignature(input.caseId, input.reportType)),
+      .query(async ({ input, ctx }) => {
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
+        return getSignature(input.caseId, input.reportType, input.signerRole);
+      }),
 
     // 署名画像（PNG dataURL/base64）を受け取りS3保存→DBにupsert
     save: protectedProcedure
@@ -2224,20 +2236,25 @@ export const appRouter = router({
         z.object({
           caseId: z.number(),
           reportType: z.enum(["survey", "completion"]),
+          signerRole: z.enum(["staff", "customer"]).default("staff"),
           signerName: z.string().nullish(),
           imageBase64: z.string(), // data URL or raw base64 (PNG想定)
         })
       )
       .mutation(async ({ ctx, input }) => {
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
         const base64 = input.imageBase64.includes(",")
           ? input.imageBase64.split(",")[1]
           : input.imageBase64;
         const buffer = Buffer.from(base64, "base64");
-        const key = `case-${input.caseId}/signatures/${input.reportType}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+        const key = `case-${input.caseId}/signatures/${input.reportType}-${input.signerRole}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
         const { url, key: fileKey } = await storagePut(key, buffer, "image/png");
         const id = await upsertSignature({
           caseId: input.caseId,
           reportType: input.reportType,
+          signerRole: input.signerRole,
           signerName: input.signerName ?? null,
           fileKey,
           fileUrl: url,
@@ -2253,10 +2270,14 @@ export const appRouter = router({
         z.object({
           caseId: z.number(),
           reportType: z.enum(["survey", "completion"]),
+          signerRole: z.enum(["staff", "customer"]).default("staff"),
         })
       )
-      .mutation(async ({ input }) => {
-        await deleteSignature(input.caseId, input.reportType);
+      .mutation(async ({ input, ctx }) => {
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
+        await deleteSignature(input.caseId, input.reportType, input.signerRole);
         return { success: true };
       }),
   }),
@@ -2270,6 +2291,9 @@ export const appRouter = router({
     get: protectedProcedure
       .input(z.object({ caseId: z.number() }))
       .query(async ({ input, ctx }) => {
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
         const row = await getReportDraft(input.caseId);
         return {
           content: parseCompletionContent(row?.content),
@@ -2288,7 +2312,18 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
         const content = parseCompletionContent(JSON.stringify(input.content));
+        const photos = await getPhotosByCaseId(input.caseId);
+        const beforeIds = photos
+          .filter((photo) => !["施工中", "施工後A", "施工後B", "設置状況"].includes(photo.photoType))
+          .map((photo) => photo.id);
+        const afterIds = photos
+          .filter((photo) => ["施工後A", "施工後B", "設置状況"].includes(photo.photoType))
+          .map((photo) => photo.id);
+        content.manualPhotoPairs = sanitizeManualPhotoPairs(content.manualPhotoPairs, beforeIds, afterIds);
         await upsertReportDraft({
           caseId: input.caseId,
           content: JSON.stringify(content),
@@ -2297,13 +2332,51 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    savePhotoPairs: protectedProcedure
+      .input(
+        z.object({
+          caseId: z.number().int().positive(),
+          pairs: z.array(z.object({
+            beforePhotoId: z.number().int().positive().nullable(),
+            afterPhotoId: z.number().int().positive().nullable(),
+          })).max(100),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
+        const [photos, existingDraft] = await Promise.all([
+          getPhotosByCaseId(input.caseId),
+          getReportDraft(input.caseId),
+        ]);
+        const beforeIds = photos
+          .filter((photo) => !["施工中", "施工後A", "施工後B", "設置状況"].includes(photo.photoType))
+          .map((photo) => photo.id);
+        const afterIds = photos
+          .filter((photo) => ["施工後A", "施工後B", "設置状況"].includes(photo.photoType))
+          .map((photo) => photo.id);
+        const manualPhotoPairs = sanitizeManualPhotoPairs(input.pairs, beforeIds, afterIds);
+        const content = parseCompletionContent(existingDraft?.content);
+        content.manualPhotoPairs = manualPhotoPairs;
+        await upsertReportDraft({
+          caseId: input.caseId,
+          content: JSON.stringify(content),
+          updatedBy: ctx.user.id,
+        });
+        return { manualPhotoPairs };
+      }),
+
     // AIでセクション文章＋写真キャプションを生成して保存し、生成結果を返す。
     generate: protectedProcedure
       .input(z.object({ caseId: z.number() }))
       .mutation(async ({ ctx, input }) => {
         const caseData = await getCaseById(input.caseId);
         if (!caseData) throw new Error("案件が見つかりません");
+        await assertCaseAccess(caseData, ctx.user);
         const photos = await getPhotosByCaseId(input.caseId);
+        const existingDraft = await getReportDraft(input.caseId);
+        const existingContent = parseCompletionContent(existingDraft?.content);
 
         // 写真をAIに渡す（最大16枚まで。区分・工事項目・メモも添える）
         const photoForLlm = photos
@@ -2495,7 +2568,8 @@ export const appRouter = router({
           throw new Error("報告書の自動生成に失敗しました。時間をおいて再度お試しください。");
         }
 
-        // 既存ドラフトがあれば手編集を尊重しつつマージはせず、生成結果で上書き保存する
+        // AI再生成でもユーザーが確定した写真の手動組み合わせは維持する。
+        generated.manualPhotoPairs = existingContent.manualPhotoPairs;
         await upsertReportDraft({
           caseId: input.caseId,
           content: JSON.stringify(generated),

@@ -29,6 +29,7 @@ describe("completionReport: parseCompletionContent", () => {
     expect(result.inspections).toEqual([]);
     expect(result.risks).toEqual([]);
     expect(result.photoCaptions).toEqual([]);
+    expect(result.manualPhotoPairs).toEqual([]);
     // 未指定の文字列項目は空文字
     expect(result.purpose).toBe("");
     expect(result.conclusion).toBe("");
@@ -50,6 +51,7 @@ describe("completionReport: parseCompletionContent", () => {
       inspections: [{ timing: "6ヶ月後", target: "シーリング", note: "剥離有無の確認" }],
       risks: [{ part: "目地", risk: "経年での収縮の可能性", level: "低" }],
       photoCaptions: [{ photoId: 1, caption: "施工前の状態" }],
+      manualPhotoPairs: [{ beforePhotoId: 1, afterPhotoId: 2 }],
     };
     const result = parseCompletionContent(JSON.stringify(full));
     expect(result).toEqual(full);
@@ -66,6 +68,19 @@ describe("completionReport: parseCompletionContent", () => {
     expect(result.photoCaptions).toHaveLength(2);
     expect(result.photoCaptions[0]).toEqual({ photoId: 10, caption: "施工前の状態" });
     expect(result.photoCaptions[1].photoId).toBe(11);
+  });
+
+  it("manualPhotoPairsを復元し、ID以外や両側未選択の行を除外する", () => {
+    const raw = JSON.stringify({
+      manualPhotoPairs: [
+        { beforePhotoId: 10, afterPhotoId: 11 },
+        { beforePhotoId: "10", afterPhotoId: null },
+        { beforePhotoId: null, afterPhotoId: null },
+      ],
+    });
+    expect(parseCompletionContent(raw).manualPhotoPairs).toEqual([
+      { beforePhotoId: 10, afterPhotoId: 11 },
+    ]);
   });
 
   it("既定の statusBadge は『工事完了』", () => {

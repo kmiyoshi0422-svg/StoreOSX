@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useLocation } from "wouter";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   Download,
@@ -36,6 +36,7 @@ import { getReportPdfProfile, isLowMemoryBrowser } from "@/lib/reportPdfProfile"
 import { usePdfHistoryRecorder } from "@/hooks/usePdfHistoryRecorder";
 import { SignaturePad } from "@/components/SignaturePad";
 import { Lightbox, useLightbox } from "@/components/Lightbox";
+import { ReportSignatureEditor } from "@/components/reports/ReportSignatureEditor";
 import {
   Select,
   SelectContent,
@@ -185,6 +186,12 @@ export default function CaseReport({
   const { data: signature, isLoading: sigLoading } = trpc.signatures.get.useQuery({
     caseId: id,
     reportType,
+    signerRole: "staff",
+  });
+  const { data: customerSignature, isLoading: customerSigLoading } = trpc.signatures.get.useQuery({
+    caseId: id,
+    reportType,
+    signerRole: "customer",
   });
   const { data: exclusionRows = [] } = trpc.fullwidthExclusions.list.useQuery();
   setReportExclusions(exclusionRows.map((r) => r.term));
@@ -194,15 +201,24 @@ export default function CaseReport({
   const [generating, setGenerating] = useState(false);
   const [pdfProgress, setPdfProgress] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewReady, setPreviewReady] = useState(false);
   const [signerName, setSignerName] = useState("");
   const [editingSig, setEditingSig] = useState(false);
+  const [customerSignerName, setCustomerSignerName] = useState("");
+  const [editingCustomerSig, setEditingCustomerSig] = useState(false);
   const [confirmComplete, setConfirmComplete] = useState(false);
+  const handlePreviewReady = useCallback((pageCount: number) => setPreviewReady(pageCount > 0), []);
+
+  useEffect(() => {
+    setPreviewReady(false);
+  }, [caseData?.updatedAt, photos, signature, customerSignature]);
 
   const saveSig = trpc.signatures.save.useMutation({
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       toast.success("サインを保存しました");
-      setEditingSig(false);
-      utils.signatures.get.invalidate({ caseId: id, reportType });
+      if (variables.signerRole === "customer") setEditingCustomerSig(false);
+      else setEditingSig(false);
+      utils.signatures.get.invalidate();
       utils.signatures.getByCase.invalidate({ caseId: id });
     },
     onError: (e) => toast.error(e.message || "サインの保存に失敗しました"),
@@ -210,7 +226,7 @@ export default function CaseReport({
   const deleteSig = trpc.signatures.delete.useMutation({
     onSuccess: () => {
       toast.success("サインを削除しました");
-      utils.signatures.get.invalidate({ caseId: id, reportType });
+      utils.signatures.get.invalidate();
       utils.signatures.getByCase.invalidate({ caseId: id });
     },
     onError: (e) => toast.error(e.message || "サインの削除に失敗しました"),
@@ -915,7 +931,7 @@ export default function CaseReport({
     }
   };
 
-  if (caseLoading || photosLoading || sigLoading) {
+  if (caseLoading || photosLoading || sigLoading || customerSigLoading) {
     return (
       <div className="flex justify-center py-12">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -954,13 +970,17 @@ export default function CaseReport({
             案件詳細に戻る
           </Button>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setPreviewOpen(true)}>
+            <Button variant="outline" onClick={() => setPreviewOpen(true)} data-a4-layout-preview-trigger="true">
               <Eye className="h-4 w-4" />
-              プレビュー
+              A4レイアウトを確認{previewReady ? "済み" : ""}
             </Button>
-            <Button onClick={handleDownloadPDF} disabled={generating}>
+            <Button
+              onClick={handleDownloadPDF}
+              disabled={generating || !previewReady}
+              title={previewReady ? "確認済みレイアウトをPDF保存" : "先にA4レイアウトを確認してください"}
+            >
               {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-              {generating ? (pdfProgress || "PDF生成中...") : "PDFダウンロード"}
+              {generating ? (pdfProgress || "PDF生成中...") : previewReady ? "PDFダウンロード" : "プレビュー後にPDF"}
             </Button>
             {caseData.reportStatus !== "completed" ? (
               <Button
@@ -984,6 +1004,10 @@ export default function CaseReport({
             )}
           </div>
         </div>
+      </div>
+
+      <div className="no-print max-w-[800px] mx-auto mb-4 px-4 text-xs text-muted-foreground">
+        印刷・PDF保存の前に「A4レイアウトを確認」を開き、実際に出力される全ページの文字切れ・写真・署名をご確認ください。
       </div>
 
       {/* 差し戻しコメント表示 */}
@@ -1250,82 +1274,45 @@ export default function CaseReport({
         </div>
       )}
 
-      {/* 署名コントロール（PDFには含めない） */}
+      {/* 担当者／先方の電子署名コントロール（PDFには含めない） */}
       <div className="no-print max-w-[800px] mx-auto mb-6">
-        <Card>
+        <Card id="report-signatures">
           <CardContent className="pt-6 space-y-4">
             <div className="flex items-center gap-2">
               <PenLine className="h-4 w-4 text-muted-foreground" />
-              <h3 className="font-serif-jp text-base font-semibold">プレナス責任者サイン</h3>
+              <h3 className="font-serif-jp text-base font-semibold">確認サイン（PDF最終ページに必ず表示）</h3>
             </div>
-
-            {hasSig && !editingSig ? (
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-4">
-                  <div className="rounded-lg border border-border bg-white p-2">
-                    <img
-                      src={signature!.fileUrl}
-                      alt="サイン"
-                      className="h-20 object-contain"
-                    />
-                  </div>
-                  <div className="text-xs text-muted-foreground space-y-1">
-                    {signature!.signerName && (
-                      <p>
-                        署名者：<span className="text-foreground font-medium">{signature!.signerName}</span>
-                      </p>
-                    )}
-                    <p>サイン日時：{new Date(signature!.signedAt).toLocaleString("ja-JP")}</p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setEditingSig(true)}>
-                    <RotateCcw className="h-4 w-4 mr-1" />
-                    サインし直す
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-destructive"
-                    onClick={() => deleteSig.mutate({ caseId: id, reportType })}
-                    disabled={deleteSig.isPending}
-                  >
-                    削除
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="grid gap-1.5 max-w-xs">
-                  <Label htmlFor="signerName" className="text-xs">
-                    署名者名（任意）
-                  </Label>
-                  <Input
-                    id="signerName"
-                    value={signerName}
-                    onChange={(e) => setSignerName(e.target.value)}
-                    placeholder="例）プレナス 山田"
-                    className="h-9"
-                  />
-                </div>
-                <SignaturePad
-                  saving={saveSig.isPending}
-                  onConfirm={(dataUrl) =>
-                    saveSig.mutate({
-                      caseId: id,
-                      reportType,
-                      signerName: signerName.trim() || null,
-                      imageBase64: dataUrl,
-                    })
-                  }
-                />
-                {hasSig && (
-                  <Button variant="ghost" size="sm" onClick={() => setEditingSig(false)}>
-                    キャンセル
-                  </Button>
-                )}
-              </div>
-            )}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <ReportSignatureEditor
+                title="プレナス責任者サイン"
+                description="従来の担当者サインです。保存済みサインはそのまま維持されます。"
+                badgeLabel="未署名"
+                signature={signature}
+                signerName={signerName}
+                onSignerNameChange={setSignerName}
+                editing={editingSig}
+                onEditingChange={setEditingSig}
+                saving={saveSig.isPending}
+                deleting={deleteSig.isPending}
+                onSave={(imageBase64) => saveSig.mutate({ caseId: id, reportType, signerRole: "staff", signerName: signerName.trim() || null, imageBase64 })}
+                onDelete={() => deleteSig.mutate({ caseId: id, reportType, signerRole: "staff" })}
+              />
+              <ReportSignatureEditor
+                title="先方確認サイン"
+                description="先方確認者がこの画面へ直接署名します。氏名と署名日時をPDFへ表示します。"
+                badgeLabel="先方未署名"
+                signature={customerSignature}
+                signerName={customerSignerName}
+                onSignerNameChange={setCustomerSignerName}
+                editing={editingCustomerSig}
+                onEditingChange={setEditingCustomerSig}
+                saving={saveSig.isPending}
+                deleting={deleteSig.isPending}
+                requireName
+                onSave={(imageBase64) => saveSig.mutate({ caseId: id, reportType, signerRole: "customer", signerName: customerSignerName.trim(), imageBase64 })}
+                onDelete={() => deleteSig.mutate({ caseId: id, reportType, signerRole: "customer" })}
+              />
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -1814,7 +1801,7 @@ export default function CaseReport({
             </div>
           </div>
           <div className="shrink-0 pt-4">
-            <SignatureBlock signature={signature} />
+            <SignatureBlock signature={signature} customerSignature={customerSignature} />
           </div>
           <StandardReportFooter
             documentTitle={config.title}
@@ -1867,6 +1854,7 @@ export default function CaseReport({
         containerRef={containerRef}
         fileName={`${reportType === "survey" ? "現調報告書" : "工事完了報告書"}_${caseData?.requestNumber ?? ""}_${caseData?.storeName ?? ""}`}
         pageSelector=".report-page"
+        onPreviewReady={handlePreviewReady}
       />
     </div>
   );
@@ -1898,8 +1886,10 @@ function ReportTd({
  */
 function SignatureBlock({
   signature,
+  customerSignature,
 }: {
   signature: { fileUrl: string; signerName: string | null; signedAt: Date } | null | undefined;
+  customerSignature: { fileUrl: string; signerName: string | null; signedAt: Date } | null | undefined;
 }) {
-  return <StandardSignatureBlock signature={signature} />;
+  return <StandardSignatureBlock signature={signature} secondarySignature={customerSignature} />;
 }

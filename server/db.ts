@@ -982,6 +982,7 @@ export async function listExpensesForAggregation(fromMs?: number, toMs?: number)
 // Case Signatures (v37: 現場調査報告書／施工完了報告書の署名)
 // ============================================================
 type ReportType = "survey" | "completion";
+type SignerRole = "staff" | "customer";
 
 /** 案件の署名一覧（survey/completion両方）を取得 */
 export async function listSignaturesByCase(caseId: number) {
@@ -991,13 +992,17 @@ export async function listSignaturesByCase(caseId: number) {
 }
 
 /** 案件×報告書種別で署名を1件取得 */
-export async function getSignature(caseId: number, reportType: ReportType) {
+export async function getSignature(caseId: number, reportType: ReportType, signerRole: SignerRole = "staff") {
   const db = await getDb();
   if (!db) return null;
   const rows = await db
     .select()
     .from(caseSignatures)
-    .where(and(eq(caseSignatures.caseId, caseId), eq(caseSignatures.reportType, reportType)))
+    .where(and(
+      eq(caseSignatures.caseId, caseId),
+      eq(caseSignatures.reportType, reportType),
+      eq(caseSignatures.signerRole, signerRole),
+    ))
     .limit(1);
   return rows[0] ?? null;
 }
@@ -1009,7 +1014,11 @@ export async function upsertSignature(data: InsertCaseSignature) {
   const existing = await db
     .select()
     .from(caseSignatures)
-    .where(and(eq(caseSignatures.caseId, data.caseId), eq(caseSignatures.reportType, data.reportType)))
+    .where(and(
+      eq(caseSignatures.caseId, data.caseId),
+      eq(caseSignatures.reportType, data.reportType),
+      eq(caseSignatures.signerRole, data.signerRole ?? "staff"),
+    ))
     .limit(1);
   if (existing.length > 0) {
     await db
@@ -1029,12 +1038,16 @@ export async function upsertSignature(data: InsertCaseSignature) {
 }
 
 /** 署名を削除（案件×報告書種別） */
-export async function deleteSignature(caseId: number, reportType: ReportType) {
+export async function deleteSignature(caseId: number, reportType: ReportType, signerRole: SignerRole = "staff") {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db
     .delete(caseSignatures)
-    .where(and(eq(caseSignatures.caseId, caseId), eq(caseSignatures.reportType, reportType)));
+    .where(and(
+      eq(caseSignatures.caseId, caseId),
+      eq(caseSignatures.reportType, reportType),
+      eq(caseSignatures.signerRole, signerRole),
+    ));
 }
 
 

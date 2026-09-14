@@ -19,6 +19,7 @@ type Props = {
   photosByPhase: Record<PhotoPhase, Photo[]>;
   captionMap: Map<number, string>;
   signature: CaseSignature | null | undefined;
+  customerSignature: CaseSignature | null | undefined;
   workName: string;
   completedAt: Date | null;
   formatDate: (value: Date | null | undefined) => string;
@@ -187,6 +188,7 @@ export function UnifiedCompletionReportPages({
   photosByPhase,
   captionMap,
   signature,
+  customerSignature,
   workName,
   completedAt,
   formatDate,
@@ -194,7 +196,11 @@ export function UnifiedCompletionReportPages({
   formatDigits,
 }: Props) {
   const issuedAt = new Date();
-  const beforeAfterPairs = pairBeforeAfterPhotos(photosByPhase.before, photosByPhase.after);
+  const beforeAfterPairs = pairBeforeAfterPhotos(
+    photosByPhase.before,
+    photosByPhase.after,
+    content.manualPhotoPairs,
+  );
   const comparisonPages = chunk(beforeAfterPairs, 2);
   const processPages = chunk(photosByPhase.process, 6);
   const hasAnyPhoto = beforeAfterPairs.length > 0 || photosByPhase.process.length > 0;
@@ -415,7 +421,7 @@ export function UnifiedCompletionReportPages({
           <BodyText>{formatLabel(content.conclusion || content.summary || "対象範囲の工事完了をご確認ください。")}</BodyText>
         </div>
         <div className="mt-8">
-          <StandardSignatureBlock signature={signature} />
+          <StandardSignatureBlock signature={signature} secondarySignature={customerSignature} />
         </div>
       </UnifiedPage>
     </>

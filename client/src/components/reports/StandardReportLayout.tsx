@@ -116,15 +116,20 @@ export function StandardReportFooter({
 
 export function StandardSignatureBlock({
   signature,
+  secondarySignature,
   primaryLabel = "プレナス責任者サイン",
   secondaryLabel = "先方確認サイン",
 }: {
   signature: StandardReportSignature | null | undefined;
+  secondarySignature?: StandardReportSignature | null;
   primaryLabel?: string;
   secondaryLabel?: string;
 }) {
   const signedDate = signature
     ? new Date(signature.signedAt).toLocaleDateString("ja-JP")
+    : "　年　月　日";
+  const secondarySignedDate = secondarySignature
+    ? new Date(secondarySignature.signedAt).toLocaleDateString("ja-JP")
     : "　年　月　日";
 
   return (
@@ -152,12 +157,21 @@ export function StandardSignatureBlock({
         </div>
         <div className="border border-[#cbd5e1] bg-white p-3">
           <p className="mb-1.5 text-[10px] font-semibold text-[#344054]">{secondaryLabel}</p>
-          <div className="relative h-[22mm] border-b border-[#667085] bg-[#fbfcfd]">
-            <span className="absolute bottom-1 left-1 text-[9px] text-[#98a2b3]">手書きサイン</span>
+          <div className="relative flex h-[22mm] items-end justify-center border-b border-[#667085] bg-[#fbfcfd]">
+            {secondarySignature ? (
+              <img
+                src={secondarySignature.fileUrl}
+                alt="保存済み先方サイン"
+                className="max-h-[20mm] max-w-full object-contain pb-0.5"
+                crossOrigin="anonymous"
+              />
+            ) : (
+              <span className="absolute bottom-1 left-1 text-[9px] text-[#98a2b3]">手書きサイン</span>
+            )}
           </div>
           <div className="mt-2 flex items-center justify-between gap-2 text-[9px] text-[#667085]">
-            <span>氏名：　　　　　　</span>
-            <span>日付：　年　月　日</span>
+            <span>氏名：<span className="text-[#1f2937]">{secondarySignature?.signerName || "　　　　　　"}</span></span>
+            <span>日付：<span className="text-[#1f2937]">{secondarySignedDate}</span></span>
           </div>
         </div>
       </div>

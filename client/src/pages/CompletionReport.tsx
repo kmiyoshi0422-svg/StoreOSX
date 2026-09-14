@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   Download,
@@ -43,7 +43,10 @@ import { usePdfHistoryRecorder } from "@/hooks/usePdfHistoryRecorder";
 import { SignaturePad } from "@/components/SignaturePad";
 import { Lightbox, useLightbox } from "@/components/Lightbox";
 import { UnifiedCompletionReportPages } from "@/components/reports/UnifiedCompletionReportPages";
+import { BeforeAfterPairEditor } from "@/components/reports/BeforeAfterPairEditor";
+import { ReportSignatureEditor } from "@/components/reports/ReportSignatureEditor";
 import type { Photo, Case, CaseSignature } from "../../../drizzle/schema";
+import type { ManualPhotoPair } from "../../../shared/reportPhotoPairs";
 import {
   toFullWidthDigits as _toFullWidthDigits,
   reportLabel as _reportLabel,
@@ -146,6 +149,12 @@ export default function CompletionReport({ id }: { id: number }) {
   const { data: signature, isLoading: sigLoading } = trpc.signatures.get.useQuery({
     caseId: id,
     reportType,
+    signerRole: "staff",
+  });
+  const { data: customerSignature, isLoading: customerSigLoading } = trpc.signatures.get.useQuery({
+    caseId: id,
+    reportType,
+    signerRole: "customer",
   });
   const { data: draftData, isLoading: draftLoading } = trpc.reportDraft.get.useQuery({
     caseId: id,
@@ -158,8 +167,12 @@ export default function CompletionReport({ id }: { id: number }) {
   const { recordPdf } = usePdfHistoryRecorder();
   const [generating, setGenerating] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewReady, setPreviewReady] = useState(false);
   const [signerName, setSignerName] = useState("");
   const [editingSig, setEditingSig] = useState(false);
+  const [customerSignerName, setCustomerSignerName] = useState("");
+  const [editingCustomerSig, setEditingCustomerSig] = useState(false);
+  const handlePreviewReady = useCallback((pageCount: number) => setPreviewReady(pageCount > 0), []);
 
   // ---- 報告書本文（AI生成 + 手編集） ----
   const [content, setContent] = useState<CompletionReportContent>(EMPTY_COMPLETION_CONTENT);
@@ -199,10 +212,11 @@ export default function CompletionReport({ id }: { id: number }) {
 
   // ---- 署名 ----
   const saveSig = trpc.signatures.save.useMutation({
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       toast.success("サインを保存しました");
-      setEditingSig(false);
-      utils.signatures.get.invalidate({ caseId: id, reportType });
+      if (variables.signerRole === "customer") setEditingCustomerSig(false);
+      else setEditingSig(false);
+      utils.signatures.get.invalidate();
       utils.signatures.getByCase.invalidate({ caseId: id });
     },
     onError: (e) => toast.error(e.message || "サインの保存に失敗しました"),
@@ -210,10 +224,18 @@ export default function CompletionReport({ id }: { id: number }) {
   const deleteSig = trpc.signatures.delete.useMutation({
     onSuccess: () => {
       toast.success("サインを削除しました");
-      utils.signatures.get.invalidate({ caseId: id, reportType });
+      utils.signatures.get.invalidate();
       utils.signatures.getByCase.invalidate({ caseId: id });
     },
     onError: (e) => toast.error(e.message || "サインの削除に失敗しました"),
+  });
+  const savePhotoPairs = trpc.reportDraft.savePhotoPairs.useMutation({
+    onSuccess: ({ manualPhotoPairs }) => {
+      setContent((prev) => ({ ...prev, manualPhotoPairs }));
+      utils.reportDraft.get.invalidate({ caseId: id });
+      toast.success("写真の組み合わせを保存しました");
+    },
+    onError: (e) => toast.error(e.message || "写真の組み合わせ保存に失敗しました"),
   });
 
   // ---- 写真管理 ----
@@ -277,6 +299,10 @@ export default function CompletionReport({ id }: { id: number }) {
         return a.orderNo - b.orderNo;
       });
   }, [photos]);
+
+  useEffect(() => {
+    setPreviewReady(false);
+  }, [content, reportPhotos, signature, customerSignature]);
 
   const reorderPhotos = (from: number, to: number) => {
     if (from === to || from < 0 || to < 0) return;
@@ -421,7 +447,7 @@ export default function CompletionReport({ id }: { id: number }) {
     }
   };
 
-  if (caseLoading || photosLoading || sigLoading || draftLoading) {
+  if (caseLoading || photosLoading || sigLoading || customerSigLoading || draftLoading) {
     return (
       <div className="flex justify-center py-12">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -462,6 +488,7 @@ export default function CompletionReport({ id }: { id: number }) {
       generateDraft={() => generateDraft.mutate({ caseId: id })}
       generatingDraft={generateDraft.isPending}
       signature={signature}
+      customerSignature={customerSignature}
       hasSig={hasSig}
       editingSig={editingSig}
       setEditingSig={setEditingSig}
@@ -469,6 +496,19 @@ export default function CompletionReport({ id }: { id: number }) {
       setSignerName={setSignerName}
       saveSig={saveSig}
       deleteSig={deleteSig}
+      customerSignerName={customerSignerName}
+      setCustomerSignerName={setCustomerSignerName}
+      editingCustomerSig={editingCustomerSig}
+      setEditingCustomerSig={setEditingCustomerSig}
+      savePhotoPairs={(pairs) => {
+        const previous = content.manualPhotoPairs;
+        setContent((prev) => ({ ...prev, manualPhotoPairs: pairs }));
+        savePhotoPairs.mutate(
+          { caseId: id, pairs },
+          { onError: () => setContent((prev) => ({ ...prev, manualPhotoPairs: previous })) },
+        );
+      }}
+      savingPhotoPairs={savePhotoPairs.isPending}
       fileRef={fileRef}
       cameraRef={cameraRef}
       addType={addType}
@@ -491,6 +531,8 @@ export default function CompletionReport({ id }: { id: number }) {
       handleDownloadPDF={handleDownloadPDF}
       previewOpen={previewOpen}
       setPreviewOpen={setPreviewOpen}
+      previewReady={previewReady}
+      handlePreviewReady={handlePreviewReady}
       setLocation={setLocation}
       workName={workName}
       headerLine={headerLine}
@@ -619,6 +661,7 @@ type ViewProps = {
   generateDraft: () => void;
   generatingDraft: boolean;
   signature: SignatureData;
+  customerSignature: SignatureData;
   hasSig: boolean;
   editingSig: boolean;
   setEditingSig: (v: boolean) => void;
@@ -626,6 +669,12 @@ type ViewProps = {
   setSignerName: (v: string) => void;
   saveSig: ReturnType<typeof trpc.signatures.save.useMutation>;
   deleteSig: ReturnType<typeof trpc.signatures.delete.useMutation>;
+  customerSignerName: string;
+  setCustomerSignerName: (v: string) => void;
+  editingCustomerSig: boolean;
+  setEditingCustomerSig: (v: boolean) => void;
+  savePhotoPairs: (pairs: ManualPhotoPair[]) => void;
+  savingPhotoPairs: boolean;
   fileRef: React.RefObject<HTMLInputElement | null>;
   cameraRef: React.RefObject<HTMLInputElement | null>;
   addType: PhotoTypeTag;
@@ -650,6 +699,8 @@ type ViewProps = {
   handleDownloadPDF: () => void;
   previewOpen: boolean;
   setPreviewOpen: (open: boolean) => void;
+  previewReady: boolean;
+  handlePreviewReady: (pageCount: number) => void;
   setLocation: (to: string) => void;
   workName: string;
   headerLine: string;
@@ -672,6 +723,7 @@ function CompletionReportView(props: ViewProps) {
     generateDraft,
     generatingDraft,
     signature,
+    customerSignature,
     hasSig,
     editingSig,
     setEditingSig,
@@ -679,6 +731,12 @@ function CompletionReportView(props: ViewProps) {
     setSignerName,
     saveSig,
     deleteSig,
+    customerSignerName,
+    setCustomerSignerName,
+    editingCustomerSig,
+    setEditingCustomerSig,
+    savePhotoPairs,
+    savingPhotoPairs,
     fileRef,
     cameraRef,
     addType,
@@ -701,6 +759,8 @@ function CompletionReportView(props: ViewProps) {
     handleDownloadPDF,
     previewOpen,
     setPreviewOpen,
+    previewReady,
+    handlePreviewReady,
     setLocation,
     workName,
     headerLine,
@@ -744,13 +804,18 @@ function CompletionReportView(props: ViewProps) {
               {savingDraft ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FileText className="h-4 w-4 mr-1" />}
               内容を保存
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setPreviewOpen(true)}>
+            <Button size="sm" variant="outline" onClick={() => setPreviewOpen(true)} data-a4-layout-preview-trigger="true">
               <Eye className="h-4 w-4 mr-1" />
-              プレビュー
+              A4レイアウトを確認{previewReady ? "済み" : ""}
             </Button>
-            <Button size="sm" onClick={handleDownloadPDF} disabled={generating}>
+            <Button
+              size="sm"
+              onClick={handleDownloadPDF}
+              disabled={generating || !previewReady}
+              title={previewReady ? "確認済みレイアウトをPDF保存" : "先にA4レイアウトを確認してください"}
+            >
               {generating ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
-              PDFダウンロード
+              {previewReady ? "PDFダウンロード" : "プレビュー後にPDF"}
             </Button>
           </div>
         </div>
@@ -759,7 +824,7 @@ function CompletionReportView(props: ViewProps) {
       {/* AI生成のヒント */}
       <div className="no-print max-w-[900px] mx-auto px-4 mb-4">
         <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-          「AIで本文を生成」で、案件情報と写真から各セクションの文章と写真キャプションを自動作成します（金額は記載せず、断定が必要な原因等は空欄になります）。生成後はすべて手で編集でき、「内容を保存」で確定します。
+          「AIで本文を生成」で、案件情報と写真から各セクションの文章と写真キャプションを自動作成します。生成後はすべて手で編集できます。印刷・PDF保存の前に「A4レイアウトを確認」を開き、全ページの写真・改ページ・署名をご確認ください。
         </div>
       </div>
 
@@ -902,6 +967,14 @@ function CompletionReportView(props: ViewProps) {
               完了報告書では、同じ工事項目の施工前／施工後写真を優先して横並び表示します。工事項目がない場合は登録順で対応付け、片側しかない写真は存在しない写真を補わず単独写真として表示します。
             </p>
 
+            <BeforeAfterPairEditor
+              beforePhotos={photosByPhase.before}
+              afterPhotos={photosByPhase.after}
+              manualPairs={content.manualPhotoPairs}
+              saving={savingPhotoPairs}
+              onChange={savePhotoPairs}
+            />
+
             {totalPhotos === 0 ? (
               <div className="text-center py-10 text-sm text-muted-foreground border border-dashed border-border rounded-lg">
                 写真がありません。「撮影」または「追加」から写真を登録してください。
@@ -971,42 +1044,44 @@ function CompletionReportView(props: ViewProps) {
           </CardContent>
         </Card>
 
-        {/* ===== 署名 ===== */}
-        <Card>
+        {/* ===== 担当者／先方の電子署名 ===== */}
+        <Card id="report-signatures">
           <CardContent className="pt-6 space-y-3">
             <div className="flex items-center gap-2">
               <PenLine className="h-4 w-4 text-muted-foreground" />
               <h3 className="font-semibold text-base">確認サイン（PDF最終ページに必ず表示）</h3>
             </div>
-            {hasSig && !editingSig ? (
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-4">
-                  <div className="rounded-lg border border-border bg-white p-2">
-                    <img src={signature!.fileUrl} alt="サイン" className="h-20 object-contain" />
-                  </div>
-                  <div className="text-xs text-muted-foreground space-y-1">
-                    {signature!.signerName && (<p>署名者：<span className="text-foreground font-medium">{signature!.signerName}</span></p>)}
-                    <p>サイン日時：{new Date(signature!.signedAt).toLocaleString("ja-JP")}</p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" className="bg-background" onClick={() => setEditingSig(true)}><RotateCcw className="h-4 w-4 mr-1" />サインし直す</Button>
-                  <Button variant="outline" size="sm" className="bg-background text-destructive" onClick={() => deleteSig.mutate({ caseId: id, reportType: "completion" })} disabled={deleteSig.isPending}>削除</Button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="grid gap-1.5 max-w-xs">
-                  <Label htmlFor="signerName" className="text-xs">署名者名（任意）</Label>
-                  <Input id="signerName" value={signerName} onChange={(e) => setSignerName(e.target.value)} placeholder="例）プレナス 山田" className="h-9" />
-                </div>
-                <SignaturePad
-                  saving={saveSig.isPending}
-                  onConfirm={(dataUrl) => saveSig.mutate({ caseId: id, reportType: "completion", signerName: signerName.trim() || null, imageBase64: dataUrl })}
-                />
-                {hasSig && (<Button variant="ghost" size="sm" onClick={() => setEditingSig(false)}>キャンセル</Button>)}
-              </div>
-            )}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <ReportSignatureEditor
+                title="プレナス責任者サイン"
+                description="従来の担当者サインです。保存済みサインはそのまま維持されます。"
+                badgeLabel="未署名"
+                signature={signature}
+                signerName={signerName}
+                onSignerNameChange={setSignerName}
+                editing={editingSig}
+                onEditingChange={setEditingSig}
+                saving={saveSig.isPending}
+                deleting={deleteSig.isPending}
+                onSave={(imageBase64) => saveSig.mutate({ caseId: id, reportType: "completion", signerRole: "staff", signerName: signerName.trim() || null, imageBase64 })}
+                onDelete={() => deleteSig.mutate({ caseId: id, reportType: "completion", signerRole: "staff" })}
+              />
+              <ReportSignatureEditor
+                title="先方確認サイン"
+                description="先方確認者がこの画面へ直接署名します。氏名と署名日時をPDFへ表示します。"
+                badgeLabel="先方未署名"
+                signature={customerSignature}
+                signerName={customerSignerName}
+                onSignerNameChange={setCustomerSignerName}
+                editing={editingCustomerSig}
+                onEditingChange={setEditingCustomerSig}
+                saving={saveSig.isPending}
+                deleting={deleteSig.isPending}
+                requireName
+                onSave={(imageBase64) => saveSig.mutate({ caseId: id, reportType: "completion", signerRole: "customer", signerName: customerSignerName.trim(), imageBase64 })}
+                onDelete={() => deleteSig.mutate({ caseId: id, reportType: "completion", signerRole: "customer" })}
+              />
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -1020,6 +1095,7 @@ function CompletionReportView(props: ViewProps) {
             photosByPhase={photosByPhase}
             captionMap={captionMap}
             signature={signature}
+            customerSignature={customerSignature}
             workName={workName}
             completedAt={completedAt}
             formatDate={fmtDate}
@@ -1057,6 +1133,7 @@ function CompletionReportView(props: ViewProps) {
         containerRef={containerRef}
         fileName={`完了報告書_${caseData?.requestNumber ?? ""}_${caseData?.storeName ?? ""}`}
         pageSelector=".report-page"
+        onPreviewReady={handlePreviewReady}
       />
     </div>
   );

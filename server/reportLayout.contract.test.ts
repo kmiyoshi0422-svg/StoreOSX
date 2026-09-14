@@ -21,6 +21,18 @@ describe("報告書の統一標準レイアウト契約", () => {
     path.join(root, "client/src/pages/CompletionReport.tsx"),
     "utf8",
   );
+  const signatureEditorSource = fs.readFileSync(
+    path.join(root, "client/src/components/reports/ReportSignatureEditor.tsx"),
+    "utf8",
+  );
+  const pairEditorSource = fs.readFileSync(
+    path.join(root, "client/src/components/reports/BeforeAfterPairEditor.tsx"),
+    "utf8",
+  );
+  const previewSource = fs.readFileSync(
+    path.join(root, "client/src/components/PdfPreviewModal.tsx"),
+    "utf8",
+  );
 
   it("現地調査報告書は統一標準ヘッダー・セクション・全ページフッターを使用する", () => {
     expect(surveySource).toContain("StandardDocumentHeader");
@@ -46,20 +58,41 @@ describe("報告書の統一標準レイアウト契約", () => {
   });
 
   it("現地調査・完了報告書の最終ページに電子サインと手書き署名欄を必ず残す", () => {
-    expect(surveySource).toContain("<SignatureBlock signature={signature} />");
-    expect(completionSource).toContain("<StandardSignatureBlock signature={signature} />");
+    expect(surveySource).toContain("<SignatureBlock signature={signature} customerSignature={customerSignature} />");
+    expect(completionSource).toContain("secondarySignature={customerSignature}");
     expect(standardSource).toContain('data-report-signature="true"');
     expect(standardSource).toContain("保存済みサイン");
+    expect(standardSource).toContain("保存済み先方サイン");
     expect(standardSource).toContain("手書きサイン");
     expect(standardSource).toContain("先方確認サイン");
   });
 
-  it("サイン登録・再署名・削除の既存操作を維持する", () => {
-    expect(surveySource).toContain("<SignaturePad");
-    expect(surveySource).toContain("サインし直す");
+  it("担当者・先方のサイン登録・再署名・削除操作を維持する", () => {
+    expect(signatureEditorSource).toContain("<SignaturePad");
+    expect(signatureEditorSource).toContain("サインし直す");
+    expect(signatureEditorSource).toContain('requireName ? "（必須）"');
     expect(surveySource).toContain("deleteSig.mutate");
-    expect(completionPageSource).toContain("<SignaturePad");
-    expect(completionPageSource).toContain("サインし直す");
+    expect(surveySource).toContain('signerRole: "customer"');
     expect(completionPageSource).toContain("deleteSig.mutate");
+    expect(completionPageSource).toContain('signerRole: "customer"');
+  });
+
+  it("Before／Afterの手動組み合わせ・解除・自動復帰を完了報告書で操作できる", () => {
+    expect(completionPageSource).toContain("BeforeAfterPairEditor");
+    expect(completionPageSource).toContain("savePhotoPairs");
+    expect(pairEditorSource).toContain('data-manual-photo-pair-editor="true"');
+    expect(pairEditorSource).toContain("自動で組み合わせ");
+    expect(pairEditorSource).toContain("施工後なし・単独表示");
+    expect(pairEditorSource).toContain("自動に戻す");
+  });
+
+  it("印刷・PDF前にA4全ページを確認し、プレビュー完了後だけ直接出力できる", () => {
+    expect(surveySource).toContain('data-a4-layout-preview-trigger="true"');
+    expect(completionPageSource).toContain('data-a4-layout-preview-trigger="true"');
+    expect(surveySource).toContain("generating || !previewReady");
+    expect(completionPageSource).toContain("generating || !previewReady");
+    expect(surveySource).toContain("onPreviewReady={handlePreviewReady}");
+    expect(completionPageSource).toContain("onPreviewReady={handlePreviewReady}");
+    expect(previewSource).toContain("onPreviewReady?.(previews.length)");
   });
 });

@@ -26,6 +26,8 @@ interface PdfPreviewModalProps {
   fileName: string;
   /** ページセレクタ（CSSクラス名）。デフォルト: ".report-page, .ledger-page" */
   pageSelector?: string;
+  /** 実レイアウトの全ページ描画が完了した時に呼ばれる */
+  onPreviewReady?: (pageCount: number) => void;
 }
 
 const ZOOM_PRESETS = [50, 75, 100, 125, 150, 200, 300];
@@ -39,6 +41,7 @@ export function PdfPreviewModal({
   containerRef,
   fileName,
   pageSelector = ".report-page, .ledger-page",
+  onPreviewReady,
 }: PdfPreviewModalProps) {
   const [pages, setPages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -91,12 +94,13 @@ export function PdfPreviewModal({
         previews.push(canvas.toDataURL("image/jpeg", 0.8));
       }
       setPages(previews);
+      onPreviewReady?.(previews.length);
     } catch (e) {
       console.error("Preview generation failed:", e);
     } finally {
       setLoading(false);
     }
-  }, [containerRef, open, pageSelector]);
+  }, [containerRef, onPreviewReady, open, pageSelector]);
 
   useEffect(() => {
     if (open) {

@@ -440,6 +440,7 @@ export const caseSignatures = mysqlTable("case_signatures", {
   id: int("id").autoincrement().primaryKey(),
   caseId: int("caseId").notNull(),
   reportType: mysqlEnum("reportType", ["survey", "completion"]).notNull(), // survey=現場調査 / completion=施工完了
+  signerRole: mysqlEnum("signerRole", ["staff", "customer"]).default("staff").notNull(),
   signerName: varchar("signerName", { length: 128 }), // サイン者名（プレナス責任者）
   fileKey: varchar("fileKey", { length: 512 }).notNull(), // S3ファイルキー（署名PNG）
   fileUrl: varchar("fileUrl", { length: 512 }).notNull(), // /manus-storage/ 参照URL
@@ -448,7 +449,7 @@ export const caseSignatures = mysqlTable("case_signatures", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (t) => ({
-  uniqCaseReport: unique("uniq_case_report").on(t.caseId, t.reportType),
+  uniqCaseReportRole: unique("uniq_case_report_role").on(t.caseId, t.reportType, t.signerRole),
 }));
 export type CaseSignature = typeof caseSignatures.$inferSelect;
 export type InsertCaseSignature = typeof caseSignatures.$inferInsert;
