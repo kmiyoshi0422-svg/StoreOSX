@@ -104,6 +104,7 @@ import { PREFECTURES, detectPrefecture } from "@shared/prefecture";
 import { StoreEquipmentPanel } from "./StoreEquipmentPanel";
 import { StoreMasterLinkPanel } from "./StoreMasterLinkPanel";
 import { PhotoClassificationReviewDialog } from "@/components/photos/PhotoClassificationReviewDialog";
+import { PhotoClassificationHistoryDialog } from "@/components/photos/PhotoClassificationHistoryDialog";
 import { canUsePhotoClassification } from "@shared/photoClassification";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -294,16 +295,26 @@ export default function PhotosTab({
           </div>
           <div className="flex items-center gap-2">
             {canUseAiClassification && (
-              <PhotoClassificationReviewDialog
-                caseId={caseId}
-                photos={photos}
-                selectedPhotoIds={Array.from(selectedIds)}
-                onSaved={() => {
-                  onUpdated();
-                  setSelectedIds(new Set());
-                  setSelectionMode(false);
-                }}
-              />
+              <>
+                <PhotoClassificationReviewDialog
+                  caseId={caseId}
+                  photos={photos}
+                  selectedPhotoIds={Array.from(selectedIds)}
+                  onSaved={() => {
+                    onUpdated();
+                    setSelectedIds(new Set());
+                    setSelectionMode(false);
+                  }}
+                />
+                <PhotoClassificationHistoryDialog
+                  caseId={caseId}
+                  onRestored={() => {
+                    onUpdated();
+                    setSelectedIds(new Set());
+                    setSelectionMode(false);
+                  }}
+                />
+              </>
             )}
             <Button
               variant={selectionMode ? "default" : "outline"}

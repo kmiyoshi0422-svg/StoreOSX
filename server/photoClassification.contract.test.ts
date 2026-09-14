@@ -12,9 +12,9 @@ describe("施工写真AI分類の実装契約", () => {
       source.indexOf("applyClassifications: protectedProcedure"),
     );
     expect(classifyBlock).toContain("classifyConstructionPhotos");
-    expect(classifyBlock).not.toContain("updatePhotoTypesAtomically");
+    expect(classifyBlock).not.toContain("applyPhotoClassificationsWithHistory");
     expect(source).toContain("applyClassifications: protectedProcedure");
-    expect(source).toContain("updatePhotoTypesAtomically");
+    expect(source).toContain("applyPhotoClassificationsWithHistory");
     expect(source).toContain("assertCaseAccess(caseData, ctx.user)");
   });
 
@@ -39,5 +39,28 @@ describe("施工写真AI分類の実装契約", () => {
     expect(source).toContain("PhotoClassificationReviewDialog");
     expect(source).toContain("selectedPhotoIds={Array.from(selectedIds)}");
     expect(source).toContain("canUseAiClassification &&");
+  });
+
+  it("写真タブにAI分類履歴・変更差分・競合保護付きUndoを備える", () => {
+    const routerSource = fs.readFileSync(path.join(root, "server/routers.ts"), "utf8");
+    const tabSource = fs.readFileSync(
+      path.join(root, "client/src/pages/CaseDetailPhotosTab.tsx"),
+      "utf8",
+    );
+    const historySource = fs.readFileSync(
+      path.join(root, "client/src/components/photos/PhotoClassificationHistoryDialog.tsx"),
+      "utf8",
+    );
+
+    expect(routerSource).toContain("classificationHistory: protectedProcedure");
+    expect(routerSource).toContain("undoClassification: protectedProcedure");
+    expect(routerSource).toContain("undoPhotoClassificationRun");
+    expect(tabSource).toContain("PhotoClassificationHistoryDialog");
+    expect(historySource).toContain("AI写真分類の履歴");
+    expect(historySource).toContain("変更前: {change.beforePhotoType}");
+    expect(historySource).toContain("変更後: {change.afterPhotoType}");
+    expect(historySource).toContain("現在値が変更済み");
+    expect(historySource).toContain("この分類を元に戻す");
+    expect(historySource).toContain("1枚でも現在値が変わっている場合は、全件を変更せず停止します");
   });
 });

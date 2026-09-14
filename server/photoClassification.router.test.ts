@@ -93,7 +93,8 @@ describe("施工写真AI分類の確認済み保存", () => {
         { photoId: photoIds[2], category: "施工後" },
       ],
     });
-    expect(result).toEqual({ success: true, count: 3 });
+    expect(result).toMatchObject({ success: true, count: 1 });
+    expect(result.runId).toEqual(expect.any(Number));
 
     const db = await getDb();
     const rows = await db!.select().from(photos).where(eq(photos.caseId, caseId));
@@ -130,7 +131,7 @@ describe("施工写真AI分類の確認済み保存", () => {
         caseId,
         updates: [{ photoId: photoIds[0], category: "現調" }],
       }),
-    ).resolves.toEqual({ success: true, count: 1 });
+    ).resolves.toMatchObject({ success: true, count: 1, runId: expect.any(Number) });
   });
 
   it("許可エリア外のpartnerは確認済み分類を保存できない", async () => {

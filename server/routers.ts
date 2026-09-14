@@ -75,7 +75,9 @@ import {
   markInternalCaseNotificationRead,
   markAllInternalCaseNotificationsRead,
   updatePhoto,
-  updatePhotoTypesAtomically,
+  applyPhotoClassificationsWithHistory,
+  listPhotoClassificationHistory,
+  undoPhotoClassificationRun,
   getAppSetting,
   setAppSetting,
   getAllAppSettings,
@@ -2234,6 +2236,9 @@ export const appRouter = router({
             z.object({
               photoId: z.number().int().positive(),
               category: z.enum(PHOTO_CLASSIFICATION_CATEGORIES),
+              suggestedCategory: z.enum(PHOTO_CLASSIFICATION_CATEGORIES).optional(),
+              confidence: z.number().int().min(0).max(100).optional(),
+              reason: z.string().trim().max(160).optional(),
             }),
           ).min(1).max(200),
         }),
@@ -2258,13 +2263,85 @@ export const appRouter = router({
           throw new TRPCError({ code: "BAD_REQUEST", message: "案件外または削除済みの写真が含まれています" });
         }
 
-        await updatePhotoTypesAtomically(
-          Array.from(updatesByPhotoId.entries()).map(([photoId, category]) => ({
-            id: photoId,
-            photoType: resolvePersistedPhotoType(category, photosById.get(photoId)!.photoType),
-          })),
+        const updateDetailsByPhotoId = new Map(
+          input.updates.map((update) => [update.photoId, update] as const),
         );
-        return { success: true, count: updatesByPhotoId.size };
+        try {
+          const result = await applyPhotoClassificationsWithHistory({
+            caseId: input.caseId,
+            performedBy: ctx.user.id,
+            performedByName: ctx.user.name || ctx.user.email || `ユーザー${ctx.user.id}`,
+            changes: Array.from(updatesByPhotoId.entries()).map(([photoId, category]) => {
+              const photo = photosById.get(photoId)!;
+              const detail = updateDetailsByPhotoId.get(photoId)!;
+              return {
+                photoId,
+                photoFileUrl: storageUrlForRead(photo.fileKey, photo.fileUrl),
+                photoMemo: photo.memo,
+                beforePhotoType: photo.photoType,
+                afterPhotoType: resolvePersistedPhotoType(category, photo.photoType),
+                suggestedCategory: detail.suggestedCategory ?? category,
+                confirmedCategory: category,
+                confidence: detail.confidence ?? 0,
+                reason: detail.reason || "AI候補を人が確認して保存しました。",
+              };
+            }),
+          });
+          return { success: true, ...result };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (message.startsWith("PHOTO_CLASSIFICATION_SAVE_CONFLICT:")) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "確認中に写真区分が変更されました。写真一覧を更新して、もう一度分類してください。",
+            });
+          }
+          throw error;
+        }
+      }),
+    classificationHistory: protectedProcedure
+      .input(z.object({ caseId: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        if (!canUsePhotoClassification(ctx.user.role)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "写真分類履歴を閲覧する権限がありません" });
+        }
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
+        return listPhotoClassificationHistory(input.caseId);
+      }),
+    undoClassification: protectedProcedure
+      .input(z.object({
+        caseId: z.number().int().positive(),
+        runId: z.number().int().positive(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (!canUsePhotoClassification(ctx.user.role)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "写真分類を元に戻す権限がありません" });
+        }
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
+
+        const result = await undoPhotoClassificationRun({
+          caseId: input.caseId,
+          runId: input.runId,
+          undoneBy: ctx.user.id,
+          undoneByName: ctx.user.name || ctx.user.email || `ユーザー${ctx.user.id}`,
+        });
+        if (result.status === "not_found") {
+          throw new TRPCError({ code: "NOT_FOUND", message: "分類履歴が見つかりません" });
+        }
+        if (result.status === "already_undone") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "この分類履歴はすでに元へ戻されています" });
+        }
+        if (result.status === "conflict") {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `分類後に変更または削除された写真が${result.photoIds.length}枚あるため、安全のため元に戻せません。現在の区分を確認してください。`,
+          });
+        }
+        return { success: true, count: result.count };
       }),
     bulkUpdateType: protectedProcedure
       .input(

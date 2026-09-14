@@ -207,6 +207,62 @@ export type Photo = typeof photos.$inferSelect;
 export type InsertPhoto = typeof photos.$inferInsert;
 
 /**
+ * AI写真分類の実行履歴
+ * 1回の確認・保存操作を1レコードとして保持し、履歴単位で安全にUndoする。
+ */
+export const photoClassificationRuns = mysqlTable("photo_classification_runs", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("caseId").notNull(),
+  performedBy: int("performedBy").notNull(),
+  performedByName: varchar("performedByName", { length: 255 }).notNull(),
+  changeCount: int("changeCount").notNull(),
+  undoneAt: timestamp("undoneAt"),
+  undoneBy: int("undoneBy"),
+  undoneByName: varchar("undoneByName", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  caseCreatedIdx: index("idx_photo_classification_runs_case_created").on(t.caseId, t.createdAt),
+  performedByIdx: index("idx_photo_classification_runs_performed_by").on(t.performedBy),
+  undoneAtIdx: index("idx_photo_classification_runs_undone_at").on(t.undoneAt),
+}));
+
+export type PhotoClassificationRun = typeof photoClassificationRuns.$inferSelect;
+export type InsertPhotoClassificationRun = typeof photoClassificationRuns.$inferInsert;
+
+/**
+ * AI写真分類1回分の写真別差分
+ * 写真が後から削除されても履歴を確認できるよう、当時のURLとメモも保存する。
+ */
+export const photoClassificationChanges = mysqlTable("photo_classification_changes", {
+  id: int("id").autoincrement().primaryKey(),
+  runId: int("runId").notNull(),
+  caseId: int("caseId").notNull(),
+  photoId: int("photoId").notNull(),
+  photoFileUrl: varchar("photoFileUrl", { length: 512 }).notNull(),
+  photoMemo: text("photoMemo"),
+  beforePhotoType: mysqlEnum("beforePhotoType", [
+    "施工前A", "施工前B", "施工中", "施工後A", "施工後B",
+    "設置状況", "メーカー型番", "現調", "その他",
+  ]).notNull(),
+  afterPhotoType: mysqlEnum("afterPhotoType", [
+    "施工前A", "施工前B", "施工中", "施工後A", "施工後B",
+    "設置状況", "メーカー型番", "現調", "その他",
+  ]).notNull(),
+  suggestedCategory: mysqlEnum("suggestedCategory", ["現調", "施工前", "施工中", "施工後"]).notNull(),
+  confirmedCategory: mysqlEnum("confirmedCategory", ["現調", "施工前", "施工中", "施工後"]).notNull(),
+  confidence: int("confidence").notNull(),
+  reason: text("reason").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  runIdx: index("idx_photo_classification_changes_run").on(t.runId),
+  caseIdx: index("idx_photo_classification_changes_case").on(t.caseId),
+  photoIdx: index("idx_photo_classification_changes_photo").on(t.photoId),
+}));
+
+export type PhotoClassificationChange = typeof photoClassificationChanges.$inferSelect;
+export type InsertPhotoClassificationChange = typeof photoClassificationChanges.$inferInsert;
+
+/**
  * アプリ設定（キーバリューストア）
  */
 export const appSettings = mysqlTable("app_settings", {

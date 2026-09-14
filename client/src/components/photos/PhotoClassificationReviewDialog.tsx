@@ -36,6 +36,7 @@ type ReviewPhoto = {
 type ReviewSuggestion = {
   photoId: number;
   category: PhotoClassificationCategory;
+  suggestedCategory: PhotoClassificationCategory;
   confidence: number;
   reason: string;
   requiresReview: boolean;
@@ -70,7 +71,11 @@ export function PhotoClassificationReviewDialog({
 
   const classifyMutation = trpc.photos.classify.useMutation({
     onSuccess: (rows) => {
-      setSuggestions(rows.map((row) => ({ ...row, included: true })));
+      setSuggestions(rows.map((row) => ({
+        ...row,
+        suggestedCategory: row.category,
+        included: true,
+      })));
     },
     onError: (error) => toast.error(error.message),
   });
@@ -240,7 +245,13 @@ export function PhotoClassificationReviewDialog({
               type="button"
               onClick={() => applyMutation.mutate({
                 caseId,
-                updates: includedSuggestions.map((row) => ({ photoId: row.photoId, category: row.category })),
+                updates: includedSuggestions.map((row) => ({
+                  photoId: row.photoId,
+                  category: row.category,
+                  suggestedCategory: row.suggestedCategory,
+                  confidence: row.confidence,
+                  reason: row.reason,
+                })),
               })}
               disabled={classifyMutation.isPending || applyMutation.isPending || includedSuggestions.length === 0}
             >
@@ -253,4 +264,3 @@ export function PhotoClassificationReviewDialog({
     </>
   );
 }
-

@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lte, like, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   cases,
@@ -32,6 +32,8 @@ import {
   internalCaseNotifications,
   InsertInternalCaseNotification,
   photos,
+  photoClassificationRuns,
+  photoClassificationChanges,
   routeAssignments,
   teamSettings,
   users,
@@ -456,6 +458,8 @@ export async function deleteCase(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.delete(internalCaseNotifications).where(eq(internalCaseNotifications.caseId, id));
+  await db.delete(photoClassificationChanges).where(eq(photoClassificationChanges.caseId, id));
+  await db.delete(photoClassificationRuns).where(eq(photoClassificationRuns.caseId, id));
   await db.delete(cases).where(eq(cases.id, id));
   await db.delete(checklistItems).where(eq(checklistItems.caseId, id));
   await db.delete(photos).where(eq(photos.caseId, id));
@@ -561,6 +565,259 @@ export async function updatePhotoTypesAtomically(
         .where(eq(photos.id, update.id));
     }
   });
+}
+
+type PhotoType = NonNullable<InsertPhoto["photoType"]>;
+type ClassificationCategory = "現調" | "施工前" | "施工中" | "施工後";
+
+export type PhotoClassificationHistoryChangeInput = {
+  photoId: number;
+  photoFileUrl: string;
+  photoMemo: string | null;
+  beforePhotoType: PhotoType;
+  afterPhotoType: PhotoType;
+  suggestedCategory: ClassificationCategory;
+  confirmedCategory: ClassificationCategory;
+  confidence: number;
+  reason: string;
+};
+
+function affectedRows(result: unknown) {
+  if (Array.isArray(result)) {
+    const first = result[0] as { affectedRows?: number } | undefined;
+    return first?.affectedRows ?? 0;
+  }
+  return (result as { affectedRows?: number } | null)?.affectedRows ?? 0;
+}
+
+/**
+ * 人が確認したAI分類だけを、実行履歴と写真差分を含めて原子的に保存する。
+ * 保存直前に写真区分が変わっていた場合は全件ロールバックする。
+ */
+export async function applyPhotoClassificationsWithHistory(input: {
+  caseId: number;
+  performedBy: number;
+  performedByName: string;
+  changes: PhotoClassificationHistoryChangeInput[];
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const changes = input.changes.filter(
+    (change) => change.beforePhotoType !== change.afterPhotoType,
+  );
+  if (changes.length === 0) return { count: 0, runId: null as number | null };
+
+  return db.transaction(async (tx) => {
+    const runResult = await tx
+      .insert(photoClassificationRuns)
+      .values({
+        caseId: input.caseId,
+        performedBy: input.performedBy,
+        performedByName: input.performedByName,
+        changeCount: changes.length,
+      })
+      .$returningId();
+    const runId = runResult[0].id;
+
+    await tx.insert(photoClassificationChanges).values(
+      changes.map((change) => ({
+        runId,
+        caseId: input.caseId,
+        ...change,
+      })),
+    );
+
+    for (const change of changes) {
+      const updateResult = await tx
+        .update(photos)
+        .set({ photoType: change.afterPhotoType })
+        .where(and(
+          eq(photos.id, change.photoId),
+          eq(photos.caseId, input.caseId),
+          eq(photos.photoType, change.beforePhotoType),
+        ));
+      if (affectedRows(updateResult) !== 1) {
+        throw new Error(`PHOTO_CLASSIFICATION_SAVE_CONFLICT:${change.photoId}`);
+      }
+    }
+
+    return { count: changes.length, runId };
+  });
+}
+
+/** 案件単位のAI分類履歴を、現在区分との一致状態を含めて返す。 */
+export async function listPhotoClassificationHistory(caseId: number, limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const runs = await db
+    .select()
+    .from(photoClassificationRuns)
+    .where(eq(photoClassificationRuns.caseId, caseId))
+    .orderBy(desc(photoClassificationRuns.createdAt), desc(photoClassificationRuns.id))
+    .limit(limit);
+  if (runs.length === 0) return [];
+
+  const runIds = runs.map((run) => run.id);
+  const changes = await db
+    .select()
+    .from(photoClassificationChanges)
+    .where(inArray(photoClassificationChanges.runId, runIds))
+    .orderBy(photoClassificationChanges.id);
+  const currentPhotos = await db
+    .select({ id: photos.id, photoType: photos.photoType })
+    .from(photos)
+    .where(eq(photos.caseId, caseId));
+  const currentById = new Map(currentPhotos.map((photo) => [photo.id, photo.photoType] as const));
+  const runsById = new Map(runs.map((run) => [run.id, run] as const));
+  const changesByRun = new Map<number, typeof changes>();
+  for (const change of changes) {
+    const rows = changesByRun.get(change.runId) ?? [];
+    rows.push(change);
+    changesByRun.set(change.runId, rows);
+  }
+
+  return runs.map((run) => {
+    const runChanges = (changesByRun.get(run.id) ?? []).map((change) => {
+      const currentPhotoType = currentById.get(change.photoId) ?? null;
+      const hasLaterActiveChange = changes.some((other) => (
+        other.photoId === change.photoId
+        && other.runId > run.id
+        && runsById.get(other.runId)?.undoneAt === null
+      ));
+      return {
+        ...change,
+        currentPhotoType,
+        isCurrentMatch: currentPhotoType === change.afterPhotoType,
+        hasLaterActiveChange,
+      };
+    });
+    const conflictCount = runChanges.filter(
+      (change) => !change.isCurrentMatch || change.hasLaterActiveChange,
+    ).length;
+    return {
+      ...run,
+      changes: runChanges,
+      conflictCount,
+      canUndo: run.undoneAt === null && runChanges.length > 0 && conflictCount === 0,
+    };
+  });
+}
+
+export type UndoPhotoClassificationResult =
+  | { status: "success"; count: number }
+  | { status: "not_found" }
+  | { status: "already_undone" }
+  | { status: "conflict"; photoIds: number[] };
+
+/**
+ * 履歴に記録された変更後区分が現在も維持されている場合だけ、変更前へ一括復元する。
+ * 1枚でも削除・手動変更・後続分類がある場合は何も変更せず競合として返す。
+ */
+export async function undoPhotoClassificationRun(input: {
+  caseId: number;
+  runId: number;
+  undoneBy: number;
+  undoneByName: string;
+}): Promise<UndoPhotoClassificationResult> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  try {
+    return await db.transaction(async (tx): Promise<UndoPhotoClassificationResult> => {
+      const runRows = await tx
+        .select()
+        .from(photoClassificationRuns)
+        .where(and(
+          eq(photoClassificationRuns.id, input.runId),
+          eq(photoClassificationRuns.caseId, input.caseId),
+        ))
+        .limit(1);
+      const run = runRows[0];
+      if (!run) return { status: "not_found" };
+      if (run.undoneAt) return { status: "already_undone" };
+
+      const changes = await tx
+        .select()
+        .from(photoClassificationChanges)
+        .where(and(
+          eq(photoClassificationChanges.runId, input.runId),
+          eq(photoClassificationChanges.caseId, input.caseId),
+        ))
+        .orderBy(photoClassificationChanges.id);
+      if (changes.length === 0) return { status: "not_found" };
+
+      const currentPhotos = await tx
+        .select({ id: photos.id, photoType: photos.photoType })
+        .from(photos)
+        .where(and(
+          eq(photos.caseId, input.caseId),
+          inArray(photos.id, changes.map((change) => change.photoId)),
+        ));
+      const currentById = new Map(currentPhotos.map((photo) => [photo.id, photo.photoType] as const));
+      const laterActiveChanges = await tx
+        .select({ photoId: photoClassificationChanges.photoId })
+        .from(photoClassificationChanges)
+        .innerJoin(
+          photoClassificationRuns,
+          eq(photoClassificationChanges.runId, photoClassificationRuns.id),
+        )
+        .where(and(
+          eq(photoClassificationChanges.caseId, input.caseId),
+          gt(photoClassificationChanges.runId, input.runId),
+          inArray(photoClassificationChanges.photoId, changes.map((change) => change.photoId)),
+          isNull(photoClassificationRuns.undoneAt),
+        ));
+      const laterChangedIds = new Set(laterActiveChanges.map((change) => change.photoId));
+      const conflicts = Array.from(new Set(changes
+        .filter((change) => currentById.get(change.photoId) !== change.afterPhotoType)
+        .map((change) => change.photoId)
+        .concat(Array.from(laterChangedIds))));
+      if (conflicts.length > 0) return { status: "conflict", photoIds: conflicts };
+
+      for (const change of changes) {
+        const updateResult = await tx
+          .update(photos)
+          .set({ photoType: change.beforePhotoType })
+          .where(and(
+            eq(photos.id, change.photoId),
+            eq(photos.caseId, input.caseId),
+            eq(photos.photoType, change.afterPhotoType),
+          ));
+        if (affectedRows(updateResult) !== 1) {
+          throw new Error(`PHOTO_CLASSIFICATION_UNDO_CONFLICT:${change.photoId}`);
+        }
+      }
+
+      const runUpdate = await tx
+        .update(photoClassificationRuns)
+        .set({
+          undoneAt: new Date(),
+          undoneBy: input.undoneBy,
+          undoneByName: input.undoneByName,
+        })
+        .where(and(
+          eq(photoClassificationRuns.id, input.runId),
+          isNull(photoClassificationRuns.undoneAt),
+        ));
+      if (affectedRows(runUpdate) !== 1) {
+        throw new Error("PHOTO_CLASSIFICATION_UNDO_ALREADY_APPLIED");
+      }
+
+      return { status: "success", count: changes.length };
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.startsWith("PHOTO_CLASSIFICATION_UNDO_CONFLICT:")) {
+      const photoId = Number(message.split(":")[1]);
+      return { status: "conflict", photoIds: Number.isFinite(photoId) ? [photoId] : [] };
+    }
+    if (message === "PHOTO_CLASSIFICATION_UNDO_ALREADY_APPLIED") {
+      return { status: "already_undone" };
+    }
+    throw error;
+  }
 }
 
 export async function deletePhoto(id: number) {
