@@ -1003,3 +1003,25 @@ export const storeDistributionBoards = mysqlTable("store_distribution_boards", {
 }));
 export type StoreDistributionBoard = typeof storeDistributionBoards.$inferSelect;
 export type InsertStoreDistributionBoard = typeof storeDistributionBoards.$inferInsert;
+
+// ============================================================
+// 案件現場メモ（写真タブ上部の時系列メモ）
+// ============================================================
+export const caseFieldMemos = mysqlTable("case_field_memos", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("case_id").notNull(),
+  category: mysqlEnum("category", ["状況", "確認事項", "追加対応", "注意", "連絡"])
+    .default("状況")
+    .notNull(),
+  body: text("body").notNull(),
+  authorUserId: int("author_user_id").notNull(),
+  authorName: varchar("author_name", { length: 128 }).notNull(),
+  authorRole: varchar("author_role", { length: 32 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  caseCreatedIdx: index("idx_case_field_memos_case_created").on(t.caseId, t.createdAt),
+  authorIdx: index("idx_case_field_memos_author").on(t.authorUserId),
+}));
+export type CaseFieldMemo = typeof caseFieldMemos.$inferSelect;
+export type InsertCaseFieldMemo = typeof caseFieldMemos.$inferInsert;

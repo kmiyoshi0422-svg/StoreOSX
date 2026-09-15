@@ -3,8 +3,10 @@ import { drizzle } from "drizzle-orm/mysql2";
 import {
   cases,
   caseSignatures,
+  caseFieldMemos,
   caseReportDrafts,
   InsertCaseReportDraft,
+  InsertCaseFieldMemo,
   caseSchedules,
   InsertCaseSchedule,
   scheduleTemplates,
@@ -458,6 +460,7 @@ export async function deleteCase(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.delete(internalCaseNotifications).where(eq(internalCaseNotifications.caseId, id));
+  await db.delete(caseFieldMemos).where(eq(caseFieldMemos.caseId, id));
   await db.delete(photoClassificationChanges).where(eq(photoClassificationChanges.caseId, id));
   await db.delete(photoClassificationRuns).where(eq(photoClassificationRuns.caseId, id));
   await db.delete(cases).where(eq(cases.id, id));
@@ -534,6 +537,48 @@ export async function getCasesByIds(caseIds: number[]) {
   const db = await getDb();
   if (!db || caseIds.length === 0) return [];
   return db.select().from(cases).where(inArray(cases.id, caseIds));
+}
+
+// ============================================================
+// Case field memos
+// ============================================================
+export async function listCaseFieldMemos(caseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(caseFieldMemos)
+    .where(eq(caseFieldMemos.caseId, caseId))
+    .orderBy(desc(caseFieldMemos.createdAt), desc(caseFieldMemos.id));
+}
+
+export async function getCaseFieldMemoById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(caseFieldMemos).where(eq(caseFieldMemos.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function createCaseFieldMemo(data: InsertCaseFieldMemo) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(caseFieldMemos).values(data).$returningId();
+  return result[0].id;
+}
+
+export async function updateCaseFieldMemo(
+  id: number,
+  data: Pick<InsertCaseFieldMemo, "category" | "body">,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(caseFieldMemos).set(data).where(eq(caseFieldMemos.id, id));
+}
+
+export async function deleteCaseFieldMemo(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(caseFieldMemos).where(eq(caseFieldMemos.id, id));
 }
 
 export async function createPhoto(data: InsertPhoto) {

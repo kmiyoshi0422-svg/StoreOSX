@@ -167,7 +167,9 @@ export default function CaseDetail({ id }: { id: number }) {
   const canViewProfit = user?.role === 'owner';
   const canManageCase = isOwnerOrAdmin || user?.role === 'executive' || user?.role === 'user';
   const utils = trpc.useUtils();
-  const [activeTab, setActiveTab] = useState("info");
+  const [activeTab, setActiveTab] = useState(() =>
+    new URLSearchParams(window.location.search).get("tab") === "photos" ? "photos" : "info",
+  );
   const { data: caseData, isLoading } = trpc.cases.get.useQuery({ id });
   // タブ別遅延取得: チェックリストと写真はタブヘッダーのバッジ表示に使うため常時取得
   const { data: checklist = [] } = trpc.checklist.listByCase.useQuery({ caseId: id });

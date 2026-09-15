@@ -105,6 +105,7 @@ import { StoreEquipmentPanel } from "./StoreEquipmentPanel";
 import { StoreMasterLinkPanel } from "./StoreMasterLinkPanel";
 import { PhotoClassificationReviewDialog } from "@/components/photos/PhotoClassificationReviewDialog";
 import { PhotoClassificationHistoryDialog } from "@/components/photos/PhotoClassificationHistoryDialog";
+import { CaseFieldMemosPanel } from "@/components/photos/CaseFieldMemosPanel";
 import { canUsePhotoClassification } from "@shared/photoClassification";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -269,6 +270,8 @@ export default function PhotosTab({
           </div>
         </CardContent>
       </Card>
+
+      <CaseFieldMemosPanel caseId={caseId} />
 
       {/* View Controls */}
       {photos.length > 0 && (

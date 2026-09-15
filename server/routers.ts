@@ -8,13 +8,16 @@ import {
   createEstimate,
   createPartner,
   createPhoto,
+  createCaseFieldMemo,
   deleteCase,
+  deleteCaseFieldMemo,
   deleteEstimateById,
   deletePartner,
   deletePhoto,
   getAllUsers,
   updateUserAccess,
   getCaseById,
+  getCaseFieldMemoById,
   getCaseByPartnerToken,
   getCaseByRequestNumber,
   getChecklistByCaseId,
@@ -25,6 +28,7 @@ import {
   getPhotosByCaseIds,
   getCasesByIds,
   listCases,
+  listCaseFieldMemos,
   listCasesSummary,
   listStoreSummaries,
   listCasesForMap,
@@ -75,6 +79,7 @@ import {
   markInternalCaseNotificationRead,
   markAllInternalCaseNotificationsRead,
   updatePhoto,
+  updateCaseFieldMemo,
   applyPhotoClassificationsWithHistory,
   listPhotoClassificationHistory,
   undoPhotoClassificationRun,
@@ -234,6 +239,13 @@ import {
   PHOTO_CLASSIFICATION_CATEGORIES,
   resolvePersistedPhotoType,
 } from "../shared/photoClassification";
+import {
+  FIELD_MEMO_CATEGORIES,
+  FIELD_MEMO_MAX_LENGTH,
+  canCreateFieldMemo,
+  canModifyFieldMemo,
+  canViewFieldMemos,
+} from "../shared/fieldMemos";
 
 function withReadableFileUrl<
   T extends { fileKey?: string | null; fileUrl?: string | null },
@@ -2058,6 +2070,78 @@ export const appRouter = router({
           console.warn("[bulkToggle autoAdvance] failed:", e);
         }
         return { success: true, autoAdvanced };
+      }),
+  }),
+
+  fieldMemos: router({
+    listByCase: protectedProcedure
+      .input(z.object({ caseId: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        if (!canViewFieldMemos(ctx.user.role)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "現場メモを閲覧する権限がありません" });
+        }
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
+        return listCaseFieldMemos(input.caseId);
+      }),
+
+    create: protectedProcedure
+      .input(z.object({
+        caseId: z.number().int().positive(),
+        category: z.enum(FIELD_MEMO_CATEGORIES).default("状況"),
+        body: z.string().trim().min(1, "現場メモを入力してください").max(FIELD_MEMO_MAX_LENGTH),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (!canCreateFieldMemo(ctx.user.role)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "現場メモを追加する権限がありません" });
+        }
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
+        const id = await createCaseFieldMemo({
+          caseId: input.caseId,
+          category: input.category,
+          body: input.body,
+          authorUserId: ctx.user.id,
+          authorName: ctx.user.name?.trim() || ctx.user.email?.trim() || "名称未設定",
+          authorRole: ctx.user.role,
+        });
+        return { id };
+      }),
+
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        category: z.enum(FIELD_MEMO_CATEGORIES),
+        body: z.string().trim().min(1, "現場メモを入力してください").max(FIELD_MEMO_MAX_LENGTH),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const memo = await getCaseFieldMemoById(input.id);
+        if (!memo) throw new TRPCError({ code: "NOT_FOUND", message: "現場メモが見つかりません" });
+        const caseData = await getCaseById(memo.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
+        if (!canModifyFieldMemo(ctx.user.role, ctx.user.id, memo.authorUserId)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "他の人が記入した現場メモは編集できません" });
+        }
+        await updateCaseFieldMemo(input.id, { category: input.category, body: input.body });
+        return { success: true };
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        const memo = await getCaseFieldMemoById(input.id);
+        if (!memo) throw new TRPCError({ code: "NOT_FOUND", message: "現場メモが見つかりません" });
+        const caseData = await getCaseById(memo.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
+        if (!canModifyFieldMemo(ctx.user.role, ctx.user.id, memo.authorUserId)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "他の人が記入した現場メモは削除できません" });
+        }
+        await deleteCaseFieldMemo(input.id);
+        return { success: true };
       }),
   }),
 
