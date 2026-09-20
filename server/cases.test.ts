@@ -39,6 +39,31 @@ describe("cases router", () => {
     const result = await caller.cases.list();
     expect(Array.isArray(result)).toBe(true);
   });
+
+  it("同じ依頼番号の再登録は既存案件情報付きで拒否する", async () => {
+    const caller = appRouter.createCaller(createOwnerContext());
+    const requestNumber = `TEST-DUPLICATE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const created = await caller.cases.create({
+      requestNumber,
+      brand: "その他",
+      storeName: "重複確認テスト店",
+      prefecture: "福岡県",
+    });
+
+    try {
+      await expect(caller.cases.create({
+        requestNumber: `  ${requestNumber}  `,
+        brand: "その他",
+        storeName: "重複確認テスト店（再登録）",
+        prefecture: "福岡県",
+      })).rejects.toMatchObject({
+        code: "CONFLICT",
+        message: expect.stringContaining(`案件ID: ${created.id}`),
+      });
+    } finally {
+      await caller.cases.delete({ id: created.id });
+    }
+  }, 30000);
 });
 
 describe("現調報告書の所感保存権限", () => {

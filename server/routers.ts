@@ -256,6 +256,25 @@ function withReadableFileUrl<
   };
 }
 
+function isDuplicateEntryError(error: unknown): boolean {
+  let current: unknown = error;
+  const visited = new Set<unknown>();
+
+  for (let depth = 0; depth < 6 && current && !visited.has(current); depth += 1) {
+    visited.add(current);
+    if (typeof current === "object") {
+      const candidate = current as { code?: unknown; errno?: unknown; message?: unknown; cause?: unknown };
+      if (candidate.code === "ER_DUP_ENTRY" || candidate.errno === 1062) return true;
+      if (typeof candidate.message === "string" && /duplicate entry/i.test(candidate.message)) return true;
+      current = candidate.cause;
+      continue;
+    }
+    if (typeof current === "string" && /duplicate entry/i.test(current)) return true;
+    break;
+  }
+
+  return false;
+}
 // ============================================================
 // Helper: partner access control
 // ============================================================
@@ -1279,6 +1298,14 @@ export const appRouter = router({
       if (!canManageCases(ctx.user.role)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "案件を登録する権限がありません" });
       }
+      const requestNumber = input.requestNumber.trim();
+      const existingCase = await getCaseByRequestNumber(requestNumber);
+      if (existingCase) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: `依頼番号「${requestNumber}」は既に登録済みです（案件ID: ${existingCase.id} / 店舗: ${existingCase.storeName}）。案件一覧から既存案件を確認してください。`,
+        });
+      }
       // 都道府県が未入力なら住所から自動推定して補完（手入力は優先）
       const prefecture =
         input.prefecture && input.prefecture.trim()
@@ -1298,7 +1325,19 @@ export const appRouter = router({
           throw new TRPCError({ code: "FORBIDDEN", message: "金額情報を登録する権限がありません" });
         }
       }
-      const id = await createCase({ ...input, prefecture, createdBy: ctx.user.id });
+      let id: number;
+      try {
+        id = await createCase({ ...input, requestNumber, prefecture, createdBy: ctx.user.id });
+      } catch (error) {
+        if (isDuplicateEntryError(error)) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `依頼番号「${requestNumber}」は既に登録済みです。案件一覧から既存案件を確認してください。`,
+            cause: error,
+          });
+        }
+        throw error;
+      }
       // デフォルトチェックリストを自動投入
       const items = DEFAULT_CHECKLIST.map((tpl) => ({
         caseId: id,
