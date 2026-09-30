@@ -1,3 +1,5 @@
+import { missingEstimateFields } from "./estimateReview";
+
 /** 参考ページの2026-09-21価格スナップショット。仕入値・出し見積ではない。 */
 export const FORETIA_SOURCE = "https://www.bicklycurtain.com/c/blind/1001631";
 export const FORETIA_REFERENCE =
@@ -108,20 +110,11 @@ export function calculateEstimate(lines: EstimateLine[]) {
   let subtotal = 0;
   let missing = 0;
   for (const line of lines) {
-    if (
-      line.unitPrice === null ||
-      line.quantity === null ||
-      !Number.isFinite(line.quantity) ||
-      !Number.isFinite(line.unitPrice)
-    ) {
+    if (missingEstimateFields(line).length) {
       missing++;
       continue;
     }
-    if (line.unitPrice < 0 || line.quantity <= 0) {
-      missing++;
-      continue;
-    }
-    subtotal += Math.round(line.unitPrice * line.quantity);
+    subtotal += Math.round(line.unitPrice! * line.quantity!);
   }
   const tax = Math.floor(subtotal * 0.1);
   return { subtotal, tax, total: subtotal + tax, missing };

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertCircle,
@@ -33,6 +34,11 @@ import {
   quoteForetia,
   type EstimateLine,
 } from "../../../shared/estimateAssistant";
+import {
+  missingEstimateFields,
+  resolveEstimateCandidates,
+  type ReviewCandidate,
+} from "../../../shared/estimateReview";
 
 const yen = (value: number) => `¥${value.toLocaleString("ja-JP")}`;
 const NO_PDF_SOURCE = { fileKey: "" } as const;
@@ -62,6 +68,13 @@ export default function EstimateAssistant() {
   const [caseId, setCaseId] = useState(initialCaseId);
   const [title, setTitle] = useState("見積案");
   const [lines, setLines] = useState<EstimateLine[]>([]);
+  const [reviewCandidates, setReviewCandidates] = useState<ReviewCandidate[]>(
+    []
+  );
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<number[]>(
+    []
+  );
+  const candidateSequence = useRef(0);
   const [draftId, setDraftId] = useState<number | undefined>();
   const [draftUpdatedAt, setDraftUpdatedAt] = useState<number | undefined>();
   const [draftStatus, setDraftStatus] = useState<"draft" | "approved">("draft");
@@ -85,7 +98,8 @@ export default function EstimateAssistant() {
   const catalog = trpc.estimateAssistant.catalog.useQuery();
   const cases = trpc.cases.listMinimal.useQuery();
   const caseContext = trpc.estimateAssistant.caseContext.useQuery(
-    { caseId: Number(caseId) }, { enabled: Number(caseId) > 0 }
+    { caseId: Number(caseId) },
+    { enabled: Number(caseId) > 0 }
   );
   const draftQuery = trpc.estimateAssistant.listDrafts.useQuery(
     { caseId: Number(caseId) },
@@ -94,29 +108,88 @@ export default function EstimateAssistant() {
   const save = trpc.estimateAssistant.saveDraft.useMutation();
   const upload = trpc.estimateAssistant.uploadPdf.useMutation();
   const analyze = trpc.estimateAssistant.analyzePdf.useMutation();
-  const analyzeRegisteredCase = trpc.estimateAssistant.analyzeCase.useMutation();
+  const analyzeRegisteredCase =
+    trpc.estimateAssistant.analyzeCase.useMutation();
   const approve = trpc.estimateAssistant.approveDraft.useMutation();
-  const pdfSource = useMemo(() => draftId && sourcePdfKey
-    ? { draftId }
-    : sourcePdfKey?.startsWith("imports/case-") && Number(caseId) > 0
-      ? { caseId: Number(caseId) }
-      : sourcePdfKey ? { fileKey: sourcePdfKey } : null,
-    [draftId, sourcePdfKey, caseId]);
+  const pdfSource = useMemo(
+    () =>
+      draftId && sourcePdfKey
+        ? { draftId }
+        : sourcePdfKey?.startsWith("imports/case-") && Number(caseId) > 0
+          ? { caseId: Number(caseId) }
+          : sourcePdfKey
+            ? { fileKey: sourcePdfKey }
+            : null,
+    [draftId, sourcePdfKey, caseId]
+  );
   const pdfView = trpc.estimateAssistant.pdfPreviewUrl.useQuery(
-    pdfSource ?? NO_PDF_SOURCE, { enabled: !!pdfSource },
+    pdfSource ?? NO_PDF_SOURCE,
+    { enabled: !!pdfSource }
   );
   const approvedQuote = trpc.estimateAssistant.approvedQuote.useQuery(
-    { id: draftId ?? 0 }, { enabled: !!draftId && draftStatus === "approved" },
+    { id: draftId ?? 0 },
+    { enabled: !!draftId && draftStatus === "approved" }
   );
   const utils = trpc.useUtils();
   const amount = useMemo(() => calculateEstimate(lines), [lines]);
   const widthMm = Number(width) * (unitMode === "cm" ? 10 : 1);
   const heightMm = Number(height) * (unitMode === "cm" ? 10 : 1);
   const foretia = quoteForetia(widthMm, heightMm);
-  const fingerprint = JSON.stringify({ title, lines, sourceKind, sourcePdfKey, sourcePdfName });
-  const hasUnsavedChanges = draftId !== undefined && draftStatus === "draft" &&
+  const fingerprint = JSON.stringify({
+    title,
+    lines,
+    sourceKind,
+    sourcePdfKey,
+    sourcePdfName,
+  });
+  const hasUnsavedChanges =
+    draftId !== undefined &&
+    draftStatus === "draft" &&
     savedFingerprint !== fingerprint;
   const canModify = canEdit && draftStatus === "draft";
+  const selectedCount = reviewCandidates.filter(candidate =>
+    selectedCandidateIds.includes(candidate.id)
+  ).length;
+  const reviewAllSelected =
+    reviewCandidates.length > 0 && selectedCount === reviewCandidates.length;
+  const stageCandidates = (items: EstimateLine[]) => {
+    setReviewCandidates(
+      items.map(line => ({ id: ++candidateSequence.current, line }))
+    );
+    setSelectedCandidateIds([]);
+  };
+  const clearCandidates = () => {
+    setReviewCandidates([]);
+    setSelectedCandidateIds([]);
+  };
+  const applyCandidateSelection = (action: "adopt" | "exclude") => {
+    if (!canModify || !selectedCount) return;
+    if (action === "adopt" && lines.length + selectedCount > 50)
+      return toast.error(
+        "保存できる明細は50件までです。候補の選択数を減らしてください"
+      );
+    if (
+      action === "exclude" &&
+      !window.confirm(
+        `選択した候補 ${selectedCount}件を除外しますか？採用済み明細には影響しません。`
+      )
+    )
+      return;
+    const result = resolveEstimateCandidates(
+      reviewCandidates,
+      selectedCandidateIds,
+      action
+    );
+    if (action === "adopt")
+      setLines(current => [...current, ...result.adopted]);
+    setReviewCandidates(result.remaining);
+    setSelectedCandidateIds([]);
+    toast.success(
+      action === "adopt"
+        ? `${selectedCount}件を見積明細に採用しました`
+        : `${selectedCount}件を候補から除外しました`
+    );
+  };
   const categories = useMemo(
     () => [
       "全て",
@@ -145,7 +218,8 @@ export default function EstimateAssistant() {
     [catalog.data, category, search]
   );
   const update = (i: number, change: Partial<EstimateLine>) =>
-    canModify && setLines(current =>
+    canModify &&
+    setLines(current =>
       current.map((line, j) => (i === j ? { ...line, ...change } : line))
     );
   const addForetia = () => {
@@ -189,6 +263,7 @@ export default function EstimateAssistant() {
     toast.success("見積案に追加しました");
   };
   const resetDraft = () => {
+    clearCandidates();
     setDraftId(undefined);
     setDraftUpdatedAt(undefined);
     setDraftStatus("draft");
@@ -204,6 +279,8 @@ export default function EstimateAssistant() {
   };
   const persist = async () => {
     if (!canModify) return;
+    if (reviewCandidates.length)
+      return toast.error("候補をすべて採用または除外してから保存してください");
     if (!Number(caseId)) return toast.error("保存先の案件を選択してください");
     if (lines.length === 0 || lines.some(line => !line.name.trim()))
       return toast.error("空の明細名をなくしてください");
@@ -242,52 +319,91 @@ export default function EstimateAssistant() {
   };
   const approveAndDownload = async () => {
     if (!canModify || !draftId || !draftUpdatedAt) return;
-    if (hasUnsavedChanges) return toast.error("変更した明細を先に保存してください");
+    if (reviewCandidates.length)
+      return toast.error("未判定の候補があります。採用または除外してください");
+    if (hasUnsavedChanges)
+      return toast.error("変更した明細を先に保存してください");
     if (amount.missing || amount.total <= 0)
       return toast.error("全明細の数量と単価を確定してから承認してください");
-    if (!window.confirm("現在の見積内容を承認し、編集できない正式見積書として固定します。よろしいですか？")) return;
+    if (
+      !window.confirm(
+        "現在の見積内容を承認し、編集できない正式見積書として固定します。よろしいですか？"
+      )
+    )
+      return;
     let snapshot;
     try {
-      snapshot = await approve.mutateAsync({ id: draftId, expectedUpdatedAt: draftUpdatedAt });
+      snapshot = await approve.mutateAsync({
+        id: draftId,
+        expectedUpdatedAt: draftUpdatedAt,
+      });
       setDraftStatus("approved");
-      await utils.estimateAssistant.listDrafts.invalidate({ caseId: Number(caseId) });
+      await utils.estimateAssistant.listDrafts.invalidate({
+        caseId: Number(caseId),
+      });
       toast.success("見積書を承認しました。PDFを生成します");
-    } catch (e: any) { return toast.error(e?.message ?? "承認できませんでした"); }
-    try {
-      const { downloadApprovedEstimatePdf } = await import("@/lib/approvedEstimatePdf");
-      await downloadApprovedEstimatePdf(snapshot);
+    } catch (e: any) {
+      return toast.error(e?.message ?? "承認できませんでした");
     }
-    catch (e: any) { toast.error(`承認は完了しましたがPDFの出力に失敗しました。再ダウンロードをお試しください。${e?.message ?? ""}`); }
+    try {
+      const { downloadApprovedEstimatePdf } = await import(
+        "@/lib/approvedEstimatePdf"
+      );
+      await downloadApprovedEstimatePdf(snapshot);
+    } catch (e: any) {
+      toast.error(
+        `承認は完了しましたがPDFの出力に失敗しました。再ダウンロードをお試しください。${e?.message ?? ""}`
+      );
+    }
   };
   const downloadAgain = async () => {
-    if (!approvedQuote.data) return toast.error("承認済みデータを読み込めませんでした");
+    if (!approvedQuote.data)
+      return toast.error("承認済みデータを読み込めませんでした");
     try {
-      const { downloadApprovedEstimatePdf } = await import("@/lib/approvedEstimatePdf");
+      const { downloadApprovedEstimatePdf } = await import(
+        "@/lib/approvedEstimatePdf"
+      );
       await downloadApprovedEstimatePdf(approvedQuote.data);
+    } catch (e: any) {
+      toast.error(e?.message ?? "PDFを出力できませんでした");
     }
-    catch (e: any) { toast.error(e?.message ?? "PDFを出力できませんでした"); }
   };
   const handleRegisteredCase = async () => {
     if (!canModify || !Number(caseId)) return;
-    if (lines.length && !window.confirm("表示中の見積明細を案件情報からの候補に置き換えますか？未保存の変更は消えます。")) return;
+    if (
+      (lines.length || reviewCandidates.length) &&
+      !window.confirm(
+        "表示中の見積明細と未判定の候補を案件情報からの候補に置き換えますか？未保存の変更は消えます。"
+      )
+    )
+      return;
     setPdfBusy(true);
     try {
-      const result = await analyzeRegisteredCase.mutateAsync({ caseId: Number(caseId) });
+      const result = await analyzeRegisteredCase.mutateAsync({
+        caseId: Number(caseId),
+      });
       setDraftId(undefined);
       setDraftUpdatedAt(undefined);
       setSavedFingerprint(null);
-      setLines(result.items);
+      setLines([]);
+      stageCandidates(result.items);
       setTitle(`${result.storeName} 見積案`);
       setSourcePdfKey(result.sourcePdfKey);
       setSourcePdfName(result.sourcePdfName);
       setSourceKind(result.sourcePdfKey ? "request_pdf" : "manual");
       setPdfMatchedCaseId(Number(caseId));
       setPdfPage(1);
-      setPdfContext(`依頼番号: ${result.requestNumber} ／ 案件登録済みの依頼内容から抽出。${result.sourcePdfKey ? "左の元PDFと照合してください。" : "元PDFは案件登録時に保存されていないため表示できません。"}`);
-      toast.success("案件の依頼内容から見積案を作成しました。単価・数量を確認して保存してください");
+      setPdfContext(
+        `依頼番号: ${result.requestNumber} ／ 案件登録済みの依頼内容から抽出。${result.sourcePdfKey ? "左の元PDFと照合してください。" : "元PDFは案件登録時に保存されていないため表示できません。"}`
+      );
+      toast.success(
+        `${result.items.length}件の候補を生成しました。採用・除外を選んでください`
+      );
     } catch (e: any) {
       toast.error(e?.message ?? "案件情報からの見積案作成に失敗しました");
-    } finally { setPdfBusy(false); }
+    } finally {
+      setPdfBusy(false);
+    }
   };
   const handlePdf = async (file: File) => {
     if (!canModify) return;
@@ -297,9 +413,9 @@ export default function EstimateAssistant() {
     )
       return toast.error("12MB以内のPDFを選択してください");
     if (
-      lines.length &&
+      (lines.length || reviewCandidates.length) &&
       !window.confirm(
-        "現在の画面上の明細をPDFからの見積案で置き換えますか？未保存の内容は消えます。"
+        "現在の画面上の明細と未判定の候補をPDFからの見積案で置き換えますか？未保存の内容は消えます。"
       )
     )
       return;
@@ -311,10 +427,15 @@ export default function EstimateAssistant() {
         fileBase64: base64,
       });
       const result = await analyze.mutateAsync({ fileKey: up.fileKey });
+      if (!result.items.length) {
+        toast.warning("見積候補を抽出できませんでした。PDFの画質・依頼内容を確認してください。表示中の明細は保持しています");
+        return;
+      }
       setDraftId(undefined);
       setDraftUpdatedAt(undefined);
       setSavedFingerprint(null);
-      setLines(result.items);
+      setLines([]);
+      stageCandidates(result.items);
       setTitle(`${result.storeName || "案件"} 見積案`);
       setSourcePdfKey(up.fileKey);
       setSourcePdfName(up.fileName);
@@ -335,7 +456,7 @@ export default function EstimateAssistant() {
           "PDFの依頼番号と選択案件が一致しません。保存前に案件を確認してください"
         );
       toast.success(
-        "PDFから見積案を作成しました。数量・単価・作業範囲を確認してください"
+        `${result.items.length}件の候補を抽出しました。採用・除外を選んでください`
       );
     } catch (e: any) {
       toast.error(e?.message ?? "PDFから見積案を作成できませんでした");
@@ -357,7 +478,13 @@ export default function EstimateAssistant() {
         <p className="text-sm text-slate-600">
           寸法別商品単価・施工標準単価・依頼PDFから見積案を作成。承認後は内容を固定し、正式見積書PDFを出力します。案件金額や既存見積には自動反映しません。
         </p>
-        <Button variant="outline" size="sm" onClick={() => navigate("/estimates/unit-prices")}>標準施工単価マスタを管理 <ArrowRight className="ml-2 h-4 w-4" /></Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate("/estimates/unit-prices")}
+        >
+          標準施工単価マスタを管理 <ArrowRight className="ml-2 h-4 w-4" />
+        </Button>
       </header>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_365px]">
         <div className="min-w-0 space-y-6">
@@ -371,10 +498,9 @@ export default function EstimateAssistant() {
                   value={caseId}
                   onChange={e => {
                     if (
-                      lines.length &&
-                      draftId &&
+                      (lines.length || reviewCandidates.length) &&
                       !confirm(
-                        "案件を切り替えると開いている見積案を閉じます。よろしいですか？"
+                        "案件を切り替えると見積明細と未判定の候補を閉じます。未保存の変更は消えます。よろしいですか？"
                       )
                     )
                       return;
@@ -403,27 +529,62 @@ export default function EstimateAssistant() {
           {caseId && (
             <Card className="border-blue-200 bg-blue-50/40">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">この案件の登録情報から見積案を作る</CardTitle>
+                <CardTitle className="text-base">
+                  この案件の登録情報から見積案を作る
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
-                {caseContext.isLoading ? <p>案件情報を読み込み中...</p> : caseContext.error ? (
+                {caseContext.isLoading ? (
+                  <p>案件情報を読み込み中...</p>
+                ) : caseContext.error ? (
                   <p className="text-red-700">{caseContext.error.message}</p>
-                ) : caseContext.data ? <>
-                  <p className="font-medium">{caseContext.data.requestNumber} ／ {caseContext.data.storeName}</p>
-                  <p className="whitespace-pre-wrap rounded-md bg-white p-3 text-slate-700">
-                    {caseContext.data.requestContent || [caseContext.data.categoryLarge, caseContext.data.categoryMedium, caseContext.data.categorySmall].filter(Boolean).join(" / ") || "依頼内容が未登録です"}
-                  </p>
-                  <p className="text-xs text-slate-600">
-                    {caseContext.data.hasSourcePdf
-                      ? `元PDF: ${caseContext.data.sourcePdfName}（再アップロード不要・生成後に左右で照合可能）`
-                      : "過去に登録された案件の元PDFは紐付けがないため表示できません。保存済み依頼内容から案を作成できます。"}
-                  </p>
-                  <Button onClick={() => void handleRegisteredCase()} disabled={!canModify || pdfBusy || !([caseContext.data.requestContent, caseContext.data.categoryLarge, caseContext.data.categoryMedium, caseContext.data.categorySmall].some(Boolean))}>
-                    {pdfBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Calculator className="mr-2 h-4 w-4" />}
-                    案件情報から見積案を生成
-                  </Button>
-                  <p className="text-xs text-slate-600">生成は確認用の候補のみ。案件金額・正式見積は更新しません。</p>
-                </> : null}
+                ) : caseContext.data ? (
+                  <>
+                    <p className="font-medium">
+                      {caseContext.data.requestNumber} ／{" "}
+                      {caseContext.data.storeName}
+                    </p>
+                    <p className="whitespace-pre-wrap rounded-md bg-white p-3 text-slate-700">
+                      {caseContext.data.requestContent ||
+                        [
+                          caseContext.data.categoryLarge,
+                          caseContext.data.categoryMedium,
+                          caseContext.data.categorySmall,
+                        ]
+                          .filter(Boolean)
+                          .join(" / ") ||
+                        "依頼内容が未登録です"}
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      {caseContext.data.hasSourcePdf
+                        ? `元PDF: ${caseContext.data.sourcePdfName}（再アップロード不要・生成後に左右で照合可能）`
+                        : "過去に登録された案件の元PDFは紐付けがないため表示できません。保存済み依頼内容から案を作成できます。"}
+                    </p>
+                    <Button
+                      onClick={() => void handleRegisteredCase()}
+                      disabled={
+                        !canModify ||
+                        pdfBusy ||
+                        ![
+                          caseContext.data.requestContent,
+                          caseContext.data.categoryLarge,
+                          caseContext.data.categoryMedium,
+                          caseContext.data.categorySmall,
+                        ].some(Boolean)
+                      }
+                    >
+                      {pdfBusy ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Calculator className="mr-2 h-4 w-4" />
+                      )}
+                      案件情報から見積案を生成
+                    </Button>
+                    <p className="text-xs text-slate-600">
+                      生成は確認用の候補のみ。案件金額・正式見積は更新しません。
+                    </p>
+                  </>
+                ) : null}
               </CardContent>
             </Card>
           )}
@@ -667,7 +828,9 @@ export default function EstimateAssistant() {
                             {yen(item.low)} · 標準 {yen(item.standard)} · 上限{" "}
                             {yen(item.high)}
                           </p>
-                          <p className="text-xs text-slate-500">根拠：{item.sourceRef}</p>
+                          <p className="text-xs text-slate-500">
+                            根拠：{item.sourceRef}
+                          </p>
                         </div>
                         {canModify && (
                           <div className="flex shrink-0 gap-1">
@@ -736,7 +899,9 @@ export default function EstimateAssistant() {
                       )}
                     </>
                   ) : (
-                    <p className="text-sm">承認済み見積は編集できません。新しい案を作成してください。</p>
+                    <p className="text-sm">
+                      承認済み見積は編集できません。新しい案を作成してください。
+                    </p>
                   )}
                   {pdfContext && (
                     <p className="rounded-md bg-blue-50 p-3 text-sm">
@@ -747,187 +912,459 @@ export default function EstimateAssistant() {
               </Card>
             </TabsContent>
           </Tabs>
-          <div className={sourcePdfKey ? "grid items-start gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]" : ""}>
-          {sourcePdfKey && (
-            <Card className="min-w-0 overflow-hidden xl:sticky xl:top-4">
-              <CardHeader className="border-b bg-slate-50 py-3">
-                <CardTitle className="flex flex-wrap items-center justify-between gap-2 text-base">
-                  <span>元の依頼PDF</span>
-                  <span className="text-xs font-normal text-slate-600">{sourcePdfName}</span>
+          {reviewCandidates.length > 0 && (
+            <Card
+              className="border-blue-300 bg-blue-50/40"
+              aria-label="AI見積候補の確認"
+            >
+              <CardHeader className="space-y-2 pb-3">
+                <CardTitle className="text-base">
+                  AI見積候補の確認（未採用 {reviewCandidates.length}件）
                 </CardTitle>
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <label>ページ
-                    <Input aria-label="元PDFのページ" className="ml-2 inline-flex h-8 w-16" type="number" min="1" max="2000"
-                      value={pdfPage} onChange={e => setPdfPage(Math.max(1, Number(e.target.value) || 1))} />
-                  </label>
-                  <Button size="sm" variant="outline" onClick={() => void pdfView.refetch()}>表示を更新</Button>
-                  {pdfView.data?.url && <a className="inline-flex items-center gap-1 underline" href={pdfView.data.url} target="_blank" rel="noreferrer">別画面で原本を開く <ExternalLink className="h-3 w-3" /></a>}
-                </div>
-              </CardHeader>
-              <CardContent className="p-2">
-                {pdfView.isLoading ? <p className="p-4 text-sm">元PDFを読み込み中...</p> :
-                  pdfView.error ? <p className="p-4 text-sm text-red-700">元PDFを表示できません: {pdfView.error.message}</p> :
-                  pdfView.data?.url ? <iframe key={`${pdfView.data.url}:${pdfPage}`} title="元の依頼PDF" src={`${pdfView.data.url}#page=${pdfPage}&view=FitH`} className="h-[680px] w-full rounded-md border bg-slate-100" /> :
-                  <p className="p-4 text-sm">原本の表示を準備しています。</p>}
-                <p className="mt-2 text-xs text-slate-600">左の原本を見ながら右の抽出値を修正してください。{sourcePdfKey.startsWith("imports/case-") ? "明細は案件に保存された依頼内容から作成した候補です。PDFからの直接抽出ではありません。" : "ページ番号はAIの推定です。"}原本と相違する場合は原本を優先します。</p>
-              </CardContent>
-            </Card>
-          )}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calculator className="h-5 w-5" />
-                {sourcePdfKey ? "抽出した見積明細・照合" : "見積案の明細"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Input
-                aria-label="見積案の件名"
-                value={title}
-                disabled={!canModify}
-                onChange={e => setTitle(e.target.value)}
-                placeholder="見積案の件名"
-              />
-              {lines.length === 0 ? (
-                <p className="rounded-lg border border-dashed p-8 text-center text-sm text-slate-500">
-                  寸法別商品、標準施工単価、または依頼PDFから明細を追加してください。
+                <p className="text-sm text-slate-700">
+                  必要な候補にチェックを入れ、選択分を一括採用または除外してください。判定するまで保存・承認されません。
                 </p>
-              ) : (
-                <div className="space-y-3">
-                  {lines.map((line, i) => (
-                    <div key={i} className="rounded-lg border bg-white p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="text-xs font-semibold text-slate-500">
-                          明細 {i + 1}
-                        </span>
-                        {canModify && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            aria-label={`明細${i + 1}を削除`}
-                            onClick={() =>
-                              setLines(current =>
-                                current.filter((_, j) => j !== i)
-                              )
-                            }
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <label className="text-xs">
-                          工事項目
-                          <Input
-                            value={line.name}
-                            disabled={!canModify}
-                            onChange={e => update(i, { name: e.target.value })}
-                          />
-                        </label>
-                        <label className="text-xs">
-                          規格・寸法
-                          <Input
-                            value={line.specification}
-                            disabled={!canModify}
-                            onChange={e =>
-                              update(i, { specification: e.target.value })
-                            }
-                          />
-                        </label>
-                      </div>
-                      <div className="mt-2 grid grid-cols-3 gap-2">
-                        <label className="text-xs">
-                          数量
-                          <Input
-                            type="number"
-                            step="any"
-                            min="0.001"
-                            value={line.quantity ?? ""}
-                            disabled={!canModify}
-                            onChange={e =>
-                              update(i, {
-                                quantity:
-                                  e.target.value === ""
-                                    ? null
-                                    : Number(e.target.value),
-                              })
-                            }
-                          />
-                        </label>
-                        <label className="text-xs">
-                          単位
-                          <Input
-                            value={line.unit}
-                            disabled={!canModify}
-                            onChange={e => update(i, { unit: e.target.value })}
-                          />
-                        </label>
-                        <label className="text-xs">
-                          単価・税抜試算
-                          <Input
-                            type="number"
-                            min="0"
-                            step="1"
-                            value={line.unitPrice ?? ""}
-                            disabled={!canModify}
-                            onChange={e =>
-                              update(i, {
-                                unitPrice:
-                                  e.target.value === ""
-                                    ? null
-                                    : Number(e.target.value),
-                              })
-                            }
-                          />
-                        </label>
-                      </div>
-                      {(sourcePdfKey || line.evidence) && (
-                        <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-slate-700">
-                          <div className="mb-2 flex flex-wrap items-center justify-between gap-1">
-                            <strong>{sourcePdfKey?.startsWith("imports/case-") || !sourcePdfKey ? "案件に保存された記述（PDFの直接抽出ではありません）" : "PDFの原文根拠"}</strong>
-                            {sourcePdfKey && line.pageNumber && <Button variant="outline" size="sm" onClick={() => setPdfPage(line.pageNumber || 1)}>
-                              PDF {line.pageNumber}ページを開く
-                            </Button>}
-                          </div>
-                          <Input aria-label={`明細${i + 1}の原文引用`} value={line.evidence ?? ""} disabled={!canModify}
-                            placeholder="依頼内容を確認してください" onChange={e => update(i, { evidence: e.target.value })} />
-                          {canModify && sourcePdfKey && !sourcePdfKey.startsWith("imports/case-") && <label className="mt-2 flex items-center gap-2">原文のページ番号
-                            <Input aria-label={`明細${i + 1}のページ番号`} className="h-8 w-20" type="number" min="1" max="2000"
-                              value={line.pageNumber ?? ""} onChange={e => update(i, { pageNumber: e.target.value ? Number(e.target.value) : null })} />
-                          </label>}
-                        </div>
-                      )}
-                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
-                        <span className="break-all text-slate-500">
-                          根拠: {line.source}
-                          {line.note ? ` / ${line.note}` : ""}
-                        </span>
-                        <strong className="whitespace-nowrap text-sm">
-                          {line.quantity != null && line.unitPrice != null ? (
-                            yen(Math.round(line.quantity * line.unitPrice))
-                          ) : (
-                            <Badge variant="outline">価格・数量を要確認</Badge>
-                          )}
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2 border-b pb-3">
+                  <div className="mr-auto flex items-center gap-2 text-sm font-medium">
+                    <Checkbox
+                      id="estimate-select-all"
+                      aria-label="候補をすべて選択"
+                      checked={
+                        reviewAllSelected
+                          ? true
+                          : selectedCount > 0
+                            ? "indeterminate"
+                            : false
+                      }
+                      disabled={!canModify}
+                      onCheckedChange={checked =>
+                        setSelectedCandidateIds(
+                          checked === true
+                            ? reviewCandidates.map(candidate => candidate.id)
+                            : []
+                        )
+                      }
+                    />
+                    <label
+                      htmlFor="estimate-select-all"
+                      className="cursor-pointer"
+                    >
+                      すべて選択（{selectedCount} / {reviewCandidates.length}
+                      件）
+                    </label>
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={
+                      !canModify ||
+                      selectedCount === 0 ||
+                      lines.length + selectedCount > 50
+                    }
+                    onClick={() => applyCandidateSelection("adopt")}
+                  >
+                    選択した{selectedCount}件を一括採用
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!canModify || selectedCount === 0}
+                    onClick={() => applyCandidateSelection("exclude")}
+                  >
+                    選択した{selectedCount}件を一括除外
+                  </Button>
+                </div>
+                <div className="max-h-[480px] space-y-2 overflow-y-auto pr-1">
+                  {reviewCandidates.map((candidate, index) => (
+                    <div
+                      key={candidate.id}
+                      className="flex items-start gap-3 rounded-md border bg-white p-3 text-sm"
+                    >
+                      <Checkbox
+                        id={`estimate-candidate-${candidate.id}`}
+                        className="mt-1"
+                        aria-label={`候補${index + 1} ${candidate.line.name}を選択`}
+                        checked={selectedCandidateIds.includes(candidate.id)}
+                        disabled={!canModify}
+                        onCheckedChange={checked =>
+                          setSelectedCandidateIds(current =>
+                            checked === true
+                              ? [...current, candidate.id]
+                              : current.filter(id => id !== candidate.id)
+                          )
+                        }
+                      />
+                      <label
+                        htmlFor={`estimate-candidate-${candidate.id}`}
+                        className="min-w-0 cursor-pointer space-y-1"
+                      >
+                        <strong className="block break-words">
+                          候補 {index + 1}｜{candidate.line.name}
                         </strong>
-                      </div>
-                      <label className="mt-2 block text-xs text-slate-600">補足・施工条件
-                        <Input className="mt-1" value={line.note} disabled={!canModify} onChange={e => update(i, { note: e.target.value })} />
+                        <span className="block text-xs text-slate-600">
+                          {candidate.line.specification || "規格未記載"} ／
+                          数量: {candidate.line.quantity ?? "未入力"}{" "}
+                          {candidate.line.unit || "単位未入力"} ／ 単価:{" "}
+                          {candidate.line.unitPrice == null
+                            ? "未入力"
+                            : yen(candidate.line.unitPrice)}
+                        </span>
+                        {candidate.line.evidence && (
+                          <span className="block break-words text-xs text-slate-600">
+                            根拠: {candidate.line.evidence}
+                            {candidate.line.pageNumber
+                              ? `（PDF ${candidate.line.pageNumber}ページ）`
+                              : ""}
+                          </span>
+                        )}
                       </label>
                     </div>
                   ))}
                 </div>
-              )}
-              {canModify && (
-                <Button
-                  variant="outline"
-                  onClick={() => setLines(current => [...current, blankLine()])}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  手入力の明細を追加
-                </Button>
-              )}
-            </CardContent>
-          </Card>
+                {lines.length + selectedCount > 50 && (
+                  <p className="text-xs text-red-700">
+                    採用すると明細50件の上限を超えます。選択数を減らしてください。
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+          <div
+            className={
+              sourcePdfKey
+                ? "grid items-start gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]"
+                : ""
+            }
+          >
+            {sourcePdfKey && (
+              <Card className="min-w-0 overflow-hidden xl:sticky xl:top-4">
+                <CardHeader className="border-b bg-slate-50 py-3">
+                  <CardTitle className="flex flex-wrap items-center justify-between gap-2 text-base">
+                    <span>元の依頼PDF</span>
+                    <span className="text-xs font-normal text-slate-600">
+                      {sourcePdfName}
+                    </span>
+                  </CardTitle>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <label>
+                      ページ
+                      <Input
+                        aria-label="元PDFのページ"
+                        className="ml-2 inline-flex h-8 w-16"
+                        type="number"
+                        min="1"
+                        max="2000"
+                        value={pdfPage}
+                        onChange={e =>
+                          setPdfPage(Math.max(1, Number(e.target.value) || 1))
+                        }
+                      />
+                    </label>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void pdfView.refetch()}
+                    >
+                      表示を更新
+                    </Button>
+                    {pdfView.data?.url && (
+                      <a
+                        className="inline-flex items-center gap-1 underline"
+                        href={pdfView.data.url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        別画面で原本を開く <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="p-2">
+                  {pdfView.isLoading ? (
+                    <p className="p-4 text-sm">元PDFを読み込み中...</p>
+                  ) : pdfView.error ? (
+                    <p className="p-4 text-sm text-red-700">
+                      元PDFを表示できません: {pdfView.error.message}
+                    </p>
+                  ) : pdfView.data?.url ? (
+                    <iframe
+                      key={`${pdfView.data.url}:${pdfPage}`}
+                      title="元の依頼PDF"
+                      src={`${pdfView.data.url}#page=${pdfPage}&view=FitH`}
+                      className="h-[680px] w-full rounded-md border bg-slate-100"
+                    />
+                  ) : (
+                    <p className="p-4 text-sm">原本の表示を準備しています。</p>
+                  )}
+                  <p className="mt-2 text-xs text-slate-600">
+                    左の原本を見ながら右の抽出値を修正してください。
+                    {sourcePdfKey.startsWith("imports/case-")
+                      ? "明細は案件に保存された依頼内容から作成した候補です。PDFからの直接抽出ではありません。"
+                      : "ページ番号はAIの推定です。"}
+                    原本と相違する場合は原本を優先します。
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Calculator className="h-5 w-5" />
+                  {sourcePdfKey ? "抽出した見積明細・照合" : "見積案の明細"}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Input
+                  aria-label="見積案の件名"
+                  value={title}
+                  disabled={!canModify}
+                  onChange={e => setTitle(e.target.value)}
+                  placeholder="見積案の件名"
+                />
+                {lines.length === 0 ? (
+                  <p className="rounded-lg border border-dashed p-8 text-center text-sm text-slate-500">
+                    寸法別商品、標準施工単価、または依頼PDFから明細を追加してください。
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {lines.map((line, i) => {
+                      const missing = missingEstimateFields(line);
+                      const invalidQuantity = missing.includes("数量");
+                      const invalidUnit = missing.includes("単位");
+                      const invalidPrice = missing.includes("単価");
+                      return (
+                        <div
+                          key={i}
+                          className={`rounded-lg border p-3 ${missing.length ? "border-red-300 bg-red-50/40" : "bg-white"}`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+                              明細 {i + 1}
+                              {missing.length > 0 && (
+                                <Badge
+                                  variant="outline"
+                                  className="border-red-300 bg-red-100 text-red-800"
+                                >
+                                  要入力: {missing.join("・")}
+                                </Badge>
+                              )}
+                            </span>
+                            {canModify && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label={`明細${i + 1}を削除`}
+                                onClick={() =>
+                                  setLines(current =>
+                                    current.filter((_, j) => j !== i)
+                                  )
+                                }
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <label className="text-xs">
+                              工事項目
+                              <Input
+                                value={line.name}
+                                disabled={!canModify}
+                                onChange={e =>
+                                  update(i, { name: e.target.value })
+                                }
+                              />
+                            </label>
+                            <label className="text-xs">
+                              規格・寸法
+                              <Input
+                                value={line.specification}
+                                disabled={!canModify}
+                                onChange={e =>
+                                  update(i, { specification: e.target.value })
+                                }
+                              />
+                            </label>
+                          </div>
+                          <div className="mt-2 grid grid-cols-3 gap-2">
+                            <label className="text-xs">
+                              数量
+                              <Input
+                                type="number"
+                                step="any"
+                                min="0.001"
+                                aria-invalid={invalidQuantity}
+                                className={
+                                  invalidQuantity
+                                    ? "border-red-500 bg-white ring-1 ring-red-200"
+                                    : ""
+                                }
+                                placeholder={
+                                  invalidQuantity ? "数量を入力" : undefined
+                                }
+                                value={line.quantity ?? ""}
+                                disabled={!canModify}
+                                onChange={e =>
+                                  update(i, {
+                                    quantity:
+                                      e.target.value === ""
+                                        ? null
+                                        : Number(e.target.value),
+                                  })
+                                }
+                              />
+                            </label>
+                            <label className="text-xs">
+                              単位
+                              <Input
+                                value={line.unit}
+                                aria-invalid={invalidUnit}
+                                className={
+                                  invalidUnit
+                                    ? "border-red-500 bg-white ring-1 ring-red-200"
+                                    : ""
+                                }
+                                placeholder={
+                                  invalidUnit ? "単位を入力" : undefined
+                                }
+                                disabled={!canModify}
+                                onChange={e =>
+                                  update(i, { unit: e.target.value })
+                                }
+                              />
+                            </label>
+                            <label className="text-xs">
+                              単価・税抜試算
+                              <Input
+                                type="number"
+                                min="0"
+                                step="1"
+                                aria-invalid={invalidPrice}
+                                className={
+                                  invalidPrice
+                                    ? "border-red-500 bg-white ring-1 ring-red-200"
+                                    : ""
+                                }
+                                placeholder={
+                                  invalidPrice ? "単価を入力" : undefined
+                                }
+                                value={line.unitPrice ?? ""}
+                                disabled={!canModify}
+                                onChange={e =>
+                                  update(i, {
+                                    unitPrice:
+                                      e.target.value === ""
+                                        ? null
+                                        : Number(e.target.value),
+                                  })
+                                }
+                              />
+                            </label>
+                          </div>
+                          {(sourcePdfKey || line.evidence) && (
+                            <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-slate-700">
+                              <div className="mb-2 flex flex-wrap items-center justify-between gap-1">
+                                <strong>
+                                  {sourcePdfKey?.startsWith("imports/case-") ||
+                                  !sourcePdfKey
+                                    ? "案件に保存された記述（PDFの直接抽出ではありません）"
+                                    : "PDFの原文根拠"}
+                                </strong>
+                                {sourcePdfKey && line.pageNumber && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                      setPdfPage(line.pageNumber || 1)
+                                    }
+                                  >
+                                    PDF {line.pageNumber}ページを開く
+                                  </Button>
+                                )}
+                              </div>
+                              <Input
+                                aria-label={`明細${i + 1}の原文引用`}
+                                value={line.evidence ?? ""}
+                                disabled={!canModify}
+                                placeholder="依頼内容を確認してください"
+                                onChange={e =>
+                                  update(i, { evidence: e.target.value })
+                                }
+                              />
+                              {canModify &&
+                                sourcePdfKey &&
+                                !sourcePdfKey.startsWith("imports/case-") && (
+                                  <label className="mt-2 flex items-center gap-2">
+                                    原文のページ番号
+                                    <Input
+                                      aria-label={`明細${i + 1}のページ番号`}
+                                      className="h-8 w-20"
+                                      type="number"
+                                      min="1"
+                                      max="2000"
+                                      value={line.pageNumber ?? ""}
+                                      onChange={e =>
+                                        update(i, {
+                                          pageNumber: e.target.value
+                                            ? Number(e.target.value)
+                                            : null,
+                                        })
+                                      }
+                                    />
+                                  </label>
+                                )}
+                            </div>
+                          )}
+                          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <span className="break-all text-slate-500">
+                              根拠: {line.source}
+                              {line.note ? ` / ${line.note}` : ""}
+                            </span>
+                            <strong className="whitespace-nowrap text-sm">
+                              {!missing.length &&
+                              line.quantity != null &&
+                              line.unitPrice != null ? (
+                                yen(Math.round(line.quantity * line.unitPrice))
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="border-red-300 bg-red-100 text-red-800"
+                                >
+                                  {missing.join("・")}を要確認
+                                </Badge>
+                              )}
+                            </strong>
+                          </div>
+                          <label className="mt-2 block text-xs text-slate-600">
+                            補足・施工条件
+                            <Input
+                              className="mt-1"
+                              value={line.note}
+                              disabled={!canModify}
+                              onChange={e =>
+                                update(i, { note: e.target.value })
+                              }
+                            />
+                          </label>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {canModify && (
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      setLines(current => [...current, blankLine()])
+                    }
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    手入力の明細を追加
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
         <aside className="min-w-0 space-y-4">
@@ -949,10 +1386,16 @@ export default function EstimateAssistant() {
                 <span>{yen(amount.total)}</span>
               </div>
               {amount.missing > 0 && (
-                <p className="flex items-center gap-2 rounded-md bg-amber-50 p-2 text-xs text-amber-900">
+                <p className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-800">
                   <AlertCircle className="h-4 w-4 shrink-0" />
-                  未設定の単価・数量が {amount.missing}{" "}
+                  数量・単位・単価が未確定の明細 {amount.missing}{" "}
                   件。上記額は総見積額ではありません。
+                </p>
+              )}
+              {reviewCandidates.length > 0 && (
+                <p className="rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900">
+                  未判定のAI候補 {reviewCandidates.length}
+                  件を採用または除外してください。候補は下書き・合計に含まれていません。
                 </p>
               )}
               <p className="text-xs text-slate-600">
@@ -961,7 +1404,12 @@ export default function EstimateAssistant() {
               {canModify && (
                 <Button
                   className="w-full"
-                  disabled={save.isPending || !caseId || lines.length === 0}
+                  disabled={
+                    save.isPending ||
+                    reviewCandidates.length > 0 ||
+                    !caseId ||
+                    lines.length === 0
+                  }
                   onClick={() => void persist()}
                 >
                   {save.isPending ? (
@@ -973,19 +1421,47 @@ export default function EstimateAssistant() {
                 </Button>
               )}
               {canModify && draftId && (
-                <Button variant="outline" className="w-full" disabled={approve.isPending || save.isPending || amount.missing > 0 || hasUnsavedChanges || amount.total <= 0}
-                  onClick={() => void approveAndDownload()}>
-                  {approve.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileCheck2 className="mr-2 h-4 w-4" />}
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  disabled={
+                    approve.isPending ||
+                    save.isPending ||
+                    reviewCandidates.length > 0 ||
+                    amount.missing > 0 ||
+                    hasUnsavedChanges ||
+                    amount.total <= 0
+                  }
+                  onClick={() => void approveAndDownload()}
+                >
+                  {approve.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileCheck2 className="mr-2 h-4 w-4" />
+                  )}
                   内容を承認して正式見積書PDFを出力
                 </Button>
               )}
-              {hasUnsavedChanges && <p className="text-xs text-amber-800">修正した明細を先に保存すると承認できます。</p>}
-              {draftStatus === "approved" && <>
-                <p className="rounded-md bg-green-50 p-2 text-xs text-green-900">承認済み・編集不可。内容は承認時点で固定されています。</p>
-                <Button className="w-full" disabled={approvedQuote.isLoading || !approvedQuote.data} onClick={() => void downloadAgain()}>
-                  <Download className="mr-2 h-4 w-4" />正式見積書PDFを再ダウンロード
-                </Button>
-              </>}
+              {hasUnsavedChanges && (
+                <p className="text-xs text-amber-800">
+                  修正した明細を先に保存すると承認できます。
+                </p>
+              )}
+              {draftStatus === "approved" && (
+                <>
+                  <p className="rounded-md bg-green-50 p-2 text-xs text-green-900">
+                    承認済み・編集不可。内容は承認時点で固定されています。
+                  </p>
+                  <Button
+                    className="w-full"
+                    disabled={approvedQuote.isLoading || !approvedQuote.data}
+                    onClick={() => void downloadAgain()}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    正式見積書PDFを再ダウンロード
+                  </Button>
+                </>
+              )}
             </CardContent>
           </Card>
           {caseId && (
@@ -1005,18 +1481,25 @@ export default function EstimateAssistant() {
                       className="w-full rounded-md border p-3 text-left text-sm hover:bg-slate-50"
                       onClick={() => {
                         if (
-                          lines.length &&
+                          (lines.length || reviewCandidates.length) &&
                           !window.confirm(
-                            "表示中の明細を保存済み見積案で置き換えますか？"
+                            "表示中の明細と未判定の候補を保存済み見積案で置き換えますか？"
                           )
                         )
                           return;
+                        clearCandidates();
                         setDraftId(draft.id);
                         setDraftUpdatedAt(draft.updatedAt);
                         setDraftStatus(draft.status);
-                        setSavedFingerprint(JSON.stringify({ title: draft.title, lines: draft.items,
-                          sourceKind: draft.sourceKind, sourcePdfKey: draft.sourcePdfKey,
-                          sourcePdfName: draft.sourcePdfName }));
+                        setSavedFingerprint(
+                          JSON.stringify({
+                            title: draft.title,
+                            lines: draft.items,
+                            sourceKind: draft.sourceKind,
+                            sourcePdfKey: draft.sourcePdfKey,
+                            sourcePdfName: draft.sourcePdfName,
+                          })
+                        );
                         setTitle(draft.title);
                         setLines(draft.items);
                         setSourceKind(draft.sourceKind);
@@ -1031,7 +1514,12 @@ export default function EstimateAssistant() {
                         );
                       }}
                     >
-                      <span className="block font-medium">{draft.title} {draft.status === "approved" && <Badge className="ml-1 bg-green-700">承認済み</Badge>}</span>
+                      <span className="block font-medium">
+                        {draft.title}{" "}
+                        {draft.status === "approved" && (
+                          <Badge className="ml-1 bg-green-700">承認済み</Badge>
+                        )}
+                      </span>
                       <span className="text-xs text-slate-500">
                         {new Date(draft.updatedAt).toLocaleString("ja-JP")} ／{" "}
                         {draft.missingPriceCount} 件要確認
@@ -1049,9 +1537,9 @@ export default function EstimateAssistant() {
                     size="sm"
                     onClick={() => {
                       if (
-                        !lines.length ||
+                        !(lines.length || reviewCandidates.length) ||
                         window.confirm(
-                          "新しい見積案を開きますか？未保存の明細は消えます。"
+                          "新しい見積案を開きますか？未保存の明細・未判定の候補は消えます。"
                         )
                       )
                         resetDraft();
