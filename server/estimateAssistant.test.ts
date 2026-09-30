@@ -248,4 +248,40 @@ describe("見積案の案件紐付けと保存履歴", () => {
       restricted.estimateAssistant.listDrafts({ caseId })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
+  it("他の管理者は既存PDFの出典を維持して編集でき、別ユーザーの新規PDFキーは使えない", async () => {
+    const originalKey = "imports/estimate-assistant/1/test-source.pdf";
+    const line = priceExtractedItem(work);
+    const created = await owner.estimateAssistant.saveDraft({
+      caseId,
+      title: "元PDFありの案",
+      sourceKind: "request_pdf",
+      sourcePdfKey: originalKey,
+      sourcePdfName: "テスト依頼書.pdf",
+      items: [line],
+    });
+    const admin = caller("admin", { id: 990933 });
+    const updated = await admin.estimateAssistant.saveDraft({
+      id: created.id,
+      expectedUpdatedAt: created.updatedAt,
+      caseId,
+      title: "共同編集後の案",
+      sourceKind: "request_pdf",
+      sourcePdfKey: originalKey,
+      sourcePdfName: "テスト依頼書.pdf",
+      items: [line],
+    });
+    expect(updated.updatedAt).toBeGreaterThan(created.updatedAt);
+    await expect(
+      admin.estimateAssistant.saveDraft({
+        id: created.id,
+        expectedUpdatedAt: updated.updatedAt,
+        caseId,
+        title: "差し替え",
+        sourceKind: "request_pdf",
+        sourcePdfKey: "imports/estimate-assistant/1/other.pdf",
+        sourcePdfName: "other.pdf",
+        items: [line],
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
 });
