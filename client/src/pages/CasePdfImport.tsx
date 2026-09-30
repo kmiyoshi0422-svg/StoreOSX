@@ -138,6 +138,7 @@ export default function CasePdfImport() {
     }
     createMutation.mutate({
       requestNumber: data.requestNumber,
+      ...(pdfFileKey ? { requestPdfKey: pdfFileKey, requestPdfName: pdfName } : {}),
       brand: data.brand,
       storeName: data.storeName,
       storeCode: data.storeCode || null,
@@ -460,6 +461,9 @@ export default function CasePdfImport() {
                 </Button>
                 <Button onClick={() => setLocation(`/cases/${createdId}`)}>
                   案件詳細へ
+                </Button>
+                <Button variant="outline" onClick={() => setLocation(`/estimates/assistant?caseId=${createdId}`)}>
+                  この案件から見積案を作る
                 </Button>
               </div>
             </div>

@@ -67,6 +67,7 @@ import {
   Link2,
   Copy,
   Sparkles,
+  Calculator,
   PenLine,
   Wand2,
   RotateCw,
@@ -101,6 +102,7 @@ import {
 } from "../../../shared/checklist-template";
 import type { Case, ChecklistItem, Photo } from "../../../drizzle/schema";
 import { PREFECTURES, detectPrefecture } from "@shared/prefecture";
+import { canUseEstimateAssistant } from "@shared/estimateAssistant";
 import {
   appendShortImpressionTemplate,
   PARTNER_SHORT_IMPRESSION_MAX_LENGTH,
@@ -244,6 +246,12 @@ export default function CaseDetail({ id }: { id: number }) {
             </div>
           </div>
           <div className="flex flex-wrap gap-2 shrink-0">
+            {canUseEstimateAssistant(user?.role) && (
+              <Button variant="outline" size="sm" onClick={() => setLocation(`/estimates/assistant?caseId=${id}`)}>
+                <Calculator className="h-4 w-4" />
+                この案件から見積案を作る
+              </Button>
+            )}
             {canViewFinancials && (
               <Button
                 variant="outline"

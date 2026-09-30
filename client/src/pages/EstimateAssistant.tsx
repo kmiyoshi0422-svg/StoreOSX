@@ -84,6 +84,9 @@ export default function EstimateAssistant() {
   const pdfRef = useRef<HTMLInputElement>(null);
   const catalog = trpc.estimateAssistant.catalog.useQuery();
   const cases = trpc.cases.listMinimal.useQuery();
+  const caseContext = trpc.estimateAssistant.caseContext.useQuery(
+    { caseId: Number(caseId) }, { enabled: Number(caseId) > 0 }
+  );
   const draftQuery = trpc.estimateAssistant.listDrafts.useQuery(
     { caseId: Number(caseId) },
     { enabled: Number(caseId) > 0 }
@@ -91,11 +94,14 @@ export default function EstimateAssistant() {
   const save = trpc.estimateAssistant.saveDraft.useMutation();
   const upload = trpc.estimateAssistant.uploadPdf.useMutation();
   const analyze = trpc.estimateAssistant.analyzePdf.useMutation();
+  const analyzeRegisteredCase = trpc.estimateAssistant.analyzeCase.useMutation();
   const approve = trpc.estimateAssistant.approveDraft.useMutation();
   const pdfSource = useMemo(() => draftId && sourcePdfKey
     ? { draftId }
-    : sourcePdfKey ? { fileKey: sourcePdfKey } : null,
-    [draftId, sourcePdfKey]);
+    : sourcePdfKey?.startsWith("imports/case-") && Number(caseId) > 0
+      ? { caseId: Number(caseId) }
+      : sourcePdfKey ? { fileKey: sourcePdfKey } : null,
+    [draftId, sourcePdfKey, caseId]);
   const pdfView = trpc.estimateAssistant.pdfPreviewUrl.useQuery(
     pdfSource ?? NO_PDF_SOURCE, { enabled: !!pdfSource },
   );
@@ -261,6 +267,28 @@ export default function EstimateAssistant() {
     }
     catch (e: any) { toast.error(e?.message ?? "PDFを出力できませんでした"); }
   };
+  const handleRegisteredCase = async () => {
+    if (!canModify || !Number(caseId)) return;
+    if (lines.length && !window.confirm("表示中の見積明細を案件情報からの候補に置き換えますか？未保存の変更は消えます。")) return;
+    setPdfBusy(true);
+    try {
+      const result = await analyzeRegisteredCase.mutateAsync({ caseId: Number(caseId) });
+      setDraftId(undefined);
+      setDraftUpdatedAt(undefined);
+      setSavedFingerprint(null);
+      setLines(result.items);
+      setTitle(`${result.storeName} 見積案`);
+      setSourcePdfKey(result.sourcePdfKey);
+      setSourcePdfName(result.sourcePdfName);
+      setSourceKind(result.sourcePdfKey ? "request_pdf" : "manual");
+      setPdfMatchedCaseId(Number(caseId));
+      setPdfPage(1);
+      setPdfContext(`依頼番号: ${result.requestNumber} ／ 案件登録済みの依頼内容から抽出。${result.sourcePdfKey ? "左の元PDFと照合してください。" : "元PDFは案件登録時に保存されていないため表示できません。"}`);
+      toast.success("案件の依頼内容から見積案を作成しました。単価・数量を確認して保存してください");
+    } catch (e: any) {
+      toast.error(e?.message ?? "案件情報からの見積案作成に失敗しました");
+    } finally { setPdfBusy(false); }
+  };
   const handlePdf = async (file: File) => {
     if (!canModify) return;
     if (
@@ -372,6 +400,33 @@ export default function EstimateAssistant() {
               )}
             </CardContent>
           </Card>
+          {caseId && (
+            <Card className="border-blue-200 bg-blue-50/40">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">この案件の登録情報から見積案を作る</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {caseContext.isLoading ? <p>案件情報を読み込み中...</p> : caseContext.error ? (
+                  <p className="text-red-700">{caseContext.error.message}</p>
+                ) : caseContext.data ? <>
+                  <p className="font-medium">{caseContext.data.requestNumber} ／ {caseContext.data.storeName}</p>
+                  <p className="whitespace-pre-wrap rounded-md bg-white p-3 text-slate-700">
+                    {caseContext.data.requestContent || [caseContext.data.categoryLarge, caseContext.data.categoryMedium, caseContext.data.categorySmall].filter(Boolean).join(" / ") || "依頼内容が未登録です"}
+                  </p>
+                  <p className="text-xs text-slate-600">
+                    {caseContext.data.hasSourcePdf
+                      ? `元PDF: ${caseContext.data.sourcePdfName}（再アップロード不要・生成後に左右で照合可能）`
+                      : "過去に登録された案件の元PDFは紐付けがないため表示できません。保存済み依頼内容から案を作成できます。"}
+                  </p>
+                  <Button onClick={() => void handleRegisteredCase()} disabled={!canModify || pdfBusy || !([caseContext.data.requestContent, caseContext.data.categoryLarge, caseContext.data.categoryMedium, caseContext.data.categorySmall].some(Boolean))}>
+                    {pdfBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Calculator className="mr-2 h-4 w-4" />}
+                    案件情報から見積案を生成
+                  </Button>
+                  <p className="text-xs text-slate-600">生成は確認用の候補のみ。案件金額・正式見積は更新しません。</p>
+                </> : null}
+              </CardContent>
+            </Card>
+          )}
           <Tabs defaultValue="foretia" className="space-y-4">
             <TabsList className="h-auto flex-wrap justify-start">
               <TabsTrigger value="foretia">寸法別商品単価</TabsTrigger>
@@ -714,7 +769,7 @@ export default function EstimateAssistant() {
                   pdfView.error ? <p className="p-4 text-sm text-red-700">元PDFを表示できません: {pdfView.error.message}</p> :
                   pdfView.data?.url ? <iframe key={`${pdfView.data.url}:${pdfPage}`} title="元の依頼PDF" src={`${pdfView.data.url}#page=${pdfPage}&view=FitH`} className="h-[680px] w-full rounded-md border bg-slate-100" /> :
                   <p className="p-4 text-sm">原本の表示を準備しています。</p>}
-                <p className="mt-2 text-xs text-slate-600">左の原本を見ながら右の抽出値を修正してください。ページ番号はAIの推定です。原文と相違する場合は原本を優先します。</p>
+                <p className="mt-2 text-xs text-slate-600">左の原本を見ながら右の抽出値を修正してください。{sourcePdfKey.startsWith("imports/case-") ? "明細は案件に保存された依頼内容から作成した候補です。PDFからの直接抽出ではありません。" : "ページ番号はAIの推定です。"}原本と相違する場合は原本を優先します。</p>
               </CardContent>
             </Card>
           )}
@@ -826,17 +881,17 @@ export default function EstimateAssistant() {
                           />
                         </label>
                       </div>
-                      {sourcePdfKey && (
+                      {(sourcePdfKey || line.evidence) && (
                         <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-slate-700">
                           <div className="mb-2 flex flex-wrap items-center justify-between gap-1">
-                            <strong>PDFの原文根拠</strong>
-                            {line.pageNumber && <Button variant="outline" size="sm" onClick={() => setPdfPage(line.pageNumber || 1)}>
+                            <strong>{sourcePdfKey?.startsWith("imports/case-") || !sourcePdfKey ? "案件に保存された記述（PDFの直接抽出ではありません）" : "PDFの原文根拠"}</strong>
+                            {sourcePdfKey && line.pageNumber && <Button variant="outline" size="sm" onClick={() => setPdfPage(line.pageNumber || 1)}>
                               PDF {line.pageNumber}ページを開く
                             </Button>}
                           </div>
                           <Input aria-label={`明細${i + 1}の原文引用`} value={line.evidence ?? ""} disabled={!canModify}
-                            placeholder="原文根拠なし・PDFで直接確認" onChange={e => update(i, { evidence: e.target.value })} />
-                          {canModify && <label className="mt-2 flex items-center gap-2">原文のページ番号
+                            placeholder="依頼内容を確認してください" onChange={e => update(i, { evidence: e.target.value })} />
+                          {canModify && sourcePdfKey && !sourcePdfKey.startsWith("imports/case-") && <label className="mt-2 flex items-center gap-2">原文のページ番号
                             <Input aria-label={`明細${i + 1}のページ番号`} className="h-8 w-20" type="number" min="1" max="2000"
                               value={line.pageNumber ?? ""} onChange={e => update(i, { pageNumber: e.target.value ? Number(e.target.value) : null })} />
                           </label>}

@@ -6,6 +6,7 @@ import {
   caseFieldMemos,
   caseReportDrafts,
   estimateDrafts,
+  caseRequestSources,
   InsertCaseReportDraft,
   InsertCaseFieldMemo,
   caseSchedules,
@@ -444,11 +445,35 @@ export async function getCaseById(id: number) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-export async function createCase(data: InsertCase) {
+export async function createCase(data: InsertCase, requestSource?: {
+  fileKey: string;
+  fileName: string;
+  uploadedBy: number;
+}) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  if (requestSource) {
+    return db.transaction(async tx => {
+      const result = await tx.insert(cases).values(data).$returningId();
+      const id = result[0].id;
+      await tx.insert(caseRequestSources).values({
+        caseId: id,
+        ...requestSource,
+        createdAt: Date.now(),
+      });
+      return id;
+    });
+  }
   const result = await db.insert(cases).values(data).$returningId();
   return result[0].id;
+}
+
+export async function getCaseRequestSource(caseId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [source] = await db.select().from(caseRequestSources)
+    .where(eq(caseRequestSources.caseId, caseId)).limit(1);
+  return source ?? null;
 }
 
 export async function updateCase(id: number, data: Partial<InsertCase>) {
@@ -463,6 +488,7 @@ export async function deleteCase(id: number) {
   await db.delete(internalCaseNotifications).where(eq(internalCaseNotifications.caseId, id));
   await db.delete(caseFieldMemos).where(eq(caseFieldMemos.caseId, id));
   await db.delete(estimateDrafts).where(eq(estimateDrafts.caseId, id));
+  await db.delete(caseRequestSources).where(eq(caseRequestSources.caseId, id));
   await db.delete(photoClassificationChanges).where(eq(photoClassificationChanges.caseId, id));
   await db.delete(photoClassificationRuns).where(eq(photoClassificationRuns.caseId, id));
   await db.delete(cases).where(eq(cases.id, id));

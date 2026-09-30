@@ -1313,7 +1313,10 @@ export const appRouter = router({
       return applyFinancialVisibility(caseData, ctx.user.role);
     }),
 
-    create: protectedProcedure.input(caseInputSchema).mutation(async ({ ctx, input }) => {
+    create: protectedProcedure.input(caseInputSchema.extend({
+      requestPdfKey: z.string().max(512).optional(),
+      requestPdfName: z.string().trim().max(255).optional(),
+    })).mutation(async ({ ctx, input }) => {
       if (!canManageCases(ctx.user.role)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "案件を登録する権限がありません" });
       }
@@ -1344,9 +1347,21 @@ export const appRouter = router({
           throw new TRPCError({ code: "FORBIDDEN", message: "金額情報を登録する権限がありません" });
         }
       }
+      const { requestPdfKey, requestPdfName, ...caseFields } = input;
+      if (requestPdfKey && (!requestPdfName?.toLowerCase().endsWith(".pdf") ||
+        !/^imports\/case-\d+-\d+-[a-z0-9]+\.pdf$/.test(requestPdfKey) ||
+        !requestPdfKey.startsWith(`imports/case-${ctx.user.id}-`))) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "自分が登録した依頼PDFを指定してください" });
+      }
+      if (!requestPdfKey && requestPdfName) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "依頼PDFの参照がありません" });
+      }
       let id: number;
       try {
-        id = await createCase({ ...input, requestNumber, prefecture, createdBy: ctx.user.id });
+        id = await createCase(
+          { ...caseFields, requestNumber, prefecture, createdBy: ctx.user.id },
+          requestPdfKey ? { fileKey: requestPdfKey, fileName: requestPdfName!, uploadedBy: ctx.user.id } : undefined,
+        );
       } catch (error) {
         if (isDuplicateEntryError(error)) {
           throw new TRPCError({
@@ -1542,24 +1557,36 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
+        if (!canManageCases(ctx.user.role)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "案件を登録する権限がありません" });
+        }
+        if (!input.fileName.toLowerCase().endsWith(".pdf") ||
+          input.mimeType !== "application/pdf" || input.fileBase64.length > 16 * 1024 * 1024) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "12MB以内のPDFを選択してください" });
+        }
         const base64 = input.fileBase64.includes(",")
           ? input.fileBase64.split(",")[1]
           : input.fileBase64;
         const buffer = Buffer.from(base64, "base64");
-        const ext = input.fileName.includes(".")
-          ? input.fileName.split(".").pop()
-          : "pdf";
+        if (!buffer.length || buffer.length > 12 * 1024 * 1024 ||
+          buffer.subarray(0, 5).toString() !== "%PDF-") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "PDF形式またはサイズを確認してください" });
+        }
         const key = `imports/case-${ctx.user.id}-${Date.now()}-${Math.random()
           .toString(36)
-          .slice(2, 8)}.${ext}`;
-        const { url, key: fileKey } = await storagePut(key, buffer, input.mimeType);
+          .slice(2, 8)}.pdf`;
+        const { url, key: fileKey } = await storagePut(key, buffer, "application/pdf");
         return { fileKey, url };
       }),
 
     // アップロード済PDFのURLを受け取り、LLMで案件データを抽出
     extractFromPdf: protectedProcedure
       .input(z.object({ fileKey: z.string().min(1) }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
+        if (!canManageCases(ctx.user.role) || !input.fileKey.startsWith(`imports/case-${ctx.user.id}-`) ||
+          !/^imports\/case-\d+-\d+-[a-z0-9]+\.pdf$/.test(input.fileKey)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "この依頼PDFを解析できません" });
+        }
         // ストレージのS3署名URLを取得（LLMが直接フェッチ可能）
         const key = input.fileKey.replace(/^\/manus-storage\//, "");
         const publicUrl = await storageGetSignedUrl(key);
@@ -1709,6 +1736,13 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        await assertCaseAccess(caseData, ctx.user);
+        if (!canManageCases(ctx.user.role) || !input.fileKey.startsWith(`imports/case-${ctx.user.id}-`) ||
+          !/^imports\/case-\d+-\d+-[a-z0-9]+\.pdf$/.test(input.fileKey)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "この依頼PDFの写真を登録できません" });
+        }
         // 署名付きURLでPDFバイナリを取得
         const key = input.fileKey.replace(/^\/manus-storage\//, "");
         const signedUrl = await storageGetSignedUrl(key);

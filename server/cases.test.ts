@@ -457,13 +457,11 @@ describe("v8: partners.bulkCreate 一括登録", () => {
 describe("v8: cases.uploadPdf / partners.uploadFile 入力バリデーション", () => {
   it("uploadPdf の返り値に fileKey と url が含まれる", async () => {
     const caller = appRouter.createCaller(createAuthContext());
-    // 1ピクセルのダミーバイトをbase64化
-    const tinyPng = Buffer.from([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-    ]).toString("base64");
+    // PDFバイト列を使い、アップロードAPIの形式検証も通す
+    const tinyPdf = Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n").toString("base64");
     const res = await caller.cases.uploadPdf({
       fileName: "test.pdf",
-      fileBase64: tinyPng,
+      fileBase64: tinyPdf,
       mimeType: "application/pdf",
     });
     expect(res.fileKey).toMatch(/^imports\//);

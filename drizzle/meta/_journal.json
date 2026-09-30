@@ -316,6 +316,13 @@
       "when": 1790781069105,
       "tag": "0044_parched_gorgon",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "5",
+      "when": 1790785243781,
+      "tag": "0045_bored_hellion",
+      "breakpoints": true
     }
   ]
 }

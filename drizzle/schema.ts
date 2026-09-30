@@ -339,6 +339,15 @@ export const estimates = mysqlTable("estimates", {
 export type Estimate = typeof estimates.$inferSelect;
 export type InsertEstimate = typeof estimates.$inferInsert;
 
+/** PDFから案件登録したときの原本。既存案件は行がなくても見積作成できる。 */
+export const caseRequestSources = mysqlTable("case_request_sources", {
+  caseId: int("case_id").primaryKey(),
+  fileKey: varchar("file_key", { length: 512 }).notNull(),
+  fileName: varchar("file_name", { length: 255 }).notNull(),
+  uploadedBy: int("uploaded_by").notNull(),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+});
+
 /** 提出前に人が確認する見積案。既存の正式見積・案件金額とは独立。 */
 export const estimateDrafts = mysqlTable("estimate_drafts", {
   id: int("id").autoincrement().primaryKey(),
