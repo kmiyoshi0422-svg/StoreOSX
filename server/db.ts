@@ -6,6 +6,9 @@ import {
   caseFieldMemos,
   caseReportDrafts,
   estimateDrafts,
+  estimateAiRuns,
+  estimateAiCandidates,
+  estimateAiCandidateEdits,
   caseRequestSources,
   InsertCaseReportDraft,
   InsertCaseFieldMemo,
@@ -487,6 +490,9 @@ export async function deleteCase(id: number) {
   if (!db) throw new Error("Database not available");
   await db.delete(internalCaseNotifications).where(eq(internalCaseNotifications.caseId, id));
   await db.delete(caseFieldMemos).where(eq(caseFieldMemos.caseId, id));
+  await db.delete(estimateAiCandidateEdits).where(eq(estimateAiCandidateEdits.caseId, id));
+  await db.delete(estimateAiCandidates).where(eq(estimateAiCandidates.caseId, id));
+  await db.delete(estimateAiRuns).where(eq(estimateAiRuns.caseId, id));
   await db.delete(estimateDrafts).where(eq(estimateDrafts.caseId, id));
   await db.delete(caseRequestSources).where(eq(caseRequestSources.caseId, id));
   await db.delete(photoClassificationChanges).where(eq(photoClassificationChanges.caseId, id));

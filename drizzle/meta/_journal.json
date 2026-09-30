@@ -323,6 +323,13 @@
       "when": 1790785243781,
       "tag": "0045_bored_hellion",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "5",
+      "when": 1790808829221,
+      "tag": "0046_nosy_speed",
+      "breakpoints": true
     }
   ]
 }

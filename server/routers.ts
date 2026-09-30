@@ -1349,7 +1349,7 @@ export const appRouter = router({
       }
       const { requestPdfKey, requestPdfName, ...caseFields } = input;
       if (requestPdfKey && (!requestPdfName?.toLowerCase().endsWith(".pdf") ||
-        !/^imports\/case-\d+-\d+-[a-z0-9]+\.pdf$/.test(requestPdfKey) ||
+        !/^imports\/case-\d+-\d+-[a-z0-9]+(?:_[a-f0-9]{8})?\.pdf$/.test(requestPdfKey) ||
         !requestPdfKey.startsWith(`imports/case-${ctx.user.id}-`))) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "自分が登録した依頼PDFを指定してください" });
       }
@@ -1584,7 +1584,7 @@ export const appRouter = router({
       .input(z.object({ fileKey: z.string().min(1) }))
       .mutation(async ({ ctx, input }) => {
         if (!canManageCases(ctx.user.role) || !input.fileKey.startsWith(`imports/case-${ctx.user.id}-`) ||
-          !/^imports\/case-\d+-\d+-[a-z0-9]+\.pdf$/.test(input.fileKey)) {
+          !/^imports\/case-\d+-\d+-[a-z0-9]+(?:_[a-f0-9]{8})?\.pdf$/.test(input.fileKey)) {
           throw new TRPCError({ code: "FORBIDDEN", message: "この依頼PDFを解析できません" });
         }
         // ストレージのS3署名URLを取得（LLMが直接フェッチ可能）
@@ -1740,7 +1740,7 @@ export const appRouter = router({
         if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
         await assertCaseAccess(caseData, ctx.user);
         if (!canManageCases(ctx.user.role) || !input.fileKey.startsWith(`imports/case-${ctx.user.id}-`) ||
-          !/^imports\/case-\d+-\d+-[a-z0-9]+\.pdf$/.test(input.fileKey)) {
+          !/^imports\/case-\d+-\d+-[a-z0-9]+(?:_[a-f0-9]{8})?\.pdf$/.test(input.fileKey)) {
           throw new TRPCError({ code: "FORBIDDEN", message: "この依頼PDFの写真を登録できません" });
         }
         // 署名付きURLでPDFバイナリを取得

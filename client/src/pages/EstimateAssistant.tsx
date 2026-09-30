@@ -74,7 +74,7 @@ export default function EstimateAssistant() {
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<number[]>(
     []
   );
-  const candidateSequence = useRef(0);
+  const [activeRunId, setActiveRunId] = useState<number | null>(null);
   const [draftId, setDraftId] = useState<number | undefined>();
   const [draftUpdatedAt, setDraftUpdatedAt] = useState<number | undefined>();
   const [draftStatus, setDraftStatus] = useState<"draft" | "approved">("draft");
@@ -110,6 +110,7 @@ export default function EstimateAssistant() {
   const analyze = trpc.estimateAssistant.analyzePdf.useMutation();
   const analyzeRegisteredCase =
     trpc.estimateAssistant.analyzeCase.useMutation();
+  const decideCandidates = trpc.estimateAssistant.decideCandidates.useMutation();
   const approve = trpc.estimateAssistant.approveDraft.useMutation();
   const pdfSource = useMemo(
     () =>
@@ -152,18 +153,20 @@ export default function EstimateAssistant() {
   ).length;
   const reviewAllSelected =
     reviewCandidates.length > 0 && selectedCount === reviewCandidates.length;
-  const stageCandidates = (items: EstimateLine[]) => {
+  const stageCandidates = (items: EstimateLine[], runId: number | null) => {
     setReviewCandidates(
-      items.map(line => ({ id: ++candidateSequence.current, line }))
+      items.map(line => ({ id: line.candidateId!, line }))
     );
+    setActiveRunId(runId);
     setSelectedCandidateIds([]);
   };
   const clearCandidates = () => {
     setReviewCandidates([]);
     setSelectedCandidateIds([]);
+    setActiveRunId(null);
   };
-  const applyCandidateSelection = (action: "adopt" | "exclude") => {
-    if (!canModify || !selectedCount) return;
+  const applyCandidateSelection = async (action: "adopt" | "exclude") => {
+    if (!canModify || !selectedCount || !activeRunId || !Number(caseId) || decideCandidates.isPending) return;
     if (action === "adopt" && lines.length + selectedCount > 50)
       return toast.error(
         "保存できる明細は50件までです。候補の選択数を減らしてください"
@@ -180,6 +183,13 @@ export default function EstimateAssistant() {
       selectedCandidateIds,
       action
     );
+    try {
+      await decideCandidates.mutateAsync({ caseId: Number(caseId), runId: activeRunId,
+        ids: selectedCandidateIds, decision: action });
+    } catch (e: any) {
+      toast.error(e?.message ?? "候補の判定を保存できませんでした。画面を確認してください");
+      return;
+    }
     if (action === "adopt")
       setLines(current => [...current, ...result.adopted]);
     setReviewCandidates(result.remaining);
@@ -386,16 +396,14 @@ export default function EstimateAssistant() {
       setDraftUpdatedAt(undefined);
       setSavedFingerprint(null);
       setLines([]);
-      stageCandidates(result.items);
+      stageCandidates(result.items, result.runId);
       setTitle(`${result.storeName} 見積案`);
       setSourcePdfKey(result.sourcePdfKey);
       setSourcePdfName(result.sourcePdfName);
       setSourceKind(result.sourcePdfKey ? "request_pdf" : "manual");
       setPdfMatchedCaseId(Number(caseId));
       setPdfPage(1);
-      setPdfContext(
-        `依頼番号: ${result.requestNumber} ／ 案件登録済みの依頼内容から抽出。${result.sourcePdfKey ? "左の元PDFと照合してください。" : "元PDFは案件登録時に保存されていないため表示できません。"}`
-      );
+      setPdfContext(`依頼番号: ${result.requestNumber} ／ ${result.pdfAnalyzed ? "保存済み元PDFを直接解析し、登録済み依頼内容と照合しました。" : "元PDFが保存されていないため登録済み依頼テキストのみを解析しました。"}${result.pdfAnalyzed && !result.pdfRequestNumber ? " PDF側の依頼番号は確認できませんでした。" : ""}${result.discrepancies.length ? ` 要確認の差分: ${result.discrepancies.join("／")}` : ""}`);
       toast.success(
         `${result.items.length}件の候補を生成しました。採用・除外を選んでください`
       );
@@ -426,7 +434,8 @@ export default function EstimateAssistant() {
         fileName: file.name,
         fileBase64: base64,
       });
-      const result = await analyze.mutateAsync({ fileKey: up.fileKey });
+      const result = await analyze.mutateAsync({ fileKey: up.fileKey,
+        caseId: Number(caseId) > 0 ? Number(caseId) : undefined });
       if (!result.items.length) {
         toast.warning("見積候補を抽出できませんでした。PDFの画質・依頼内容を確認してください。表示中の明細は保持しています");
         return;
@@ -435,7 +444,7 @@ export default function EstimateAssistant() {
       setDraftUpdatedAt(undefined);
       setSavedFingerprint(null);
       setLines([]);
-      stageCandidates(result.items);
+      stageCandidates(result.items, result.runId);
       setTitle(`${result.storeName || "案件"} 見積案`);
       setSourcePdfKey(up.fileKey);
       setSourcePdfName(up.fileName);
@@ -485,6 +494,9 @@ export default function EstimateAssistant() {
         >
           標準施工単価マスタを管理 <ArrowRight className="ml-2 h-4 w-4" />
         </Button>
+        <Button variant="outline" size="sm" onClick={() => navigate("/estimates/quality")}>
+          AI候補の判定・修正履歴 <ArrowRight className="ml-2 h-4 w-4" />
+        </Button>
       </header>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_365px]">
         <div className="min-w-0 space-y-6">
@@ -496,6 +508,7 @@ export default function EstimateAssistant() {
                   aria-label="保存先の案件"
                   className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm"
                   value={caseId}
+                  disabled={decideCandidates.isPending || pdfBusy}
                   onChange={e => {
                     if (
                       (lines.length || reviewCandidates.length) &&
@@ -959,18 +972,19 @@ export default function EstimateAssistant() {
                     size="sm"
                     disabled={
                       !canModify ||
+                      decideCandidates.isPending ||
                       selectedCount === 0 ||
                       lines.length + selectedCount > 50
                     }
-                    onClick={() => applyCandidateSelection("adopt")}
+                    onClick={() => void applyCandidateSelection("adopt")}
                   >
                     選択した{selectedCount}件を一括採用
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={!canModify || selectedCount === 0}
-                    onClick={() => applyCandidateSelection("exclude")}
+                    disabled={!canModify || decideCandidates.isPending || selectedCount === 0}
+                    onClick={() => void applyCandidateSelection("exclude")}
                   >
                     選択した{selectedCount}件を一括除外
                   </Button>
@@ -1099,9 +1113,9 @@ export default function EstimateAssistant() {
                   )}
                   <p className="mt-2 text-xs text-slate-600">
                     左の原本を見ながら右の抽出値を修正してください。
-                    {sourcePdfKey.startsWith("imports/case-")
-                      ? "明細は案件に保存された依頼内容から作成した候補です。PDFからの直接抽出ではありません。"
-                      : "ページ番号はAIの推定です。"}
+                    {lines.some(line => line.evidenceSource === "pdf")
+                      ? "元PDFを直接解析しました。ページ番号はAIの推定です。"
+                      : "元PDFがある古い案の明細は、登録済みテキストからの抽出の場合があります。"}
                     原本と相違する場合は原本を優先します。
                   </p>
                 </CardContent>
@@ -1266,8 +1280,8 @@ export default function EstimateAssistant() {
                             <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-slate-700">
                               <div className="mb-2 flex flex-wrap items-center justify-between gap-1">
                                 <strong>
-                                  {sourcePdfKey?.startsWith("imports/case-") ||
-                                  !sourcePdfKey
+                                  {line.evidenceSource === "case_text" ||
+                                  (!line.evidenceSource && (!sourcePdfKey || sourcePdfKey.startsWith("imports/case-")))
                                     ? "案件に保存された記述（PDFの直接抽出ではありません）"
                                     : "PDFの原文根拠"}
                                 </strong>
@@ -1292,9 +1306,7 @@ export default function EstimateAssistant() {
                                   update(i, { evidence: e.target.value })
                                 }
                               />
-                              {canModify &&
-                                sourcePdfKey &&
-                                !sourcePdfKey.startsWith("imports/case-") && (
+                              {canModify && sourcePdfKey && line.evidenceSource === "pdf" && (
                                   <label className="mt-2 flex items-center gap-2">
                                     原文のページ番号
                                     <Input

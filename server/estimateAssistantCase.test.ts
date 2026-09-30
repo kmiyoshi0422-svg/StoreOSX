@@ -8,7 +8,9 @@ import { storageGetSignedUrl } from "./storage";
 vi.mock("./_core/llm", async original => ({
   ...(await original<typeof import("./_core/llm")>()),
   invokeLLM: vi.fn(async () => ({
-    choices: [{ message: { content: JSON.stringify({ items: [
+    choices: [{ message: { content: JSON.stringify({
+      pdfRequestNumber: null,
+      discrepancies: [], items: [
       { name: "建具調整", specification: null, quantity: null, unit: null,
         widthMm: null, heightMm: null, evidence: "バックヤードの鍵が開閉しづらい", pageNumber: null },
     ] }) } }],
@@ -70,11 +72,20 @@ describe("案件詳細から依頼PDFを再アップロードせず見積案生�
     expect(JSON.stringify(context)).not.toContain("fileKey");
     const newCase = await employee.estimateAssistant.analyzeCase({ caseId: caseIds[0] });
     expect(newCase.sourcePdfKey).toBe(key);
+    expect(newCase.pdfAnalyzed).toBe(true);
+    expect(newCase.runId).toBeGreaterThan(0);
+    const pdfInput = vi.mocked(invokeLLM).mock.calls.at(-1)?.[0].messages[1]?.content;
+    expect(pdfInput).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "text", text: expect.stringContaining("バックヤードの鍵が開閉しづらい") }),
+      expect.objectContaining({ type: "file_url", file_url: expect.objectContaining({ mime_type: "application/pdf", url: "https://example.invalid/TEST-request.pdf" }) }),
+    ]));
     expect(newCase.items[0]).toMatchObject({ name: "建具調整", unitPrice: null,
-      quantity: null, source: "案件登録情報（単価未設定）", pageNumber: null });
+      quantity: null, source: "案件元PDFと登録情報（単価未設定）", pageNumber: null, evidenceSource: "pdf" });
     const oldCase = await employee.estimateAssistant.analyzeCase({ caseId: caseIds[1] });
     expect(oldCase.sourcePdfKey).toBeNull();
+    expect(oldCase.pdfAnalyzed).toBe(false);
     expect((await employee.estimateAssistant.caseContext({ caseId: caseIds[1] })).hasSourcePdf).toBe(false);
+    await employee.estimateAssistant.decideCandidates({ caseId: caseIds[0], runId: newCase.runId!, ids: [newCase.items[0].candidateId!], decision: "adopt" });
     const saved = await employee.estimateAssistant.saveDraft({
       caseId: caseIds[0], title: "TEST-案件明細", sourceKind: "request_pdf",
       sourcePdfKey: key, sourcePdfName: "TEST依頼.pdf", items: newCase.items,
@@ -91,7 +102,20 @@ describe("案件詳細から依頼PDFを再アップロードせず見積案生�
     await expect(employee.estimateAssistant.pdfPreviewUrl({ caseId: caseIds[1] }))
       .rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(invokeLLM).toHaveBeenCalledTimes(2);
-    expect(storageGetSignedUrl).toHaveBeenCalledTimes(2);
+    expect(storageGetSignedUrl).toHaveBeenCalledTimes(3);
+  }, 20000);
+
+  it("元PDFの依頼番号が案件番号と違う場合は履歴も候補も作らない", async () => {
+    const before = await employee.estimateAssistant.qualityReport({ days: 7, caseId: caseIds[0] });
+    vi.mocked(invokeLLM).mockImplementationOnce(async () => ({ choices: [{ message: { content: JSON.stringify({
+      pdfRequestNumber: "TEST-OTHER-CASE", discrepancies: [], items: [
+        { name: "建具調整", specification: null, quantity: null, unit: null,
+          widthMm: null, heightMm: null, evidence: "鍵", pageNumber: 1 },
+      ],
+    }) } }] } as any));
+    await expect(employee.estimateAssistant.analyzeCase({ caseId: caseIds[0] }))
+      .rejects.toMatchObject({ code: "CONFLICT" });
+    expect((await employee.estimateAssistant.qualityReport({ days: 7, caseId: caseIds[0] })).generated).toBe(before.generated);
   }, 20000);
 
   it("協力業者・顧客・許可エリア外の社員は案件情報や元PDFを取得できない", async () => {

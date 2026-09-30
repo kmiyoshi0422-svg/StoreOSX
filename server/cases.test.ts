@@ -3,6 +3,7 @@ import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 import { DEFAULT_CHECKLIST } from "../shared/checklist-template";
 import { calcCaseProfit } from "@shared/profit";
+import { getCaseRequestSource } from "./db";
 
 type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
 
@@ -456,7 +457,7 @@ describe("v8: partners.bulkCreate 一括登録", () => {
 
 describe("v8: cases.uploadPdf / partners.uploadFile 入力バリデーション", () => {
   it("uploadPdf の返り値に fileKey と url が含まれる", async () => {
-    const caller = appRouter.createCaller(createAuthContext());
+    const caller = appRouter.createCaller(createOwnerContext());
     // PDFバイト列を使い、アップロードAPIの形式検証も通す
     const tinyPdf = Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n").toString("base64");
     const res = await caller.cases.uploadPdf({
@@ -465,7 +466,17 @@ describe("v8: cases.uploadPdf / partners.uploadFile 入力バリデーション"
       mimeType: "application/pdf",
     });
     expect(res.fileKey).toMatch(/^imports\//);
+    expect(res.fileKey).toMatch(/_[a-f0-9]{8}\.pdf$/);
     expect(res.url).toMatch(/^\/manus-storage\//);
+    const created = await caller.cases.create({
+      requestNumber: `TEST-PDF-KEY-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      storeName: "TEST-PDF参照確認", requestPdfKey: res.fileKey, requestPdfName: "test.pdf",
+    });
+    try {
+      expect((await getCaseRequestSource(created.id))?.fileKey).toBe(res.fileKey);
+    } finally {
+      await caller.cases.delete({ id: created.id });
+    }
   });
 
   it("partners.extractFromFile は fileKey を要求する", async () => {

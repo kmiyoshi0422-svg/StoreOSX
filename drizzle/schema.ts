@@ -374,6 +374,51 @@ export const estimateDrafts = mysqlTable("estimate_drafts", {
 }));
 export type EstimateDraft = typeof estimateDrafts.$inferSelect;
 
+/** 人が確認するAI見積候補の生成単位。失敗した生成は保存しない。 */
+export const estimateAiRuns = mysqlTable("estimate_ai_runs", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("case_id").notNull(),
+  sourceKind: mysqlEnum("source_kind", ["case_pdf", "case_text", "uploaded_pdf"]).notNull(),
+  modelId: varchar("model_id", { length: 120 }).notNull(),
+  discrepancyJson: text("discrepancy_json"),
+  generatedBy: int("generated_by").notNull(),
+  generatedAt: bigint("generated_at", { mode: "number" }).notNull(),
+}, t => ({
+  caseTimeIdx: index("idx_estimate_ai_runs_case_time").on(t.caseId, t.generatedAt),
+}));
+
+export const estimateAiCandidates = mysqlTable("estimate_ai_candidates", {
+  id: int("id").autoincrement().primaryKey(),
+  runId: int("run_id").notNull(),
+  caseId: int("case_id").notNull(),
+  ordinal: int("ordinal").notNull(),
+  originalJson: text("original_json").notNull(),
+  decision: mysqlEnum("decision", ["pending", "adopt", "exclude"]).default("pending").notNull(),
+  decidedBy: int("decided_by"),
+  decidedAt: bigint("decided_at", { mode: "number" }),
+  draftId: int("draft_id"),
+  latestSavedJson: text("latest_saved_json"),
+}, t => ({
+  runIdx: index("idx_estimate_ai_candidates_run").on(t.runId, t.decision),
+  draftIdx: index("idx_estimate_ai_candidates_draft").on(t.draftId),
+  caseIdx: index("idx_estimate_ai_candidates_case").on(t.caseId),
+}));
+
+export const estimateAiCandidateEdits = mysqlTable("estimate_ai_candidate_edits", {
+  id: int("id").autoincrement().primaryKey(),
+  candidateId: int("candidate_id").notNull(),
+  caseId: int("case_id").notNull(),
+  draftId: int("draft_id").notNull(),
+  beforeJson: text("before_json"),
+  afterJson: text("after_json"),
+  changedFields: varchar("changed_fields", { length: 255 }).notNull(),
+  changedBy: int("changed_by").notNull(),
+  changedAt: bigint("changed_at", { mode: "number" }).notNull(),
+}, t => ({
+  caseTimeIdx: index("idx_estimate_ai_edits_case_time").on(t.caseId, t.changedAt),
+  candidateIdx: index("idx_estimate_ai_edits_candidate").on(t.candidateId),
+}));
+
 /** 2026年6月版の原本行を取り込んだ、編集可能な社内施工単価マスタ。削除は非表示化して履歴を保持。 */
 export const unitPriceMaster = mysqlTable("unit_price_master", {
   id: varchar("id", { length: 191 }).primaryKey(),

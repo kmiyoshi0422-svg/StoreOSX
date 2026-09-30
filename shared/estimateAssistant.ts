@@ -26,6 +26,8 @@ export const FORETIA_PRICES_TAX_INCLUDED = [
 ] as const;
 
 export type EstimateLine = {
+  /** AI候補から採用した行のみサーバーが発行する監査ID。 */
+  candidateId?: number;
   name: string;
   specification: string;
   quantity: number | null;
@@ -35,6 +37,8 @@ export type EstimateLine = {
   note: string;
   /** PDF原文の短い引用。金額の出典と混同しない。 */
   evidence?: string;
+  /** 抽出元の区別。保存済みPDFがある場合のみPDF由来と表示する。 */
+  evidenceSource?: "pdf" | "case_text";
   /** モデルが確実に特定できたページ。特定できない場合はnull。 */
   pageNumber?: number | null;
 };

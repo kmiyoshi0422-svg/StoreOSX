@@ -28,6 +28,7 @@ const PartnerImport = lazy(() => import("./pages/PartnerImport"));
 const EstimateImport = lazy(() => import("./pages/EstimateImport"));
 const EstimateOcrExcel = lazy(() => import("./pages/EstimateOcrExcel"));
 const EstimateAssistant = lazy(() => import("./pages/EstimateAssistant"));
+const EstimateQualityDashboard = lazy(() => import("./pages/EstimateQualityDashboard"));
 const UnitPriceMaster = lazy(() => import("./pages/UnitPriceMaster"));
 const ExpenseImport = lazy(() => import("./pages/ExpenseImport"));
 const ExpenseByUser = lazy(() => import("./pages/ExpenseByUser"));
@@ -87,6 +88,9 @@ function Router() {
                 <Route path={"/estimates/ocr-excel"} component={EstimateOcrExcel} />
                 <Route path={"/estimates/assistant"}>
                   <EstimateStaffOnly><EstimateAssistant /></EstimateStaffOnly>
+                </Route>
+                <Route path={"/estimates/quality"}>
+                  <EstimateStaffOnly><EstimateQualityDashboard /></EstimateStaffOnly>
                 </Route>
                 <Route path={"/estimates/unit-prices"}>
                   <EstimateStaffOnly><UnitPriceMaster /></EstimateStaffOnly>

@@ -45,6 +45,7 @@ const menuItems: MenuItem[] = [
   { icon: FileText, label: "見積書取込", path: "/estimates/import", hideForPartner: true, hideForCustomer: true },
   { icon: FileSearch, label: "見積書OCR→Excel", path: "/estimates/ocr-excel", hideForPartner: true, hideForCustomer: true },
   { icon: Calculator, label: "見積支援・依頼PDF", path: "/estimates/assistant", hideForPartner: true, hideForCustomer: true },
+  { icon: Activity, label: "AI見積精度モニタリング", path: "/estimates/quality", hideForPartner: true, hideForCustomer: true },
   { icon: Calculator, label: "標準施工単価マスタ", path: "/estimates/unit-prices", hideForPartner: true, hideForCustomer: true },
   { icon: Upload, label: "CSVインポート", path: "/cases/import", hideForPartner: true, hideForCustomer: true },
   { icon: Briefcase, label: "協力会社", path: "/partners", hideForPartner: true, hideForCustomer: true },
