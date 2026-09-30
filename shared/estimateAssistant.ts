@@ -31,6 +31,50 @@ export type EstimateLine = {
   unitPrice: number | null; // 円・税抜の試算単価。出典を必ず併記
   source: string;
   note: string;
+  /** PDF原文の短い引用。金額の出典と混同しない。 */
+  evidence?: string;
+  /** モデルが確実に特定できたページ。特定できない場合はnull。 */
+  pageNumber?: number | null;
+};
+
+/** 見積支援だけの限定許可。他の社内金額閲覧ポリシーは変えない。 */
+export const canUseEstimateAssistant = (role?: string | null) =>
+  role === "owner" ||
+  role === "admin" ||
+  role === "executive" ||
+  role === "user";
+
+/** 承認時点で案件情報と金額を固定する。PDF再出力も必ずこの値だけを使う。 */
+export type ApprovedEstimate = {
+  draftId: number;
+  caseId: number;
+  title: string;
+  requestNumber: string;
+  storeName: string;
+  siteAddress: string;
+  recipient: string;
+  issuer: {
+    companyName: string;
+    personName: string;
+    tel: string;
+    email: string;
+  };
+  approvedBy: number;
+  approvedByName: string;
+  approvedAt: number;
+  sourcePdfName: string | null;
+  items: Array<
+    Pick<
+      EstimateLine,
+      "name" | "specification" | "unit" | "note" | "source"
+    > & {
+      quantity: number;
+      unitPrice: number;
+    }
+  >;
+  subtotal: number;
+  tax: number;
+  total: number;
 };
 
 export function quoteForetia(widthMm: number, heightMm: number) {

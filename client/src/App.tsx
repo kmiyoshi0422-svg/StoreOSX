@@ -8,6 +8,7 @@ import DashboardLayout from "./components/DashboardLayout";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import AdminOnly from "./components/AdminOnly";
 import FinancialOnly from "./components/FinancialOnly";
+import EstimateStaffOnly from "./components/EstimateStaffOnly";
 
 // ─── Eagerly loaded (critical path) ───────────────────────
 import Home from "./pages/Home";
@@ -27,6 +28,7 @@ const PartnerImport = lazy(() => import("./pages/PartnerImport"));
 const EstimateImport = lazy(() => import("./pages/EstimateImport"));
 const EstimateOcrExcel = lazy(() => import("./pages/EstimateOcrExcel"));
 const EstimateAssistant = lazy(() => import("./pages/EstimateAssistant"));
+const UnitPriceMaster = lazy(() => import("./pages/UnitPriceMaster"));
 const ExpenseImport = lazy(() => import("./pages/ExpenseImport"));
 const ExpenseByUser = lazy(() => import("./pages/ExpenseByUser"));
 const ExpenseList = lazy(() => import("./pages/ExpenseList"));
@@ -84,7 +86,10 @@ function Router() {
                 <Route path={"/estimates/import"} component={EstimateImport} />
                 <Route path={"/estimates/ocr-excel"} component={EstimateOcrExcel} />
                 <Route path={"/estimates/assistant"}>
-                  <FinancialOnly><EstimateAssistant /></FinancialOnly>
+                  <EstimateStaffOnly><EstimateAssistant /></EstimateStaffOnly>
+                </Route>
+                <Route path={"/estimates/unit-prices"}>
+                  <EstimateStaffOnly><UnitPriceMaster /></EstimateStaffOnly>
                 </Route>
                 <Route path={"/expenses/import"} component={ExpenseImport} />
                 <Route path={"/expenses/submit"} component={ExpenseSubmit} />

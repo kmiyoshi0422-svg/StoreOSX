@@ -124,7 +124,7 @@ describe("見積支援の価格ロジック", () => {
 });
 
 describe("見積支援のAPI権限・非破壊", () => {
-  it.each(["user", "partner", "customer"] as Role[])(
+  it.each(["partner", "customer"] as Role[])(
     "%sに価格カタログを渡さない",
     async role => {
       await expect(
@@ -132,32 +132,19 @@ describe("見積支援のAPI権限・非破壊", () => {
       ).rejects.toMatchObject({ code: "FORBIDDEN" });
     }
   );
-  it("役員は価格閲覧可、ただしPDF登録・下書き変更はできない", async () => {
-    expect(
-      (await caller("executive").estimateAssistant.catalog()).items
-    ).toHaveLength(117);
+  it.each(["owner", "admin", "executive", "user"] as Role[])(
+    "%sは価格マスタを閲覧でき、PDFアップロードも操作可能（不正なPDFは拒否）",
+    async role => {
+      expect((await caller(role).estimateAssistant.catalog()).items).toHaveLength(117);
+      await expect(caller(role).estimateAssistant.uploadPdf({
+        fileName: "x.pdf", fileBase64: Buffer.from("not a pdf").toString("base64"),
+      })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    }
+  );
+  it("役員のPDF操作にもファイル所有者の境界を適用", async () => {
     await expect(
-      caller("executive").estimateAssistant.uploadPdf({
-        fileName: "x.pdf",
-        fileBase64: "%PDF-",
-      })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(
-      caller("executive").estimateAssistant.saveDraft({
-        caseId: 1,
-        title: "x",
-        items: [
-          {
-            name: "工事",
-            specification: "",
-            quantity: 1,
-            unit: "式",
-            unitPrice: null,
-            source: "PDF",
-            note: "",
-          },
-        ],
-        sourceKind: "manual",
+      caller("executive").estimateAssistant.analyzePdf({
+        fileKey: "imports/estimate-assistant/999/other.pdf",
       })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
     expect(storagePut).not.toHaveBeenCalled();

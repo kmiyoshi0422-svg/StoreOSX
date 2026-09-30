@@ -309,6 +309,13 @@
       "when": 1790778875127,
       "tag": "0043_clammy_marrow",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "5",
+      "when": 1790781069105,
+      "tag": "0044_parched_gorgon",
+      "breakpoints": true
     }
   ]
 }

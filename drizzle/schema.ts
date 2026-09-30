@@ -352,6 +352,10 @@ export const estimateDrafts = mysqlTable("estimate_drafts", {
   tax: int("tax").notNull(),
   total: int("total").notNull(),
   missingPriceCount: int("missing_price_count").notNull(),
+  status: mysqlEnum("status", ["draft", "approved"]).default("draft").notNull(),
+  approvedBy: int("approved_by"),
+  approvedAt: bigint("approved_at", { mode: "number" }),
+  approvedSnapshotJson: text("approved_snapshot_json"),
   createdBy: int("created_by").notNull(),
   updatedBy: int("updated_by").notNull(),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
@@ -360,6 +364,41 @@ export const estimateDrafts = mysqlTable("estimate_drafts", {
   caseIdx: index("idx_estimate_drafts_case_updated").on(t.caseId, t.updatedAt),
 }));
 export type EstimateDraft = typeof estimateDrafts.$inferSelect;
+
+/** 2026年6月版の原本行を取り込んだ、編集可能な社内施工単価マスタ。削除は非表示化して履歴を保持。 */
+export const unitPriceMaster = mysqlTable("unit_price_master", {
+  id: varchar("id", { length: 191 }).primaryKey(),
+  majorCategory: varchar("major_category", { length: 120 }).notNull(),
+  category: varchar("category", { length: 120 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  specification: varchar("specification", { length: 255 }).notNull().default(""),
+  unit: varchar("unit", { length: 40 }).notNull(),
+  low: int("low").notNull(),
+  standard: int("standard").notNull(),
+  high: int("high").notNull(),
+  note: text("note"),
+  sourceRef: varchar("source_ref", { length: 255 }).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdBy: int("created_by"),
+  updatedBy: int("updated_by"),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+}, t => ({
+  categoryIdx: index("idx_unit_price_master_category").on(t.majorCategory, t.isActive),
+}));
+export type UnitPriceMasterRow = typeof unitPriceMaster.$inferSelect;
+
+export const unitPriceMasterHistory = mysqlTable("unit_price_master_history", {
+  id: int("id").autoincrement().primaryKey(),
+  priceId: varchar("price_id", { length: 191 }).notNull(),
+  operation: mysqlEnum("operation", ["create", "update", "delete"]).notNull(),
+  beforeJson: text("before_json"),
+  afterJson: text("after_json"),
+  changedBy: int("changed_by").notNull(),
+  changedAt: bigint("changed_at", { mode: "number" }).notNull(),
+}, t => ({
+  priceIdx: index("idx_unit_price_master_history_price").on(t.priceId, t.changedAt),
+}));
 
 /**
  * ルート割り振り（2チーム制の現調・工事スケジュール）

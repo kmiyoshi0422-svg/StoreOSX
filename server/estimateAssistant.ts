@@ -7,6 +7,7 @@ import {
 } from "../shared/estimateAssistant";
 
 export type UnitPrice = (typeof rawCatalog.items)[number];
+export type PriceCandidate = UnitPrice & { sourceRef?: string };
 export const unitPriceCatalog = rawCatalog;
 
 export type PdfWorkItem = {
@@ -17,10 +18,14 @@ export type PdfWorkItem = {
   widthMm: number | null;
   heightMm: number | null;
   evidence: string;
+  pageNumber?: number | null;
 };
 
 /** AIは作業と根拠のみ抽出する。曖昧な品番や仕様から価格を作らない。 */
-export function priceExtractedItem(item: PdfWorkItem): EstimateLine {
+export function priceExtractedItem(
+  item: PdfWorkItem,
+  catalogItems: ReadonlyArray<PriceCandidate> = unitPriceCatalog.items
+): EstimateLine {
   const name = item.name.trim().slice(0, 255);
   const spec = item.specification.trim().slice(0, 500);
   const base: EstimateLine = {
@@ -33,7 +38,9 @@ export function priceExtractedItem(item: PdfWorkItem): EstimateLine {
     unit: item.unit.trim().slice(0, 30),
     unitPrice: null,
     source: "PDFの依頼内容（単価未設定）",
-    note: item.evidence.trim().slice(0, 500),
+    note: "",
+    evidence: item.evidence.trim().slice(0, 500),
+    pageNumber: item.pageNumber ?? null,
   };
   // 完全な型番・寸法を含む場合のみ単一製品に結びつける。
   const description = `${name} ${spec}`;
@@ -53,13 +60,13 @@ export function priceExtractedItem(item: PdfWorkItem): EstimateLine {
         unit: "台",
         unitPrice: quote.taxExcluded,
         source: `参考商品価格 ${FORETIA_PRICE_DATE} / ${FORETIA_SOURCE}（税込価格から換算・施工費別）`,
-        note: `${base.note} / 販売店価格は要再確認`,
+        note: "販売店価格は要再確認",
       };
     }
   }
   const normalized = (s: string) =>
     s.normalize("NFKC").replace(/\s+/g, "").toLowerCase();
-  const candidates = unitPriceCatalog.items.filter(
+  const candidates = catalogItems.filter(
     entry =>
       normalized(entry.name) === normalized(name) &&
       normalized(entry.unit) === normalized(item.unit) &&
@@ -72,6 +79,6 @@ export function priceExtractedItem(item: PdfWorkItem): EstimateLine {
   return {
     ...base,
     unitPrice: entry.standard,
-    source: `${entry.id} / 標準施工単価表 ${unitPriceCatalog.version}（税区分は原本に明記なし・税抜試算）`,
+    source: `${entry.id} / ${entry.sourceRef ?? `標準施工単価表 ${unitPriceCatalog.version}`}（税区分は原本に明記なし・税抜試算）`,
   };
 }

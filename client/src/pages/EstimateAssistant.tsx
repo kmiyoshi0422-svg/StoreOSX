@@ -11,6 +11,9 @@ import {
   AlertCircle,
   ArrowRight,
   Calculator,
+  Download,
+  ExternalLink,
+  FileCheck2,
   FileUp,
   Loader2,
   Plus,
@@ -26,11 +29,13 @@ import {
   FORETIA_PRICE_DATE,
   FORETIA_SOURCE,
   calculateEstimate,
+  canUseEstimateAssistant,
   quoteForetia,
   type EstimateLine,
 } from "../../../shared/estimateAssistant";
 
 const yen = (value: number) => `¥${value.toLocaleString("ja-JP")}`;
+const NO_PDF_SOURCE = { fileKey: "" } as const;
 const blankLine = (): EstimateLine => ({
   name: "",
   specification: "",
@@ -50,7 +55,7 @@ const fileToBase64 = (file: File) =>
 
 export default function EstimateAssistant() {
   const { user } = useAuth();
-  const canEdit = user?.role === "owner" || user?.role === "admin";
+  const canEdit = canUseEstimateAssistant(user?.role);
   const [, navigate] = useLocation();
   const initialCaseId =
     new URLSearchParams(window.location.search).get("caseId") ?? "";
@@ -59,6 +64,8 @@ export default function EstimateAssistant() {
   const [lines, setLines] = useState<EstimateLine[]>([]);
   const [draftId, setDraftId] = useState<number | undefined>();
   const [draftUpdatedAt, setDraftUpdatedAt] = useState<number | undefined>();
+  const [draftStatus, setDraftStatus] = useState<"draft" | "approved">("draft");
+  const [savedFingerprint, setSavedFingerprint] = useState<string | null>(null);
   const [sourcePdfKey, setSourcePdfKey] = useState<string | null>(null);
   const [sourcePdfName, setSourcePdfName] = useState<string | null>(null);
   const [sourceKind, setSourceKind] = useState<"manual" | "request_pdf">(
@@ -73,6 +80,7 @@ export default function EstimateAssistant() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("全て");
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfPage, setPdfPage] = useState(1);
   const pdfRef = useRef<HTMLInputElement>(null);
   const catalog = trpc.estimateAssistant.catalog.useQuery();
   const cases = trpc.cases.listMinimal.useQuery();
@@ -83,11 +91,26 @@ export default function EstimateAssistant() {
   const save = trpc.estimateAssistant.saveDraft.useMutation();
   const upload = trpc.estimateAssistant.uploadPdf.useMutation();
   const analyze = trpc.estimateAssistant.analyzePdf.useMutation();
+  const approve = trpc.estimateAssistant.approveDraft.useMutation();
+  const pdfSource = useMemo(() => draftId && sourcePdfKey
+    ? { draftId }
+    : sourcePdfKey ? { fileKey: sourcePdfKey } : null,
+    [draftId, sourcePdfKey]);
+  const pdfView = trpc.estimateAssistant.pdfPreviewUrl.useQuery(
+    pdfSource ?? NO_PDF_SOURCE, { enabled: !!pdfSource },
+  );
+  const approvedQuote = trpc.estimateAssistant.approvedQuote.useQuery(
+    { id: draftId ?? 0 }, { enabled: !!draftId && draftStatus === "approved" },
+  );
   const utils = trpc.useUtils();
   const amount = useMemo(() => calculateEstimate(lines), [lines]);
   const widthMm = Number(width) * (unitMode === "cm" ? 10 : 1);
   const heightMm = Number(height) * (unitMode === "cm" ? 10 : 1);
   const foretia = quoteForetia(widthMm, heightMm);
+  const fingerprint = JSON.stringify({ title, lines, sourceKind, sourcePdfKey, sourcePdfName });
+  const hasUnsavedChanges = draftId !== undefined && draftStatus === "draft" &&
+    savedFingerprint !== fingerprint;
+  const canModify = canEdit && draftStatus === "draft";
   const categories = useMemo(
     () => [
       "全て",
@@ -116,10 +139,11 @@ export default function EstimateAssistant() {
     [catalog.data, category, search]
   );
   const update = (i: number, change: Partial<EstimateLine>) =>
-    setLines(current =>
+    canModify && setLines(current =>
       current.map((line, j) => (i === j ? { ...line, ...change } : line))
     );
   const addForetia = () => {
+    if (!canModify) return;
     if (!foretia)
       return toast.error("対応寸法・1cm単位・面積9㎡以下を確認してください");
     const count = Number(quantity);
@@ -143,6 +167,7 @@ export default function EstimateAssistant() {
     item: NonNullable<typeof catalog.data>["items"][number],
     band: "low" | "standard" | "high"
   ) => {
+    if (!canModify) return;
     setLines(current => [
       ...current,
       {
@@ -151,7 +176,7 @@ export default function EstimateAssistant() {
         quantity: 1,
         unit: item.unit,
         unitPrice: item[band],
-        source: `${item.id} / 標準施工単価表 ${catalog.data?.version}（税区分原本に明記なし・税抜試算）`,
+        source: `${item.id} / ${item.sourceRef ?? `標準施工単価表 ${catalog.data?.version}`}（税区分原本に明記なし・税抜試算）`,
         note: item.note ?? "",
       },
     ]);
@@ -160,6 +185,8 @@ export default function EstimateAssistant() {
   const resetDraft = () => {
     setDraftId(undefined);
     setDraftUpdatedAt(undefined);
+    setDraftStatus("draft");
+    setSavedFingerprint(null);
     setTitle("見積案");
     setLines([]);
     setSourcePdfKey(null);
@@ -167,9 +194,10 @@ export default function EstimateAssistant() {
     setSourceKind("manual");
     setPdfContext("");
     setPdfMatchedCaseId(null);
+    setPdfPage(1);
   };
   const persist = async () => {
-    if (!canEdit) return;
+    if (!canModify) return;
     if (!Number(caseId)) return toast.error("保存先の案件を選択してください");
     if (lines.length === 0 || lines.some(line => !line.name.trim()))
       return toast.error("空の明細名をなくしてください");
@@ -195,6 +223,7 @@ export default function EstimateAssistant() {
       });
       setDraftId(result.id);
       setDraftUpdatedAt(result.updatedAt);
+      setSavedFingerprint(fingerprint);
       await utils.estimateAssistant.listDrafts.invalidate({
         caseId: Number(caseId),
       });
@@ -205,8 +234,35 @@ export default function EstimateAssistant() {
       toast.error(e?.message ?? "下書きを保存できませんでした");
     }
   };
+  const approveAndDownload = async () => {
+    if (!canModify || !draftId || !draftUpdatedAt) return;
+    if (hasUnsavedChanges) return toast.error("変更した明細を先に保存してください");
+    if (amount.missing || amount.total <= 0)
+      return toast.error("全明細の数量と単価を確定してから承認してください");
+    if (!window.confirm("現在の見積内容を承認し、編集できない正式見積書として固定します。よろしいですか？")) return;
+    let snapshot;
+    try {
+      snapshot = await approve.mutateAsync({ id: draftId, expectedUpdatedAt: draftUpdatedAt });
+      setDraftStatus("approved");
+      await utils.estimateAssistant.listDrafts.invalidate({ caseId: Number(caseId) });
+      toast.success("見積書を承認しました。PDFを生成します");
+    } catch (e: any) { return toast.error(e?.message ?? "承認できませんでした"); }
+    try {
+      const { downloadApprovedEstimatePdf } = await import("@/lib/approvedEstimatePdf");
+      await downloadApprovedEstimatePdf(snapshot);
+    }
+    catch (e: any) { toast.error(`承認は完了しましたがPDFの出力に失敗しました。再ダウンロードをお試しください。${e?.message ?? ""}`); }
+  };
+  const downloadAgain = async () => {
+    if (!approvedQuote.data) return toast.error("承認済みデータを読み込めませんでした");
+    try {
+      const { downloadApprovedEstimatePdf } = await import("@/lib/approvedEstimatePdf");
+      await downloadApprovedEstimatePdf(approvedQuote.data);
+    }
+    catch (e: any) { toast.error(e?.message ?? "PDFを出力できませんでした"); }
+  };
   const handlePdf = async (file: File) => {
-    if (!canEdit) return;
+    if (!canModify) return;
     if (
       !file.name.toLowerCase().endsWith(".pdf") ||
       file.size > 12 * 1024 * 1024
@@ -229,11 +285,13 @@ export default function EstimateAssistant() {
       const result = await analyze.mutateAsync({ fileKey: up.fileKey });
       setDraftId(undefined);
       setDraftUpdatedAt(undefined);
+      setSavedFingerprint(null);
       setLines(result.items);
       setTitle(`${result.storeName || "案件"} 見積案`);
       setSourcePdfKey(up.fileKey);
       setSourcePdfName(up.fileName);
       setSourceKind("request_pdf");
+      setPdfPage(1);
       setPdfContext(
         `依頼番号: ${result.requestNumber || "未抽出"} ／ 店舗: ${result.storeName || "未抽出"}`
       );
@@ -269,14 +327,10 @@ export default function EstimateAssistant() {
           見積支援
         </h1>
         <p className="text-sm text-slate-600">
-          寸法別商品単価・施工標準単価・依頼PDFから、確認可能な見積案を組み立てます。正式見積と案件金額には自動反映しません。
+          寸法別商品単価・施工標準単価・依頼PDFから見積案を作成。承認後は内容を固定し、正式見積書PDFを出力します。案件金額や既存見積には自動反映しません。
         </p>
+        <Button variant="outline" size="sm" onClick={() => navigate("/estimates/unit-prices")}>標準施工単価マスタを管理 <ArrowRight className="ml-2 h-4 w-4" /></Button>
       </header>
-      {!canEdit && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-          役員は参考単価と保存済み見積案の閲覧のみ可能です。作成・変更は最高管理者・管理者が行います。
-        </div>
-      )}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_365px]">
         <div className="min-w-0 space-y-6">
           <Card>
@@ -400,7 +454,7 @@ export default function EstimateAssistant() {
                     <p className="text-xs text-slate-600">
                       仕上がり寸法を1cm単位で入力。幅58cm未満は高さ250cm以下、最大面積9㎡。窓寸法の差し引きはしません。
                     </p>
-                    {canEdit && (
+                    {canModify && (
                       <div className="flex items-end gap-3">
                         <label className="text-sm font-medium">
                           台数{" "}
@@ -558,8 +612,9 @@ export default function EstimateAssistant() {
                             {yen(item.low)} · 標準 {yen(item.standard)} · 上限{" "}
                             {yen(item.high)}
                           </p>
+                          <p className="text-xs text-slate-500">根拠：{item.sourceRef}</p>
                         </div>
-                        {canEdit && (
+                        {canModify && (
                           <div className="flex shrink-0 gap-1">
                             <Button
                               size="sm"
@@ -601,7 +656,7 @@ export default function EstimateAssistant() {
                   <p className="text-sm text-slate-600">
                     依頼内容・数量・寸法を抽出し、明確に一致した価格だけ候補に入れます。曖昧な項目は単価未設定です。提出・正式見積登録・案件金額変更はしません。
                   </p>
-                  {canEdit ? (
+                  {canModify ? (
                     <>
                       <input
                         ref={pdfRef}
@@ -626,7 +681,7 @@ export default function EstimateAssistant() {
                       )}
                     </>
                   ) : (
-                    <p className="text-sm">PDF解析は管理者のみ実行できます。</p>
+                    <p className="text-sm">承認済み見積は編集できません。新しい案を作成してください。</p>
                   )}
                   {pdfContext && (
                     <p className="rounded-md bg-blue-50 p-3 text-sm">
@@ -637,18 +692,44 @@ export default function EstimateAssistant() {
               </Card>
             </TabsContent>
           </Tabs>
+          <div className={sourcePdfKey ? "grid items-start gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]" : ""}>
+          {sourcePdfKey && (
+            <Card className="min-w-0 overflow-hidden xl:sticky xl:top-4">
+              <CardHeader className="border-b bg-slate-50 py-3">
+                <CardTitle className="flex flex-wrap items-center justify-between gap-2 text-base">
+                  <span>元の依頼PDF</span>
+                  <span className="text-xs font-normal text-slate-600">{sourcePdfName}</span>
+                </CardTitle>
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <label>ページ
+                    <Input aria-label="元PDFのページ" className="ml-2 inline-flex h-8 w-16" type="number" min="1" max="2000"
+                      value={pdfPage} onChange={e => setPdfPage(Math.max(1, Number(e.target.value) || 1))} />
+                  </label>
+                  <Button size="sm" variant="outline" onClick={() => void pdfView.refetch()}>表示を更新</Button>
+                  {pdfView.data?.url && <a className="inline-flex items-center gap-1 underline" href={pdfView.data.url} target="_blank" rel="noreferrer">別画面で原本を開く <ExternalLink className="h-3 w-3" /></a>}
+                </div>
+              </CardHeader>
+              <CardContent className="p-2">
+                {pdfView.isLoading ? <p className="p-4 text-sm">元PDFを読み込み中...</p> :
+                  pdfView.error ? <p className="p-4 text-sm text-red-700">元PDFを表示できません: {pdfView.error.message}</p> :
+                  pdfView.data?.url ? <iframe key={`${pdfView.data.url}:${pdfPage}`} title="元の依頼PDF" src={`${pdfView.data.url}#page=${pdfPage}&view=FitH`} className="h-[680px] w-full rounded-md border bg-slate-100" /> :
+                  <p className="p-4 text-sm">原本の表示を準備しています。</p>}
+                <p className="mt-2 text-xs text-slate-600">左の原本を見ながら右の抽出値を修正してください。ページ番号はAIの推定です。原文と相違する場合は原本を優先します。</p>
+              </CardContent>
+            </Card>
+          )}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calculator className="h-5 w-5" />
-                見積案の明細
+                {sourcePdfKey ? "抽出した見積明細・照合" : "見積案の明細"}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <Input
                 aria-label="見積案の件名"
                 value={title}
-                disabled={!canEdit}
+                disabled={!canModify}
                 onChange={e => setTitle(e.target.value)}
                 placeholder="見積案の件名"
               />
@@ -664,7 +745,7 @@ export default function EstimateAssistant() {
                         <span className="text-xs font-semibold text-slate-500">
                           明細 {i + 1}
                         </span>
-                        {canEdit && (
+                        {canModify && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -684,7 +765,7 @@ export default function EstimateAssistant() {
                           工事項目
                           <Input
                             value={line.name}
-                            disabled={!canEdit}
+                            disabled={!canModify}
                             onChange={e => update(i, { name: e.target.value })}
                           />
                         </label>
@@ -692,7 +773,7 @@ export default function EstimateAssistant() {
                           規格・寸法
                           <Input
                             value={line.specification}
-                            disabled={!canEdit}
+                            disabled={!canModify}
                             onChange={e =>
                               update(i, { specification: e.target.value })
                             }
@@ -707,7 +788,7 @@ export default function EstimateAssistant() {
                             step="any"
                             min="0.001"
                             value={line.quantity ?? ""}
-                            disabled={!canEdit}
+                            disabled={!canModify}
                             onChange={e =>
                               update(i, {
                                 quantity:
@@ -722,7 +803,7 @@ export default function EstimateAssistant() {
                           単位
                           <Input
                             value={line.unit}
-                            disabled={!canEdit}
+                            disabled={!canModify}
                             onChange={e => update(i, { unit: e.target.value })}
                           />
                         </label>
@@ -733,7 +814,7 @@ export default function EstimateAssistant() {
                             min="0"
                             step="1"
                             value={line.unitPrice ?? ""}
-                            disabled={!canEdit}
+                            disabled={!canModify}
                             onChange={e =>
                               update(i, {
                                 unitPrice:
@@ -745,6 +826,22 @@ export default function EstimateAssistant() {
                           />
                         </label>
                       </div>
+                      {sourcePdfKey && (
+                        <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-slate-700">
+                          <div className="mb-2 flex flex-wrap items-center justify-between gap-1">
+                            <strong>PDFの原文根拠</strong>
+                            {line.pageNumber && <Button variant="outline" size="sm" onClick={() => setPdfPage(line.pageNumber || 1)}>
+                              PDF {line.pageNumber}ページを開く
+                            </Button>}
+                          </div>
+                          <Input aria-label={`明細${i + 1}の原文引用`} value={line.evidence ?? ""} disabled={!canModify}
+                            placeholder="原文根拠なし・PDFで直接確認" onChange={e => update(i, { evidence: e.target.value })} />
+                          {canModify && <label className="mt-2 flex items-center gap-2">原文のページ番号
+                            <Input aria-label={`明細${i + 1}のページ番号`} className="h-8 w-20" type="number" min="1" max="2000"
+                              value={line.pageNumber ?? ""} onChange={e => update(i, { pageNumber: e.target.value ? Number(e.target.value) : null })} />
+                          </label>}
+                        </div>
+                      )}
                       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
                         <span className="break-all text-slate-500">
                           根拠: {line.source}
@@ -758,11 +855,14 @@ export default function EstimateAssistant() {
                           )}
                         </strong>
                       </div>
+                      <label className="mt-2 block text-xs text-slate-600">補足・施工条件
+                        <Input className="mt-1" value={line.note} disabled={!canModify} onChange={e => update(i, { note: e.target.value })} />
+                      </label>
                     </div>
                   ))}
                 </div>
               )}
-              {canEdit && (
+              {canModify && (
                 <Button
                   variant="outline"
                   onClick={() => setLines(current => [...current, blankLine()])}
@@ -773,6 +873,7 @@ export default function EstimateAssistant() {
               )}
             </CardContent>
           </Card>
+          </div>
         </div>
         <aside className="min-w-0 space-y-4">
           <Card className="border-[#17304c]">
@@ -800,9 +901,9 @@ export default function EstimateAssistant() {
                 </p>
               )}
               <p className="text-xs text-slate-600">
-                税区分・諸経費・施工範囲・地域差は確認が必要です。これは提出用の正式見積書ではありません。
+                税区分・諸経費・施工範囲・地域差を確認してください。承認するとこの案を固定し、正式見積書PDFを出力します（外部送信はしません）。
               </p>
-              {canEdit && (
+              {canModify && (
                 <Button
                   className="w-full"
                   disabled={save.isPending || !caseId || lines.length === 0}
@@ -816,6 +917,20 @@ export default function EstimateAssistant() {
                   案件の見積案として保存
                 </Button>
               )}
+              {canModify && draftId && (
+                <Button variant="outline" className="w-full" disabled={approve.isPending || save.isPending || amount.missing > 0 || hasUnsavedChanges || amount.total <= 0}
+                  onClick={() => void approveAndDownload()}>
+                  {approve.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileCheck2 className="mr-2 h-4 w-4" />}
+                  内容を承認して正式見積書PDFを出力
+                </Button>
+              )}
+              {hasUnsavedChanges && <p className="text-xs text-amber-800">修正した明細を先に保存すると承認できます。</p>}
+              {draftStatus === "approved" && <>
+                <p className="rounded-md bg-green-50 p-2 text-xs text-green-900">承認済み・編集不可。内容は承認時点で固定されています。</p>
+                <Button className="w-full" disabled={approvedQuote.isLoading || !approvedQuote.data} onClick={() => void downloadAgain()}>
+                  <Download className="mr-2 h-4 w-4" />正式見積書PDFを再ダウンロード
+                </Button>
+              </>}
             </CardContent>
           </Card>
           {caseId && (
@@ -843,12 +958,17 @@ export default function EstimateAssistant() {
                           return;
                         setDraftId(draft.id);
                         setDraftUpdatedAt(draft.updatedAt);
+                        setDraftStatus(draft.status);
+                        setSavedFingerprint(JSON.stringify({ title: draft.title, lines: draft.items,
+                          sourceKind: draft.sourceKind, sourcePdfKey: draft.sourcePdfKey,
+                          sourcePdfName: draft.sourcePdfName }));
                         setTitle(draft.title);
                         setLines(draft.items);
                         setSourceKind(draft.sourceKind);
                         setSourcePdfKey(draft.sourcePdfKey);
                         setSourcePdfName(draft.sourcePdfName);
                         setPdfMatchedCaseId(null);
+                        setPdfPage(1);
                         setPdfContext(
                           draft.sourcePdfName
                             ? `元PDF: ${draft.sourcePdfName}`
@@ -856,7 +976,7 @@ export default function EstimateAssistant() {
                         );
                       }}
                     >
-                      <span className="block font-medium">{draft.title}</span>
+                      <span className="block font-medium">{draft.title} {draft.status === "approved" && <Badge className="ml-1 bg-green-700">承認済み</Badge>}</span>
                       <span className="text-xs text-slate-500">
                         {new Date(draft.updatedAt).toLocaleString("ja-JP")} ／{" "}
                         {draft.missingPriceCount} 件要確認
