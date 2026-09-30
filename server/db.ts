@@ -531,7 +531,11 @@ export async function getPhotosByCaseIds(caseIds: number[]) {
     .where(inArray(photos.caseId, caseIds))
     .orderBy(photos.orderNo, photos.createdAt);
 }
-
+export async function getPhotosByIds(ids: number[]) {
+  const db = await getDb();
+  if (!db || ids.length === 0) return [];
+  return db.select().from(photos).where(inArray(photos.id, ids));
+}
 // 複数案件の基本情報をまとめて取得（一括写真台帳PDF用）
 export async function getCasesByIds(caseIds: number[]) {
   const db = await getDb();

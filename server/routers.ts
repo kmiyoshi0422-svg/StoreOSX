@@ -26,6 +26,7 @@ import {
   getPhotoById,
   getPhotosByCaseId,
   getPhotosByCaseIds,
+  getPhotosByIds,
   getCasesByIds,
   listCases,
   listCaseFieldMemos,
@@ -323,6 +324,22 @@ async function assertCaseAccess(
   if (visible.length === 0) {
     throw new TRPCError({ code: "FORBIDDEN", message: "この案件へのアクセス権がありません" });
   }
+}
+
+async function assertPhotoCaseAccess(caseId: number, user: CaseAccessUser, editing = false) {
+  const caseData = await getCaseById(caseId);
+  if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+  await assertCaseAccess(caseData, user);
+  if (editing && user.role === "customer") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "写真を変更する権限がありません" });
+  }
+}
+
+async function assertPhotoIdAccess(photoId: number, user: CaseAccessUser, editing = false) {
+  const photo = await getPhotoById(photoId);
+  if (!photo) throw new TRPCError({ code: "NOT_FOUND", message: "写真が見つかりません" });
+  await assertPhotoCaseAccess(photo.caseId, user, editing);
+  return photo;
 }
 
 // ============================================================
@@ -2187,7 +2204,8 @@ export const appRouter = router({
   photos: router({
     listByCase: protectedProcedure
       .input(z.object({ caseId: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        await assertPhotoCaseAccess(input.caseId, ctx.user);
         const photoRows = await getPhotosByCaseId(input.caseId);
         return photoRows.map(withReadableFileUrl);
       }),
@@ -2196,11 +2214,15 @@ export const appRouter = router({
     listByCases: protectedProcedure
       .input(z.object({ caseIds: z.array(z.number()).min(1).max(100) }))
       .query(async ({ input, ctx }) => {
-        const [photoRows, caseRows] = await Promise.all([
-          getPhotosByCaseIds(input.caseIds),
-          getCasesByIds(input.caseIds),
-        ]);
-        return { photos: photoRows.map(withReadableFileUrl), cases: caseRows };
+        const caseRows = await getCasesByIds(input.caseIds);
+        if (new Set(caseRows.map((row) => row.id)).size !== new Set(input.caseIds).size) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        }
+        for (const row of caseRows) await assertCaseAccess(row, ctx.user);
+        // 一括台帳にも協力業者・顧客向けの金額マスキングを適用する。
+        const visibleCases = caseRows.map((row) => applyFinancialVisibility(row, ctx.user.role));
+        const photoRows = await getPhotosByCaseIds(input.caseIds);
+        return { photos: photoRows.map(withReadableFileUrl), cases: visibleCases };
       }),
 
     upload: protectedProcedure
@@ -2230,6 +2252,8 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
+        // 写真をS3へ保存する前に必ず案件アクセスを確認する。
+        await assertPhotoCaseAccess(input.caseId, ctx.user, true);
         // base64デコード
         const base64 = input.fileBase64.includes(",")
           ? input.fileBase64.split(",")[1]
@@ -2289,8 +2313,9 @@ export const appRouter = router({
           takenAt: z.number().nullish(), // 撮影日時（Unix ms）
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
         const { id, takenAt: takenAtMs, ...data } = input;
+        await assertPhotoIdAccess(id, ctx.user, true);
         const updateData: Record<string, unknown> = { ...data };
         if (takenAtMs !== undefined) {
           updateData.takenAt = takenAtMs ? new Date(takenAtMs) : null;
@@ -2300,14 +2325,18 @@ export const appRouter = router({
       }),
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
+        await assertPhotoIdAccess(input.id, ctx.user, true);
         await deletePhoto(input.id);
         return { success: true };
       }),
 
     get: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .query(({ input }) => getPhotoById(input.id)),
+      .query(async ({ ctx, input }) => {
+        const photo = await assertPhotoIdAccess(input.id, ctx.user);
+        return withReadableFileUrl(photo);
+      }),
     classify: protectedProcedure
       .input(
         z.object({
@@ -2483,11 +2512,28 @@ export const appRouter = router({
           ]),
         })
       )
-      .mutation(async ({ input }) => {
-        for (const id of input.ids) {
+      .mutation(async ({ ctx, input }) => {
+        // 1枚でも案件外の写真が混在する場合は一切変更しない。
+        const ids = Array.from(new Set(input.ids));
+        const photoRows = await getPhotosByIds(ids);
+        if (photoRows.length !== ids.length) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "写真が見つかりません" });
+        }
+        const caseIds = Array.from(new Set(photoRows.map((photo) => photo.caseId)));
+        const caseRows = await getCasesByIds(caseIds);
+        if (caseRows.length !== caseIds.length) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+        }
+        for (const row of caseRows) {
+          await assertCaseAccess(row, ctx.user);
+        }
+        if (ctx.user.role === "customer") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "写真を変更する権限がありません" });
+        }
+        for (const id of ids) {
           await updatePhoto(id, { photoType: input.photoType });
         }
-        return { success: true, count: input.ids.length };
+        return { success: true, count: ids.length };
       }),
   }),
 

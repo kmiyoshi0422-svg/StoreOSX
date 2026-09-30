@@ -148,6 +148,7 @@ export default function PhotosTab({
 }) {
   const { user } = useAuth();
   const canUseAiClassification = canUsePhotoClassification(user?.role ?? "");
+  const canEditPhotos = Boolean(user && user.role !== "customer");
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -206,7 +207,7 @@ export default function PhotosTab({
   return (
     <div className="space-y-4">
       {/* Camera + Upload */}
-      <Card className="border-dashed">
+      {canEditPhotos && <Card className="border-dashed">
         <CardContent className="p-5 space-y-4">
           <input
             ref={fileRef}
@@ -269,7 +270,7 @@ export default function PhotosTab({
             </Button>
           </div>
         </CardContent>
-      </Card>
+      </Card>}
 
       <CaseFieldMemosPanel caseId={caseId} />
 
@@ -319,7 +320,7 @@ export default function PhotosTab({
                 />
               </>
             )}
-            <Button
+            {canEditPhotos && <Button
               variant={selectionMode ? "default" : "outline"}
               size="sm"
               onClick={() => { setSelectionMode(!selectionMode); setSelectedIds(new Set()); }}
@@ -327,7 +328,7 @@ export default function PhotosTab({
             >
               <CheckSquare className="h-3.5 w-3.5 mr-1" />
               {selectionMode ? "選択中" : "一括選択"}
-            </Button>
+            </Button>}
             {selectionMode && (
               <>
                 <Button variant="outline" size="sm" className="bg-background" onClick={() => setSelectedIds(new Set(photos.map(p => p.id)))}>全選択</Button>
@@ -339,7 +340,7 @@ export default function PhotosTab({
       )}
 
       {/* Bulk Action Bar */}
-      {selectionMode && selectedIds.size > 0 && (
+      {canEditPhotos && selectionMode && selectedIds.size > 0 && (
         <Card className="border-primary/30 bg-primary/5">
           <CardContent className="p-3 flex items-center gap-3 flex-wrap">
             <span className="text-sm font-medium">{selectedIds.size}枚選択中</span>
@@ -500,6 +501,7 @@ export default function PhotosTab({
                 <PhotoCard
                   photo={p}
                   onOpen={() => lightbox.open(i)}
+                  readOnly={!canEditPhotos}
                   onUpdate={(data) => updateMutation.mutate({ id: p.id, ...data })}
                   onDelete={() => {
                     if (confirm("この写真を削除します。よろしいですか？")) {
@@ -527,6 +529,7 @@ function PhotoCard({
   onUpdate,
   onDelete,
   onOpen,
+  readOnly = false,
 }: {
   photo: {
     id: number;
@@ -548,6 +551,7 @@ function PhotoCard({
   }) => void;
   onDelete: () => void;
   onOpen?: () => void;
+  readOnly?: boolean;
 }) {
   const rotation = photo.rotation ?? 0;
   const [workItem, setWorkItem] = useState(photo.workItem ?? "");
@@ -571,7 +575,7 @@ function PhotoCard({
             {photo.photoType}
           </Badge>
         </div>
-        <div className="absolute top-2 right-2 flex gap-1.5">
+        {!readOnly && <div className="absolute top-2 right-2 flex gap-1.5">
           <div className="flex items-center rounded-full bg-black/70 backdrop-blur-sm overflow-hidden">
             <button
               onClick={(e) => {
@@ -602,12 +606,12 @@ function PhotoCard({
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
-        </div>
+        </div>}
       </div>
       <CardContent className="p-3 space-y-2">
         <div>
           <Label className="text-[10px] text-muted-foreground">写真種別</Label>
-          <Select
+          {readOnly ? <p className="text-xs mt-0.5">{photo.photoType}</p> : <Select
             value={photo.photoType}
             onValueChange={(v) => onUpdate({ photoType: v as typeof PHOTO_TYPES[number] })}
           >
@@ -621,11 +625,11 @@ function PhotoCard({
                 </SelectItem>
               ))}
             </SelectContent>
-          </Select>
+          </Select>}
         </div>
         <div>
           <Label className="text-[10px] text-muted-foreground">工事項目</Label>
-          <Select
+          {readOnly ? <p className="text-xs mt-0.5">{photo.workCategory || "未選択"}</p> : <Select
             value={photo.workCategory || "__none__"}
             onValueChange={(v) =>
               onUpdate({ workCategory: v === "__none__" ? null : v })
@@ -644,11 +648,11 @@ function PhotoCard({
                 </SelectItem>
               ))}
             </SelectContent>
-          </Select>
+          </Select>}
         </div>
         <div>
           <Label className="text-[10px] text-muted-foreground">作業内容</Label>
-          <Input
+          {readOnly ? <p className="text-xs mt-0.5">{photo.workItem || "未入力"}</p> : <Input
             value={workItem}
             onChange={(e) => setWorkItem(e.target.value)}
             onBlur={() => {
@@ -656,11 +660,11 @@ function PhotoCard({
             }}
             className="h-8 mt-0.5 text-xs"
             placeholder="例: 自動ドアセンサー交換"
-          />
+          />}
         </div>
         <div>
           <Label className="text-[10px] text-muted-foreground">メモ</Label>
-          <Textarea
+          {readOnly ? <p className="text-xs mt-0.5">{photo.memo || "未入力"}</p> : <Textarea
             value={memo}
             onChange={(e) => setMemo(e.target.value)}
             onBlur={() => {
@@ -669,7 +673,7 @@ function PhotoCard({
             rows={2}
             className="mt-0.5 text-xs"
             placeholder="現場メモ"
-          />
+          />}
         </div>
         {photo.takenAt && (
           <div className="pt-1 border-t">
