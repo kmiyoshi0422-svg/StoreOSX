@@ -339,6 +339,28 @@ export const estimates = mysqlTable("estimates", {
 export type Estimate = typeof estimates.$inferSelect;
 export type InsertEstimate = typeof estimates.$inferInsert;
 
+/** 提出前に人が確認する見積案。既存の正式見積・案件金額とは独立。 */
+export const estimateDrafts = mysqlTable("estimate_drafts", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("case_id").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  sourceKind: mysqlEnum("source_kind", ["manual", "request_pdf"]).notNull(),
+  sourcePdfKey: varchar("source_pdf_key", { length: 512 }),
+  sourcePdfName: varchar("source_pdf_name", { length: 255 }),
+  itemsJson: text("items_json").notNull(),
+  subtotal: int("subtotal").notNull(),
+  tax: int("tax").notNull(),
+  total: int("total").notNull(),
+  missingPriceCount: int("missing_price_count").notNull(),
+  createdBy: int("created_by").notNull(),
+  updatedBy: int("updated_by").notNull(),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+}, (t) => ({
+  caseIdx: index("idx_estimate_drafts_case_updated").on(t.caseId, t.updatedAt),
+}));
+export type EstimateDraft = typeof estimateDrafts.$inferSelect;
+
 /**
  * ルート割り振り（2チーム制の現調・工事スケジュール）
  */

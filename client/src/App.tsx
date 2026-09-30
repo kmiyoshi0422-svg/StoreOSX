@@ -26,6 +26,7 @@ const CasesMap = lazy(() => import("./pages/CasesMap"));
 const PartnerImport = lazy(() => import("./pages/PartnerImport"));
 const EstimateImport = lazy(() => import("./pages/EstimateImport"));
 const EstimateOcrExcel = lazy(() => import("./pages/EstimateOcrExcel"));
+const EstimateAssistant = lazy(() => import("./pages/EstimateAssistant"));
 const ExpenseImport = lazy(() => import("./pages/ExpenseImport"));
 const ExpenseByUser = lazy(() => import("./pages/ExpenseByUser"));
 const ExpenseList = lazy(() => import("./pages/ExpenseList"));
@@ -82,6 +83,9 @@ function Router() {
                 <Route path={"/partners/import"} component={PartnerImport} />
                 <Route path={"/estimates/import"} component={EstimateImport} />
                 <Route path={"/estimates/ocr-excel"} component={EstimateOcrExcel} />
+                <Route path={"/estimates/assistant"}>
+                  <FinancialOnly><EstimateAssistant /></FinancialOnly>
+                </Route>
                 <Route path={"/expenses/import"} component={ExpenseImport} />
                 <Route path={"/expenses/submit"} component={ExpenseSubmit} />
                 <Route path={"/expenses/approve"}>

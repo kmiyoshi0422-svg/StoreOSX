@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, FilePlus, ClipboardList, Upload, Wallet, BarChart3, Briefcase, FileSearch, FileText, Users, Building2, Gauge, Receipt, TrendingUp, MapPinned, Images, BookMarked, Sparkles, Droplets, Library, GanttChart, Activity, List, SendHorizontal, CheckCircle2, FileClock, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, FilePlus, ClipboardList, Upload, Wallet, BarChart3, Briefcase, FileSearch, FileText, Users, Building2, Gauge, Receipt, TrendingUp, MapPinned, Images, BookMarked, Sparkles, Droplets, Library, GanttChart, Activity, List, SendHorizontal, CheckCircle2, FileClock, ShieldCheck, Calculator } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -44,6 +44,7 @@ const menuItems: MenuItem[] = [
   { icon: Droplets, label: "雨漏り調査", path: "/rain-leak", hideForPartner: true, hideForCustomer: true },
   { icon: FileText, label: "見積書取込", path: "/estimates/import", hideForPartner: true, hideForCustomer: true },
   { icon: FileSearch, label: "見積書OCR→Excel", path: "/estimates/ocr-excel", hideForPartner: true, hideForCustomer: true },
+  { icon: Calculator, label: "見積支援・依頼PDF", path: "/estimates/assistant", financialOnly: true },
   { icon: Upload, label: "CSVインポート", path: "/cases/import", hideForPartner: true, hideForCustomer: true },
   { icon: Briefcase, label: "協力会社", path: "/partners", hideForPartner: true, hideForCustomer: true },
   { icon: Users, label: "協力会社取込", path: "/partners/import", hideForPartner: true, hideForCustomer: true },

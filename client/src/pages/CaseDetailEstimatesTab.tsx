@@ -144,6 +144,7 @@ function fileToBase64(file: File): Promise<string> {
 
 export default function EstimatesTab({ caseId, partnerToken }: { caseId: number; partnerToken: string | null }) {
   const utils = trpc.useUtils();
+  const [, go] = useLocation();
   const fileRef = useRef<HTMLInputElement>(null);
   const { data: estimates = [], isLoading } = trpc.estimates.listByCase.useQuery({ caseId });
   const [uploading, setUploading] = useState(false);
@@ -246,10 +247,15 @@ export default function EstimatesTab({ caseId, partnerToken }: { caseId: number;
                 if (fileRef.current) fileRef.current.value = "";
               }}
             />
-            <Button onClick={() => fileRef.current?.click()} disabled={uploading}>
-              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              見積書をアップロード
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => go(`/estimates/assistant?caseId=${caseId}`)}>
+                見積支援で案を作る
+              </Button>
+              <Button onClick={() => fileRef.current?.click()} disabled={uploading}>
+                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                見積書をアップロード
+              </Button>
+            </div>
           </div>
 
           <div className="border-t border-border/60 pt-4 space-y-2">
