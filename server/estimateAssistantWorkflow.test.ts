@@ -156,7 +156,7 @@ describe("見積支援 拡張API統合", () => {
     expect(storageGetSignedUrl).toHaveBeenCalledTimes(2);
   });
 
-  it("原本単価は非破壊。追加→編集→検索候補反映→削除で監査履歴を残す", async () => {
+  it("原本単価は非破壊。追加→編集→手動参照→削除で監査履歴を残す", async () => {
     const created = await user.estimateAssistant.masterSave({ price: valid });
     createdPriceIds.push(created.id);
     const first = (await owner.estimateAssistant.masterList()).find(
@@ -178,12 +178,8 @@ describe("見積支援 拡張API統合", () => {
       evidence: "特殊工事",
       pageNumber: 1,
     };
-    expect(
-      priceExtractedItem(
-        extracted,
-        (await owner.estimateAssistant.catalog()).items
-      ).unitPrice
-    ).toBe(8000);
+    expect(priceExtractedItem(extracted).unitPrice).toBeNull();
+    expect((await owner.estimateAssistant.catalog()).items.find(x => x.id === created.id)?.standard).toBe(8000);
     await expect(
       owner.estimateAssistant.masterSave({
         id: created.id,
@@ -196,22 +192,15 @@ describe("見積支援 拡張API統合", () => {
       expectedUpdatedAt: created.updatedAt,
       price: { ...valid, standard: 8500 },
     });
-    expect(
-      priceExtractedItem(
-        extracted,
-        (await user.estimateAssistant.catalog()).items
-      ).unitPrice
-    ).toBe(8500);
+    expect(priceExtractedItem(extracted).unitPrice).toBeNull();
+    const reference = (await user.estimateAssistant.catalog()).items.find(x => x.id === created.id)!;
+    expect(reference.standard).toBe(8500);
     const fixedDraft = await user.estimateAssistant.saveDraft({
       caseId,
       title: "単価マスタ変更テスト",
       sourceKind: "manual",
-      items: [
-        priceExtractedItem(
-          extracted,
-          (await user.estimateAssistant.catalog()).items
-        ),
-      ],
+      items: [{ ...priceExtractedItem(extracted), unitPrice: reference.standard,
+        source: `標準施工単価を手動参照: ${reference.id}` }],
     });
     const fixedQuote = await user.estimateAssistant.approveDraft({
       id: fixedDraft.id,

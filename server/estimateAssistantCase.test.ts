@@ -80,7 +80,7 @@ describe("案件詳細から依頼PDFを再アップロードせず見積案生�
       expect.objectContaining({ type: "file_url", file_url: expect.objectContaining({ mime_type: "application/pdf", url: "https://example.invalid/TEST-request.pdf" }) }),
     ]));
     expect(newCase.items[0]).toMatchObject({ name: "建具調整", unitPrice: null,
-      quantity: null, source: "案件元PDFと登録情報（単価未設定）", pageNumber: null, evidenceSource: "pdf" });
+      quantity: null, unit: "式", source: "案件元PDFと登録情報（単価は自由入力）", pageNumber: null, evidenceSource: "pdf" });
     const oldCase = await employee.estimateAssistant.analyzeCase({ caseId: caseIds[1] });
     expect(oldCase.sourcePdfKey).toBeNull();
     expect(oldCase.pdfAnalyzed).toBe(false);

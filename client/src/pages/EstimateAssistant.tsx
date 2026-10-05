@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import EstimatePresetMenu from "@/components/estimates/EstimatePresetMenu";
 import {
   AlertCircle,
   ArrowRight,
@@ -45,7 +46,7 @@ const NO_PDF_SOURCE = { fileKey: "" } as const;
 const blankLine = (): EstimateLine => ({
   name: "",
   specification: "",
-  quantity: 1,
+  quantity: null,
   unit: "式",
   unitPrice: null,
   source: "手入力（要確認）",
@@ -90,6 +91,7 @@ export default function EstimateAssistant() {
   const [width, setWidth] = useState("1800");
   const [height, setHeight] = useState("2000");
   const [quantity, setQuantity] = useState("1");
+  const [toolTab, setToolTab] = useState("presets");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("全て");
   const [pdfBusy, setPdfBusy] = useState(false);
@@ -263,7 +265,7 @@ export default function EstimateAssistant() {
       {
         name: item.name,
         specification: item.specification ?? "",
-        quantity: 1,
+        quantity: null,
         unit: item.unit,
         unitPrice: item[band],
         source: `${item.id} / ${item.sourceRef ?? `標準施工単価表 ${catalog.data?.version}`}（税区分原本に明記なし・税抜試算）`,
@@ -485,7 +487,7 @@ export default function EstimateAssistant() {
           見積支援
         </h1>
         <p className="text-sm text-slate-600">
-          寸法別商品単価・施工標準単価・依頼PDFから見積案を作成。承認後は内容を固定し、正式見積書PDFを出力します。案件金額や既存見積には自動反映しません。
+          定型メニューまたは自由入力で見積案を作成。依頼PDFや案件からは作業項目のみ抽出し、数量が不明なら空欄、単価は自動入力しません。承認後は正式見積書PDFを出力します。
         </p>
         <Button
           variant="outline"
@@ -601,12 +603,30 @@ export default function EstimateAssistant() {
               </CardContent>
             </Card>
           )}
-          <Tabs defaultValue="foretia" className="space-y-4">
+          <Tabs value={toolTab} onValueChange={setToolTab} className="space-y-4">
             <TabsList className="h-auto flex-wrap justify-start">
-              <TabsTrigger value="foretia">寸法別商品単価</TabsTrigger>
-              <TabsTrigger value="standard">標準施工単価</TabsTrigger>
+              <TabsTrigger value="presets">定型メニュー</TabsTrigger>
+              <TabsTrigger value="free">自由見積</TabsTrigger>
+              <TabsTrigger value="foretia">ブラインド参考価格</TabsTrigger>
+              <TabsTrigger value="standard">標準単価（手動参照）</TabsTrigger>
               <TabsTrigger value="pdf">依頼PDF → 見積案</TabsTrigger>
             </TabsList>
+            <TabsContent value="presets">
+              <EstimatePresetMenu canModify={canModify} canAdd={lines.length < 50}
+                onForetia={() => setToolTab("foretia")}
+                onAdd={line => setLines(current => [...current, line])} />
+            </TabsContent>
+            <TabsContent value="free">
+              <Card><CardHeader><CardTitle>自由見積・手入力</CardTitle></CardHeader>
+                <CardContent className="space-y-3 text-sm text-slate-600">
+                  <p>作業項目を自由に追加できます。数量・税抜単価は空欄のまま明細を作り、下の編集欄で確定してください。標準施工単価は自動適用しません。</p>
+                  <Button variant="outline" disabled={!canModify || lines.length >= 50}
+                    onClick={() => setLines(current => [...current, blankLine()])}>
+                    <Plus className="mr-2 h-4 w-4" />空欄の明細を追加
+                  </Button>
+                </CardContent>
+              </Card>
+            </TabsContent>
             <TabsContent value="foretia" className="space-y-4">
               <Card className="overflow-hidden">
                 <div className="grid md:grid-cols-[1.1fr_0.9fr]">
@@ -885,7 +905,7 @@ export default function EstimateAssistant() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <p className="text-sm text-slate-600">
-                    依頼内容・数量・寸法を抽出し、明確に一致した価格だけ候補に入れます。曖昧な項目は単価未設定です。提出・正式見積登録・案件金額変更はしません。
+                    依頼内容・書かれた数量・寸法だけを抽出します。数量不明は空欄、単価は標準施工単価や商品価格から自動入力せず、自由に設定できます。案件金額や正式見積は変更しません。
                   </p>
                   {canModify ? (
                     <>
@@ -1138,7 +1158,7 @@ export default function EstimateAssistant() {
                 />
                 {lines.length === 0 ? (
                   <p className="rounded-lg border border-dashed p-8 text-center text-sm text-slate-500">
-                    寸法別商品、標準施工単価、または依頼PDFから明細を追加してください。
+                    定型メニュー・自由見積・案件情報・依頼PDFから明細を追加してください。
                   </p>
                 ) : (
                   <div className="space-y-3">
@@ -1249,7 +1269,7 @@ export default function EstimateAssistant() {
                               />
                             </label>
                             <label className="text-xs">
-                              単価・税抜試算
+                              単価・税抜（自由入力）
                               <Input
                                 type="number"
                                 min="0"

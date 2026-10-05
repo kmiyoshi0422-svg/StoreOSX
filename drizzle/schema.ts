@@ -454,6 +454,38 @@ export const unitPriceMasterHistory = mysqlTable("unit_price_master_history", {
   priceIdx: index("idx_unit_price_master_history_price").on(t.priceId, t.changedAt),
 }));
 
+/** 定型見積メニュー。標準施工単価マスタとは独立し、単価未設定も許可する。 */
+export const estimatePresetCategories = mysqlTable("estimate_preset_categories", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  name: varchar("name", { length: 120 }).notNull(),
+  sortOrder: int("sort_order").default(0).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdBy: int("created_by"),
+  updatedBy: int("updated_by"),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+}, t => ({
+  activeOrderIdx: index("idx_estimate_preset_categories_active_order").on(t.isActive, t.sortOrder),
+}));
+
+export const estimatePresetItems = mysqlTable("estimate_preset_items", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  categoryId: varchar("category_id", { length: 64 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  specification: varchar("specification", { length: 255 }).default("").notNull(),
+  unit: varchar("unit", { length: 30 }).notNull(),
+  unitPrice: int("unit_price"), // 任意。標準施工単価から自動では取り込まない
+  note: text("note"),
+  sortOrder: int("sort_order").default(0).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdBy: int("created_by"),
+  updatedBy: int("updated_by"),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+}, t => ({
+  categoryOrderIdx: index("idx_estimate_preset_items_category_order").on(t.categoryId, t.isActive, t.sortOrder),
+}));
+
 /**
  * ルート割り振り（2チーム制の現調・工事スケジュール）
  */

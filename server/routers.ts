@@ -198,6 +198,7 @@ import {
 } from "./zapierFileSync";
 import { systemRouter } from "./_core/systemRouter";
 import { estimateAssistantRouter } from "./estimateAssistantRouter";
+import { estimatePresetsRouter } from "./estimatePresetsRouter";
 import { TRPCError } from "@trpc/server";
 import { adminProcedure, financialProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { BUDGET_RATIO, calcBudget } from "../shared/budget";
@@ -540,6 +541,7 @@ async function saveDashboardConstructionAssignment(input: {
 export const appRouter = router({
   system: systemRouter,
   estimateAssistant: estimateAssistantRouter,
+  estimatePresets: estimatePresetsRouter,
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {

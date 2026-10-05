@@ -297,12 +297,11 @@ export const estimateAssistantRouter = router({
       const normalized = (s: string) => s.normalize("NFKC").replace(/[\s\-ー−‐]/g, "").toLowerCase();
       if (source && data.pdfRequestNumber?.trim() && normalized(data.pdfRequestNumber) !== normalized(record.requestNumber))
         throw new TRPCError({ code: "CONFLICT", message: `元PDFの依頼番号「${data.pdfRequestNumber.slice(0, 64)}」が登録済みの「${record.requestNumber}」と異なります。案件・原本を確認してください` });
-      const prices = await activePrices();
       const priced = data.items.map(item => priceExtractedItem({
         ...item, specification: item.specification ?? "", unit: item.unit ?? "",
         evidence: item.evidence ?? "", pageNumber: source ? item.pageNumber : null,
-      } as PdfWorkItem, prices)).map(line => ({ ...line,
-        source: line.unitPrice == null ? (source ? "案件元PDFと登録情報（単価未設定）" : "案件登録情報（単価未設定）") : line.source,
+      } as PdfWorkItem)).map(line => ({ ...line,
+        source: source ? "案件元PDFと登録情報（単価は自由入力）" : "案件登録情報（単価は自由入力）",
         evidenceSource: source ? "pdf" as const : "case_text" as const,
         pageNumber: source ? line.pageNumber : null,
       }));
@@ -707,15 +706,13 @@ export const estimateAssistantRouter = router({
       const normalized = (s: string) => s.normalize("NFKC").replace(/[\s\-ー−‐]/g, "").toLowerCase();
       if (data.requestNumber.trim() && normalized(data.requestNumber) !== normalized(target.requestNumber))
         throw new TRPCError({ code: "CONFLICT", message: "PDFの依頼番号と保存先案件が一致しません。案件を確認してください" });
-      const prices = await activePrices();
       const items = data.items.map(item => ({ ...priceExtractedItem(
           {
             ...item,
             specification: item.specification ?? "",
             unit: item.unit ?? "",
             evidence: item.evidence ?? "",
-          } as PdfWorkItem,
-          prices
+          } as PdfWorkItem
         ), evidenceSource: "pdf" as const }));
       const run = await recordEstimateAiRun({ caseId: targetCaseId, sourceKind: "uploaded_pdf", modelId: "gemini-3-flash-preview",
         generatedBy: ctx.user.id, discrepancy: [], items });

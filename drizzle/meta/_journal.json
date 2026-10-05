@@ -330,6 +330,13 @@
       "when": 1790808829221,
       "tag": "0046_nosy_speed",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "5",
+      "when": 1791236815116,
+      "tag": "0047_nasty_triathlon",
+      "breakpoints": true
     }
   ]
 }

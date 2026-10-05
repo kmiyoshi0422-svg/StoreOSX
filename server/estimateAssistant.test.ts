@@ -78,12 +78,12 @@ describe("見積支援の価格ロジック", () => {
       )
     ).toBe(true);
   });
-  it("PDFの不明項目は価格を捏造せず、厳密一致だけ単価候補を提案する", () => {
+  it("PDFの不明数量は空欄で、標準単価やフォレティア価格も自動で代入しない", () => {
     expect(priceExtractedItem(work).unitPrice).toBeNull();
     expect(
       priceExtractedItem({ ...work, name: "コンセント新設", unit: "箇所" })
         .unitPrice
-    ).toBe(8000);
+    ).toBeNull();
     expect(
       priceExtractedItem({
         ...work,
@@ -99,7 +99,7 @@ describe("見積支援の価格ロジック", () => {
         widthMm: 1800,
         heightMm: 2000,
       }).unitPrice
-    ).toBe(56900);
+    ).toBeNull();
     expect(
       priceExtractedItem({
         ...work,
@@ -107,13 +107,18 @@ describe("見積支援の価格ロジック", () => {
         widthMm: null,
       }).unitPrice
     ).toBeNull();
+    expect(priceExtractedItem({ ...work, quantity: null, unit: "" })).toMatchObject({
+      name: "不明な塗装", quantity: null, unit: "式", unitPrice: null,
+    });
+    expect(priceExtractedItem({ ...work, quantity: 3 }).quantity).toBe(3);
   });
   it("未価格項目は0円とみなして総額と誤認させず、入力済みのみ概算する", () => {
-    const priced = priceExtractedItem({
+    const extracted = priceExtractedItem({
       ...work,
       name: "コンセント新設",
       unit: "箇所",
     });
+    const priced = { ...extracted, unitPrice: 8000, source: "担当者が自由に入力" };
     expect(calculateEstimate([priced, priceExtractedItem(work)])).toEqual({
       subtotal: 16000,
       tax: 1600,
@@ -182,11 +187,12 @@ describe("見積案の案件紐付けと保存履歴", () => {
     if (caseId) await owner.cases.delete({ id: caseId });
   }, 30000);
   it("追加→一覧→更新、旧版更新拒否、社内金額を自動更新しない", async () => {
-    const line = priceExtractedItem({
+    const extracted = priceExtractedItem({
       ...work,
       name: "コンセント新設",
       unit: "箇所",
     });
+    const line = { ...extracted, unitPrice: 8000, source: "担当者が自由に入力" };
     const created = await owner.estimateAssistant.saveDraft({
       caseId,
       title: "試算案",
@@ -200,9 +206,7 @@ describe("見積案の案件紐付けと保存履歴", () => {
       missing: 0,
     });
     const rows = await owner.estimateAssistant.listDrafts({ caseId });
-    expect(rows.find(row => row.id === created.id)?.items[0].source).toContain(
-      "2026-06-v2"
-    );
+    expect(rows.find(row => row.id === created.id)?.items[0].source).toBe("担当者が自由に入力");
     const updated = await owner.estimateAssistant.saveDraft({
       id: created.id,
       expectedUpdatedAt: created.updatedAt,
