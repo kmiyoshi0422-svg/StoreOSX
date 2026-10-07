@@ -1,5 +1,6 @@
 import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, like, or, sql } from "drizzle-orm";
 import { hasAllAreaAccess, parseAllowedPrefectures, type AreaAccessUser } from "../shared/accessPolicy";
+import { isEmergencySurveyCase } from "../shared/emergencySurveyDate";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   cases,
@@ -64,6 +65,7 @@ import {
   statusLogs,
   InsertStatusLog,
   emergencySurveyDateLogs,
+  caseResponseDateLogs,
   storeMaster,
   InsertStoreMaster,
   surveySkipLogs,
@@ -340,6 +342,8 @@ export async function listCasesSummary() {
       createdAt: cases.createdAt,
       revisitCount: cases.revisitCount,
       surveyDate: cases.surveyDate,
+      firstResponseDate: cases.firstResponseDate,
+      responsePlannedDate: cases.responsePlannedDate,
       partnerId: cases.partnerId,
       amountApproved: cases.amountApproved,
       lostReason: cases.lostReason,
@@ -524,10 +528,46 @@ export async function recordEmergencySurveyDate(input: {
     return { changed: true };
   });
 }
+export async function listCaseResponseDateLogs(caseId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(caseResponseDateLogs)
+    .where(eq(caseResponseDateLogs.caseId, caseId)).orderBy(desc(caseResponseDateLogs.id));
+}
+
+/** 実績と予定を区別し、旧日付と操作者を同じトランザクションで保存する。 */
+export async function recordCaseResponseDate(input: {
+  caseId: number;
+  kind: "first_response" | "planned_response";
+  date: Date | null;
+  note: string | null;
+  recordedBy: number;
+  recordedByName: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const [current] = await tx.select().from(cases).where(eq(cases.id, input.caseId)).for("update");
+    if (!current) throw new Error("案件が見つかりません");
+    const emergency = isEmergencySurveyCase(current);
+    if ((input.kind === "first_response") !== emergency) throw new Error("緊急度が変更されています。画面を更新してください");
+    const beforeDate = input.kind === "first_response" ? current.firstResponseDate : current.responsePlannedDate;
+    if (beforeDate?.getTime() === input.date?.getTime() || (!beforeDate && !input.date)) return { changed: false };
+    await tx.update(cases).set(input.kind === "first_response"
+      ? { firstResponseDate: input.date } : { responsePlannedDate: input.date })
+      .where(eq(cases.id, input.caseId));
+    await tx.insert(caseResponseDateLogs).values({
+      caseId: input.caseId, kind: input.kind, beforeDate, afterDate: input.date,
+      note: input.note, recordedBy: input.recordedBy, recordedByName: input.recordedByName,
+    });
+    return { changed: true };
+  });
+}
 export async function deleteCase(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.delete(emergencySurveyDateLogs).where(eq(emergencySurveyDateLogs.caseId, id));
+  await db.delete(caseResponseDateLogs).where(eq(caseResponseDateLogs.caseId, id));
   await db.delete(internalCaseNotifications).where(eq(internalCaseNotifications.caseId, id));
   await db.delete(caseFieldMemos).where(eq(caseFieldMemos.caseId, id));
   await db.delete(estimateAiCandidateEdits).where(eq(estimateAiCandidateEdits.caseId, id));

@@ -2,6 +2,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { trpc } from "@/lib/trpc";
 import { canAccessPrefecture } from "@shared/accessPolicy";
 import { toast } from "sonner";
+import type { ReactNode } from "react";
 
 export type AssignableUser = {
   id: number;
@@ -19,6 +20,8 @@ export function CaseAssigneeSelect({
   candidates,
   onUpdated,
   compact = false,
+  triggerContent,
+  triggerClassName,
 }: {
   caseId: number;
   prefecture: string | null;
@@ -26,6 +29,8 @@ export function CaseAssigneeSelect({
   candidates: AssignableUser[];
   onUpdated: () => void;
   compact?: boolean;
+  triggerContent?: ReactNode;
+  triggerClassName?: string;
 }) {
   const mutation = trpc.cases.update.useMutation({
     onSuccess: () => {
@@ -49,11 +54,11 @@ export function CaseAssigneeSelect({
     >
       <SelectTrigger
         aria-label="社内担当者を割り当てる"
-        className={compact ? "h-8 min-w-[112px] max-w-[170px] bg-background text-xs" : "w-full max-w-sm bg-background"}
+        className={triggerClassName ?? (compact ? "h-8 min-w-[112px] max-w-[170px] bg-background text-xs" : "w-full max-w-sm bg-background")}
         onClick={(event) => event.stopPropagation()}
         onPointerDown={(event) => event.stopPropagation()}
       >
-        <SelectValue placeholder="担当者を選択" />
+        {triggerContent ?? <SelectValue placeholder="担当者を選択" />}
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="__none__">未割当（解除）</SelectItem>

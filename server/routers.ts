@@ -19,6 +19,8 @@ import {
   getCaseById,
   listEmergencySurveyDateLogs,
   recordEmergencySurveyDate,
+  listCaseResponseDateLogs,
+  recordCaseResponseDate,
   getCaseFieldMemoById,
   getCaseByPartnerToken,
   getCaseByRequestNumber,
@@ -347,6 +349,9 @@ async function applyCaseVisibility<T>(
     if ((user.role !== "partner" && user.role !== "customer") || !safe || typeof safe !== "object") return safe;
     // 担当外は概要のみ公開。個人の連絡先と社内記録を広域に公開しない。
     const result: Record<string, unknown> = { ...safe, partnerToken: null };
+    // 初回対応実績と社内の対応予定は、全案件を読める外部ユーザーには公開しない。
+    result.firstResponseDate = null;
+    result.responsePlannedDate = null;
     for (const key of ["requestContent", "lostReasonDetail", "partnerNotes", "notes", "surveyImpression"]) {
       if (typeof result[key] === "string") result[key] = redactTextWithAmounts(result[key] as string);
     }
@@ -494,6 +499,8 @@ const caseUpdateSchema = caseInputSchema.partial().extend({
   urgency: z.enum(["S", "A", "B", "C"]).optional(),
   is10mYen: z.boolean().optional(),
   revisitCount: z.number().int().min(0).optional(),
+  firstResponseDate: z.date().nullish(),
+  responsePlannedDate: z.date().nullish(),
 });
 
 const dashboardConstructionDateSchema = z
@@ -1411,6 +1418,40 @@ export const appRouter = router({
       const [visible] = await applyCaseVisibility([caseData], ctx.user);
       return visible;
     }),
+    responseDateHistory: protectedProcedure.input(z.object({ id: z.number().int() }))
+      .query(async ({ ctx, input }) => {
+        if (!canManageCases(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
+        const item = await getCaseById(input.id);
+        if (!item) throw new TRPCError({ code: "NOT_FOUND" });
+        await assertCaseAccess(item, ctx.user);
+        return listCaseResponseDateLogs(input.id);
+      }),
+    setResponseDate: protectedProcedure.input(z.object({
+      id: z.number().int(),
+      kind: z.enum(["first_response", "planned_response"]),
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+      note: z.string().trim().max(500).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      if (!canManageCases(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "社員以上のみ対応日を更新できます" });
+      const item = await getCaseById(input.id);
+      if (!item) throw new TRPCError({ code: "NOT_FOUND" });
+      await assertCaseAccess(item, ctx.user);
+      if ((input.kind === "first_response") !== isEmergencySurveyCase(item)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "この案件の日付区分が異なります。画面を更新してください" });
+      }
+      const date = input.date === null ? null : parseSurveyCalendarDay(input.date);
+      if (input.date !== null && !date) throw new TRPCError({ code: "BAD_REQUEST", message: "実在する日付を入力してください" });
+      if (input.kind === "first_response" && input.date && input.date > jstCalendarDay(new Date())!) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "初回対応の実績に将来日は指定できません" });
+      }
+      if (input.kind === "first_response" && (input.note?.trim().length ?? 0) < 5) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "初回対応日の確認根拠・訂正理由を5文字以上で記入してください" });
+      }
+      return recordCaseResponseDate({
+        caseId: input.id, kind: input.kind, date, note: input.note?.trim() || null,
+        recordedBy: ctx.user.id, recordedByName: ctx.user.name ?? "不明",
+      });
+    }),
     emergencySurveyDateHistory: protectedProcedure.input(z.object({ id: z.number().int() }))
       .query(async ({ ctx, input }) => {
         if (!canManageCases(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
@@ -1534,8 +1575,8 @@ export const appRouter = router({
         if (ctx.user.role === "customer") {
           throw new TRPCError({ code: "FORBIDDEN", message: "顧客アカウントは案件を変更できません" });
         }
-        if (data.surveyDate !== undefined) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "現調実施日は案件詳細の専用欄から根拠付きで更新してください" });
+        if (data.surveyDate !== undefined || data.firstResponseDate !== undefined || data.responsePlannedDate !== undefined) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "対応日・現調日は専用の入力欄から更新してください" });
         }
         if (data.assigneeId !== undefined) {
           if (!canManageCases(ctx.user.role)) {

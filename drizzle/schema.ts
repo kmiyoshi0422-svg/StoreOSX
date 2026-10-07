@@ -99,6 +99,8 @@ export const cases = mysqlTable("cases", {
   invoiceDate: timestamp("invoiceDate"), // 請求日
   // 工期
   surveyDate: timestamp("surveyDate"), // 現調日
+  firstResponseDate: timestamp("first_response_date"), // 緊急案件の初回対応実績（現調日ではない）
+  responsePlannedDate: timestamp("response_planned_date"), // 通常案件の対応予定（施工日ではない）
   constructionDate: timestamp("constructionDate"), // 施工日
   completedAt: timestamp("completedAt"), // 完了日
   lostReason: mysqlEnum("lostReason", ["高額なため", "対応に不備", "別業者手配", "その他"]),
@@ -140,6 +142,21 @@ export const cases = mysqlTable("cases", {
 }));
 export type Case = typeof cases.$inferSelect;
 export type InsertCase = typeof cases.$inferInsert;
+
+/** 初回対応実績・対応予定の変更履歴。現調実績の監査とは別管理。 */
+export const caseResponseDateLogs = mysqlTable("case_response_date_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("case_id").notNull(),
+  kind: mysqlEnum("kind", ["first_response", "planned_response"]).notNull(),
+  beforeDate: timestamp("before_date"),
+  afterDate: timestamp("after_date"),
+  note: varchar("note", { length: 500 }),
+  recordedBy: int("recorded_by").notNull(),
+  recordedByName: varchar("recorded_by_name", { length: 255 }).notNull(),
+  recordedAt: timestamp("recorded_at").defaultNow().notNull(),
+}, (t) => ({
+  caseRecordedIdx: index("idx_case_response_date_case_recorded").on(t.caseId, t.recordedAt),
+}));
 
 /** 緊急案件の現地対応日（現調日）の入力・訂正・解除を監査する。案件本体の日付とは独立して履歴を保持。 */
 export const emergencySurveyDateLogs = mysqlTable("emergency_survey_date_logs", {

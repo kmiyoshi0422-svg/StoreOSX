@@ -26,6 +26,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { CaseAssigneeSelect } from "@/components/CaseAssigneeSelect";
+import { CaseResponseDateEditor } from "@/components/CaseResponseDateEditor";
 import { useLocation } from "wouter";
 import { useMemo, useState, useCallback, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -1095,8 +1096,27 @@ export default function CasesList() {
                     </div>
 
                     {/* Assignee badge & actions */}
-                    <div className="flex md:flex-col items-center md:items-end gap-3 shrink-0">
-                      {assigneeUser ? (
+                    <div className="flex flex-col items-start md:items-end gap-2 w-full md:w-auto md:shrink-0">
+                      {canAssign ? (
+                        <CaseAssigneeSelect caseId={c.id} prefecture={c.prefecture} currentAssigneeId={c.assigneeId ?? null}
+                          candidates={assignableUsers} onUpdated={() => utils.cases.listSummary.invalidate()}
+                          triggerClassName={`h-auto min-h-10 w-auto max-w-[220px] justify-start gap-2 border-0 bg-transparent p-1.5 text-left shadow-none hover:bg-muted/60 ${assigneeUser ? "text-foreground" : "text-amber-700"}`}
+                          triggerContent={assigneeUser ? (
+                            <span className="flex items-center gap-2">
+                              <Avatar className="h-9 w-9 ring-2 ring-white shadow-sm shrink-0">
+                                <AvatarFallback className={`text-[11px] font-semibold ${avatarColor(assigneeUser.id)}`}>
+                                  {userInitials(assigneeUser.name, assigneeUser.email)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="text-xs text-left"><span className="block text-[10px] text-muted-foreground">担当・変更可</span>{assigneeUser.name || assigneeUser.email}</span>
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-2">
+                              <span className="h-9 w-9 rounded-full bg-amber-50 border-2 border-amber-200 border-dashed flex items-center justify-center shrink-0"><UserCircle2 className="h-5 w-5" /></span>
+                              <span className="text-xs text-left"><span className="block text-[10px]">未割当</span>ここから割り当て</span>
+                            </span>
+                          )} />
+                      ) : assigneeUser ? (
                         <div className="flex items-center gap-2">
                           <Avatar className={`h-9 w-9 ring-2 ring-white shadow-sm`}>
                             <AvatarFallback
@@ -1125,11 +1145,9 @@ export default function CasesList() {
                           </div>
                         </div>
                       )}
-                      {canAssign && (
-                        <CaseAssigneeSelect caseId={c.id} prefecture={c.prefecture} currentAssigneeId={c.assigneeId ?? null}
-                          candidates={assignableUsers} onUpdated={() => utils.cases.listSummary.invalidate()} compact />
-                      )}
-                      <div className="flex md:flex-col gap-2">
+                      {canAssign && <CaseResponseDateEditor item={c} canEdit={canAssign}
+                        onUpdated={() => utils.cases.listSummary.invalidate()} />}
+                      <div className="flex flex-wrap md:flex-col gap-2">
                         <Button
                           size="sm"
                           variant="outline"
