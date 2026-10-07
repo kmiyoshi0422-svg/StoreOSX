@@ -344,6 +344,13 @@
       "when": 1791380029066,
       "tag": "0048_sour_luke_cage",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "5",
+      "when": 1791394916633,
+      "tag": "0049_bitter_moira_mactaggert",
+      "breakpoints": true
     }
   ]
 }

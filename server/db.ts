@@ -63,6 +63,7 @@ import {
   InsertDocumentVersion,
   statusLogs,
   InsertStatusLog,
+  emergencySurveyDateLogs,
   storeMaster,
   InsertStoreMaster,
   surveySkipLogs,
@@ -485,10 +486,48 @@ export async function updateCase(id: number, data: Partial<InsertCase>) {
   if (!db) throw new Error("Database not available");
   await db.update(cases).set(data).where(eq(cases.id, id));
 }
+export async function listEmergencySurveyDateLogs(caseId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(emergencySurveyDateLogs)
+    .where(eq(emergencySurveyDateLogs.caseId, caseId))
+    .orderBy(desc(emergencySurveyDateLogs.id));
+}
 
+/** 同時入力時にも更新前の日時と履歴が食い違わないよう対象案件行をロックする。 */
+export async function recordEmergencySurveyDate(input: {
+  caseId: number;
+  surveyDate: Date | null;
+  evidenceType: "completion_report" | "survey_report" | "staff_confirmation" | "other";
+  evidenceNote: string;
+  recordedBy: number;
+  recordedByName: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const [current] = await tx.select({ surveyDate: cases.surveyDate }).from(cases)
+      .where(eq(cases.id, input.caseId)).for("update");
+    if (!current) throw new Error("案件が見つかりません");
+    if (current.surveyDate?.getTime() === input.surveyDate?.getTime() ||
+      (!current.surveyDate && !input.surveyDate)) return { changed: false };
+    await tx.update(cases).set({ surveyDate: input.surveyDate }).where(eq(cases.id, input.caseId));
+    await tx.insert(emergencySurveyDateLogs).values({
+      caseId: input.caseId,
+      beforeDate: current.surveyDate,
+      afterDate: input.surveyDate,
+      evidenceType: input.evidenceType,
+      evidenceNote: input.evidenceNote,
+      recordedBy: input.recordedBy,
+      recordedByName: input.recordedByName,
+    });
+    return { changed: true };
+  });
+}
 export async function deleteCase(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  await db.delete(emergencySurveyDateLogs).where(eq(emergencySurveyDateLogs.caseId, id));
   await db.delete(internalCaseNotifications).where(eq(internalCaseNotifications.caseId, id));
   await db.delete(caseFieldMemos).where(eq(caseFieldMemos.caseId, id));
   await db.delete(estimateAiCandidateEdits).where(eq(estimateAiCandidateEdits.caseId, id));

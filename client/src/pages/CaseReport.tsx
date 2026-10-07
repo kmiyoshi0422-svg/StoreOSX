@@ -156,6 +156,7 @@ function fmtDate(d: Date | null | undefined): string {
   if (!d) return "—";
   return toFullWidthDigits(
     new Date(d).toLocaleDateString("ja-JP", {
+      timeZone: "Asia/Tokyo",
       year: "numeric",
       month: "long",
       day: "numeric",
@@ -1591,10 +1592,16 @@ export default function CaseReport({
                     <ReportTh>協力会社</ReportTh>
                     <ReportTd>{caseData.contractorName ? reportLabel(caseData.contractorName) : "—"}</ReportTd>
                   </tr>
+                  {reportType === "completion" && caseData.surveyDate && (
+                    <tr>
+                      <ReportTh>現地対応日（現調）</ReportTh>
+                      <ReportTd colSpan={3}>{fmtDate(caseData.surveyDate)}</ReportTd>
+                    </tr>
+                  )}
                   {reportType === "completion" && (
                     <tr>
                       <ReportTh>完了日</ReportTh>
-                      <ReportTd colSpan={3}>{fmtDate(caseData.completedAt ?? caseData.updatedAt)}</ReportTd>
+                      <ReportTd colSpan={3}>{fmtDate(caseData.completedAt)}</ReportTd>
                     </tr>
                   )}
                 </tbody>

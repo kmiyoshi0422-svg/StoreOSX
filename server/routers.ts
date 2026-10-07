@@ -17,6 +17,8 @@ import {
   getAllUsers,
   updateUserAccess,
   getCaseById,
+  listEmergencySurveyDateLogs,
+  recordEmergencySurveyDate,
   getCaseFieldMemoById,
   getCaseByPartnerToken,
   getCaseByRequestNumber,
@@ -210,6 +212,7 @@ import { buildDashboardOverview, selectPreferredConstructionDate } from "../shar
 import { buildScheduleAvailability, monthDateRange } from "../shared/scheduleAvailability";
 import { buildStoreBulkLinkPreview } from "../shared/storeBulkLink";
 import { detectPrefecture, PREFECTURES } from "../shared/prefecture";
+import { isEmergencySurveyCase, jstCalendarDay, parseSurveyCalendarDay } from "../shared/emergencySurveyDate";
 import {
   APP_ROLES,
   INTERNAL_FINANCIAL_FIELDS,
@@ -1408,6 +1411,39 @@ export const appRouter = router({
       const [visible] = await applyCaseVisibility([caseData], ctx.user);
       return visible;
     }),
+    emergencySurveyDateHistory: protectedProcedure.input(z.object({ id: z.number().int() }))
+      .query(async ({ ctx, input }) => {
+        if (!canManageCases(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN" });
+        const item = await getCaseById(input.id);
+        if (!item) throw new TRPCError({ code: "NOT_FOUND" });
+        await assertCaseAccess(item, ctx.user);
+        return listEmergencySurveyDateLogs(input.id);
+      }),
+    setEmergencySurveyDate: protectedProcedure.input(z.object({
+      id: z.number().int(),
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+      evidenceType: z.enum(["completion_report", "survey_report", "staff_confirmation", "other"]),
+      evidenceNote: z.string().trim().min(5).max(500),
+    })).mutation(async ({ ctx, input }) => {
+      if (!canManageCases(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "社員以上のみ対応日を記録できます" });
+      const item = await getCaseById(input.id);
+      if (!item) throw new TRPCError({ code: "NOT_FOUND" });
+      await assertCaseAccess(item, ctx.user);
+      if (!isEmergencySurveyCase(item)) throw new TRPCError({ code: "FORBIDDEN", message: "緊急案件・漏電案件のみ入力できます" });
+      const surveyDate = input.date === null ? null : parseSurveyCalendarDay(input.date);
+      if (input.date && !surveyDate) throw new TRPCError({ code: "BAD_REQUEST", message: "実在する日付を指定してください" });
+      if (input.date && input.date > jstCalendarDay(new Date())!) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "将来の日付は実績として入力できません" });
+      }
+      if (input.date === null && !item.surveyDate) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "解除する現調日はありません" });
+      }
+      return recordEmergencySurveyDate({
+        caseId: input.id, surveyDate, evidenceType: input.evidenceType,
+        evidenceNote: input.evidenceNote, recordedBy: ctx.user.id,
+        recordedByName: ctx.user.name ?? "不明",
+      });
+    }),
     partnerEditableCaseIds: protectedProcedure.query(async ({ ctx }) => {
       if (ctx.user.role !== "partner") return [] as number[];
       const all = await listCasesMinimal();
@@ -1497,6 +1533,9 @@ export const appRouter = router({
         await assertCaseAccess(currentCase, ctx.user);
         if (ctx.user.role === "customer") {
           throw new TRPCError({ code: "FORBIDDEN", message: "顧客アカウントは案件を変更できません" });
+        }
+        if (data.surveyDate !== undefined) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "現調実施日は案件詳細の専用欄から根拠付きで更新してください" });
         }
         if (data.assigneeId !== undefined) {
           if (!canManageCases(ctx.user.role)) {

@@ -331,6 +331,7 @@ export function UnifiedCompletionReportPages({
             <tr><StandardReportTh>所在地</StandardReportTh><StandardReportTd colSpan={3}>{formatLabel(caseData.address) || "—"}</StandardReportTd></tr>
             <tr><StandardReportTh>工事名</StandardReportTh><StandardReportTd colSpan={3}>{formatLabel(workName)}</StandardReportTd></tr>
             <tr><StandardReportTh>施工日</StandardReportTh><StandardReportTd>{formatDate(caseData.constructionDate)}</StandardReportTd><StandardReportTh>完了日</StandardReportTh><StandardReportTd>{formatDate(completedAt)}</StandardReportTd></tr>
+            {caseData.surveyDate && <tr><StandardReportTh>現地対応日（現調）</StandardReportTh><StandardReportTd colSpan={3}>{formatDate(caseData.surveyDate)}</StandardReportTd></tr>}
             <tr><StandardReportTh>施工会社</StandardReportTh><StandardReportTd colSpan={3}>{formatLabel(caseData.contractorName) || "—"}</StandardReportTd></tr>
           </tbody>
         </table>

@@ -128,6 +128,7 @@ function fmtDate(d: Date | null | undefined): string {
   if (!d) return "—";
   return toFullWidthDigits(
     new Date(d).toLocaleDateString("ja-JP", {
+      timeZone: "Asia/Tokyo",
       year: "numeric",
       month: "long",
       day: "numeric",
@@ -440,7 +441,8 @@ export default function CompletionReport({ id }: { id: number }) {
     "工事";
   const headerLine = `${COMPANY_INFO.companyName}　工事完了報告書｜${caseData.storeName}`;
   const footerLine = `${COMPANY_INFO.companyName}　${COMPANY_INFO.personName} ｜ TEL: ${toFullWidthDigits(COMPANY_INFO.tel)}`;
-  const completedAt = caseData.completedAt ?? caseData.constructionDate ?? caseData.updatedAt;
+  // 編集日時や施工予定日は完了実績ではない。現調日の訂正で完了日が変わる誤表示も防止。
+  const completedAt = caseData.completedAt;
 
   return (
     <CompletionReportView
@@ -1494,6 +1496,7 @@ function CompletionReportPages({
               <InfoRow label="店舗電話" value={caseData.storePhone} />
               <InfoRow label="工事種別" value={[caseData.categoryLarge, caseData.categoryMedium, caseData.categorySmall].filter(Boolean).join("　・　")} />
               <InfoRow label="施工日" value={fmtDate(caseData.constructionDate)} highlight />
+              {caseData.surveyDate && <InfoRow label="現地対応日（現調）" value={fmtDate(caseData.surveyDate)} />}
               <InfoRow label="完了日" value={fmtDate(completedAt)} highlight />
               <InfoRow label="状態" value={<span className="inline-flex items-center gap-1 bg-[#1e8449] text-white text-[9px] font-bold rounded px-2 py-0.5">✓ 完了</span>} />
             </tbody>

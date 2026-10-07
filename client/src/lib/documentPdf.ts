@@ -25,7 +25,7 @@ function reportLabel(input: string | number | null | undefined): string {
 
 function fmtDate(d: Date | null | undefined): string {
   if (!d) return "—";
-  return toFullWidthDigits(new Date(d).toLocaleDateString("ja-JP"));
+  return toFullWidthDigits(new Date(d).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" }));
 }
 function fmtYen(n: number | null | undefined): string {
   if (n == null) return "—";
@@ -164,7 +164,7 @@ function buildCompletionHTML(c: Case): string {
       </tr>
       <tr>
         <th style="padding:7px 8px; border:1px solid #ddd; background:#f9f8f5; text-align:left;">完了日</th>
-        <td style="padding:7px 8px; border:1px solid #ddd;">${fmtDate(c.completedAt ?? c.updatedAt)}</td>
+        <td style="padding:7px 8px; border:1px solid #ddd;">${fmtDate(c.completedAt)}</td>
       </tr>
     </table>
 

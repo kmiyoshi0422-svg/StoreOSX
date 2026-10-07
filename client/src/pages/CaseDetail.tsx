@@ -113,6 +113,7 @@ import { StoreEquipmentPanel } from "./StoreEquipmentPanel";
 import { StoreMasterLinkPanel } from "./StoreMasterLinkPanel";
 import { CaseAssigneeSelect } from "@/components/CaseAssigneeSelect";
 import { PartnerCaseReadOnly } from "@/components/PartnerCaseReadOnly";
+import { EmergencySurveyDateCard } from "@/components/EmergencySurveyDateCard";
 
 
 const PhotosTab = React.lazy(() => import("./CaseDetailPhotosTab"));
@@ -846,6 +847,8 @@ function InfoTab({
           )}
         </CardContent>
       </Card>
+
+      {canManageCase && <EmergencySurveyDateCard caseData={caseData} onUpdated={onUpdated} />}
 
       {/* 協力業者作業メモ欄 */}
       <PartnerNotesCard caseId={caseData.id} partnerNotes={(caseData as any).partnerNotes ?? ""} partnerNotesUpdatedAt={(caseData as any).partnerNotesUpdatedAt ?? null} partnerNotesUpdatedBy={(caseData as any).partnerNotesUpdatedBy ?? null} isPartner={isPartner} onUpdated={onUpdated} />

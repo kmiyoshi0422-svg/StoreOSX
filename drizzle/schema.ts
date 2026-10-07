@@ -141,6 +141,21 @@ export const cases = mysqlTable("cases", {
 export type Case = typeof cases.$inferSelect;
 export type InsertCase = typeof cases.$inferInsert;
 
+/** 緊急案件の現地対応日（現調日）の入力・訂正・解除を監査する。案件本体の日付とは独立して履歴を保持。 */
+export const emergencySurveyDateLogs = mysqlTable("emergency_survey_date_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("case_id").notNull(),
+  beforeDate: timestamp("before_date"),
+  afterDate: timestamp("after_date"),
+  evidenceType: mysqlEnum("evidence_type", ["completion_report", "survey_report", "staff_confirmation", "other"]).notNull(),
+  evidenceNote: varchar("evidence_note", { length: 500 }).notNull(),
+  recordedBy: int("recorded_by").notNull(),
+  recordedByName: varchar("recorded_by_name", { length: 255 }).notNull(),
+  recordedAt: timestamp("recorded_at").defaultNow().notNull(),
+}, (t) => ({
+  caseRecordedIdx: index("idx_emergency_survey_date_case_recorded").on(t.caseId, t.recordedAt),
+}));
+
 /**
  * チェックリスト項目（業務フロー順）
  */
