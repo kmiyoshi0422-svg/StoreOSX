@@ -872,6 +872,7 @@ export const pdfGenerationHistory = mysqlTable("pdf_generation_history", {
   periodStart: timestamp("period_start"),
   periodEnd: timestamp("period_end"),
   metadata: text("metadata"),
+  batchItemKey: varchar("batch_item_key", { length: 64 }).unique(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => ({
   caseIdx: index("idx_pdf_history_case").on(t.caseId),

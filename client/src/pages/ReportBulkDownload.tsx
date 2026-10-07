@@ -9,14 +9,18 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { createReportZip } from "@/lib/reportBulkZip";
-import { BULK_REPORT_LIMIT, BULK_REPORT_MAX_BYTES, reportArchiveName, type BulkReportType } from "../../../shared/reportBulk";
+import { blobToBase64 } from "@/lib/pdfHistory";
+import { BULK_REPORT_HISTORY_MAX_PDF_BYTES, BULK_REPORT_LIMIT, BULK_REPORT_MAX_BYTES, reportArchiveName, type BulkReportType } from "../../../shared/reportBulk";
 
 const types: BulkReportType[] = ["現場調査報告書", "施工完了報告書"];
 type Choice = { caseId: number; reportType: BulkReportType };
-type ReadyReport = Choice & { fileName: string; bytes: ArrayBuffer; url: string; pageCount: number };
+type ReadyReport = Choice & {
+  requestNumber: string; storeName: string | null; fileName: string; bytes: ArrayBuffer;
+  url: string; pageCount: number; batchItemKey: string;
+};
 const keyOf = (choice: Choice) => `${choice.caseId}:${choice.reportType}`;
 
-async function captureOne(item: Choice & { fileName: string }): Promise<ReadyReport> {
+async function captureOne(item: Choice & { requestNumber: string; storeName: string | null; fileName: string }): Promise<ReadyReport> {
   const token = crypto.randomUUID();
   const route = item.reportType === "現場調査報告書" ? "survey-report" : "completion-report";
   return new Promise<ReadyReport>((resolve, reject) => {
@@ -37,7 +41,7 @@ async function captureOne(item: Choice & { fileName: string }): Promise<ReadyRep
       }
       const bytes = message.bytes as ArrayBuffer;
       const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
-      resolve({ ...item, bytes, pageCount: message.pageCount, url });
+      resolve({ ...item, bytes, pageCount: message.pageCount, url, batchItemKey: crypto.randomUUID() });
     };
     const timer = window.setTimeout(() => { finish(); reject(new Error(`${item.fileName}: 読み込みが時間切れです。通信状態を確認してください`)); }, 150_000);
     window.addEventListener("message", receive);
@@ -56,12 +60,16 @@ export default function ReportBulkDownload() {
   const [verified, setVerified] = useState<Set<string>>(new Set());
   const [active, setActive] = useState(0);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [lastSavedCount, setLastSavedCount] = useState(0);
   const reportsRef = useRef<ReadyReport[]>([]);
   const mounted = useRef(true);
   const { data: candidates, isLoading, error } = trpc.reportBulk.candidates.useQuery();
   const validate = trpc.reportBulk.validate.useMutation();
+  const saveGenerated = trpc.reportBulk.saveGenerated.useMutation();
+  const utils = trpc.useUtils();
   useEffect(() => () => { mounted.current = false; reportsRef.current.forEach((report) => URL.revokeObjectURL(report.url)); }, []);
   const clearReports = () => {
+    setLastSavedCount(0);
     reportsRef.current.forEach((report) => URL.revokeObjectURL(report.url));
     reportsRef.current = [];
     setReports([]);
@@ -91,6 +99,10 @@ export default function ReportBulkDownload() {
         setProgress(`${index + 1} / ${valid.length} 件目のA4 PDFを生成中：${valid[index].requestNumber}`);
         const report = await captureOne(valid[index]);
         total += report.bytes.byteLength;
+        if (report.bytes.byteLength > BULK_REPORT_HISTORY_MAX_PDF_BYTES) {
+          URL.revokeObjectURL(report.url);
+          throw new Error(`${report.fileName}は30MBを超えました。履歴へ保存するため、写真を調整して再生成してください`);
+        }
         if (total > BULK_REPORT_MAX_BYTES) {
           URL.revokeObjectURL(report.url);
           throw new Error("生成したPDFの合計が80MBを超えました。少ない件数でやり直してください");
@@ -112,21 +124,36 @@ export default function ReportBulkDownload() {
   const download = async () => {
     if (reports.length < 2 || verified.size !== reports.length) return;
     setBusy(true);
+    let savedCount = 0;
     try {
       setProgress("ZIPファイルを作成中…");
       const blob = await createReportZip(reports, (percent) => setProgress(`ZIPファイルを作成中…${percent}%`));
+      for (let index = 0; index < reports.length; index++) {
+        const report = reports[index];
+        setProgress(`個別PDFを履歴に保存中… ${index + 1} / ${reports.length}件`);
+        const fileBase64 = await blobToBase64(new Blob([report.bytes], { type: "application/pdf" }));
+        await saveGenerated.mutateAsync({
+          caseId: report.caseId, reportType: report.reportType, fileName: report.fileName,
+          fileBase64, batchItemKey: report.batchItemKey, pageCount: report.pageCount,
+        });
+        savedCount++;
+      }
+      await utils.pdfHistory.list.invalidate();
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = reportArchiveName();
+      anchor.download = reportArchiveName(reports);
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      toast.success(`${reports.length}件の報告書をZIPでダウンロードしました`);
+      toast.success(`${reports.length}件の報告書を履歴に保存し、ZIPでダウンロードしました。PDF生成履歴から再確認できます`);
+      setLastSavedCount(reports.length);
       setPreviewOpen(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "ZIPを作成できませんでした");
+      if (savedCount > 0) await utils.pdfHistory.list.invalidate();
+      const reason = error instanceof Error ? error.message : "保存できませんでした";
+      toast.error(`${reason}${savedCount ? `。${savedCount}件は履歴に保存済みです。同じ画面から再試行しても重複しません` : "。ZIPはダウンロードしていません"}`);
     } finally { setBusy(false); setProgress(""); }
   };
 
@@ -135,10 +162,14 @@ export default function ReportBulkDownload() {
       <div><p className="text-xs tracking-[0.18em] uppercase text-muted-foreground">REPORT ARCHIVE</p>
         <h1 className="text-2xl font-semibold mt-1">報告書を選んでZIPダウンロード</h1>
         <p className="text-sm text-muted-foreground mt-2">現調・完了報告書を2〜{BULK_REPORT_LIMIT}件選択。既存のA4全ページ・写真・署名を使用します。</p></div>
-      <Button variant="outline" onClick={() => navigate("/pdf-history")}>保存済みPDF履歴から選ぶ</Button>
+      <Button variant="outline" onClick={() => navigate("/pdf-history")}>PDF生成履歴を確認</Button>
     </div>
     <Card><CardContent className="pt-5 space-y-3">
-      <p className="text-sm">PDF生成履歴に保存されていない案件も、ここから報告書を生成できます。ZIPに入れる前に<strong>全件をプレビューで確認</strong>してください。原本がない写真は作りません。</p>
+      <p className="text-sm">PDF生成履歴に保存されていない案件も、ここから報告書を生成できます。ZIPに入れる前に<strong>全件をプレビューで確認</strong>してください。確認済みの個別PDFはZIP保存時に自動で生成履歴へ記録します。原本がない写真は作りません。</p>
+      {lastSavedCount > 0 && <div className="flex flex-wrap items-center gap-2 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-900">
+        {lastSavedCount}件の個別PDFを生成履歴に保存しました。
+        <Button size="sm" variant="outline" onClick={() => navigate("/pdf-history")}>PDFを再確認する</Button>
+      </div>}
       <div className="relative max-w-lg"><Search className="h-4 w-4 absolute top-3 left-3 text-muted-foreground" />
         <Input className="pl-9" placeholder="依頼番号・店舗名で検索" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
       <div className="flex flex-wrap items-center gap-3">

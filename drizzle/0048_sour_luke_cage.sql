@@ -1,0 +1,2 @@
+ALTER TABLE `pdf_generation_history` ADD `batch_item_key` varchar(64);--> statement-breakpoint
+ALTER TABLE `pdf_generation_history` ADD CONSTRAINT `pdf_generation_history_batch_item_key_unique` UNIQUE(`batch_item_key`);

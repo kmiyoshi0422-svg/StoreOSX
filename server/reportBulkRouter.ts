@@ -1,13 +1,18 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import JSZip from "jszip";
+import { createHash } from "node:crypto";
 import { protectedProcedure, router } from "./_core/trpc";
-import { getCaseById, getDb, getPdfGenerationHistoryById } from "./db";
+import {
+  createPdfGenerationHistory, getCaseById, getDb, getPdfGenerationHistoryByBatchKey,
+  getPdfGenerationHistoryById,
+} from "./db";
 import { cases } from "../drizzle/schema";
 import { storageGetSignedUrl, storagePut } from "./storage";
 import { filterCasesByArea } from "../shared/accessPolicy";
 import {
   BULK_REPORT_LIMIT,
+  BULK_REPORT_HISTORY_MAX_PDF_BYTES,
   BULK_REPORT_MAX_BYTES,
   BULK_REPORT_TYPES,
   reportArchiveFileName,
@@ -71,6 +76,69 @@ export const reportBulkRouter = router({
     }
     return reports;
   }),
+  saveGenerated: protectedProcedure.input(z.object({
+    caseId: z.number().int().positive(), reportType: z.enum(BULK_REPORT_TYPES),
+    fileName: z.string().min(5).max(500).endsWith(".pdf"),
+    fileBase64: z.string().min(5).max(43_000_000),
+    batchItemKey: z.string().uuid(), pageCount: z.number().int().min(1).max(150),
+  })).mutation(async ({ ctx, input }) => {
+    assertStaff(ctx.user.role);
+    const record = await getCaseById(input.caseId);
+    if (!record) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+    if (!filterCasesByArea([record], ctx.user).length) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "エリア外の案件のPDFは保存できません" });
+    }
+    if (!eligibleForReport(record, input.reportType)) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "現在の案件状態ではこの報告書を保存できません" });
+    }
+    const expected = reportArchiveFileName({ caseId: input.caseId, reportType: input.reportType,
+      requestNumber: record.requestNumber, storeName: record.storeName });
+    if (input.fileName !== expected) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "案件情報が変わりました。PDFを再生成してください" });
+    }
+    const raw = input.fileBase64.startsWith("data:application/pdf;base64,")
+      ? input.fileBase64.slice("data:application/pdf;base64,".length) : input.fileBase64;
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(raw)) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "PDFのデータ形式が正しくありません" });
+    }
+    const bytes = Buffer.from(raw, "base64");
+    if (bytes.length < 5 || bytes.length > BULK_REPORT_HISTORY_MAX_PDF_BYTES || bytes.subarray(0, 4).toString() !== "%PDF") {
+      throw new TRPCError({ code: "PAYLOAD_TOO_LARGE", message: "履歴に保存できるPDFは1件30MB以内の正しいPDFのみです" });
+    }
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    const existing = await getPdfGenerationHistoryByBatchKey(input.batchItemKey);
+    if (existing) {
+      let previousDigest: string | undefined;
+      try { previousDigest = JSON.parse(existing.metadata ?? "{}").sha256; } catch { /* malformed legacy metadata */ }
+      if (existing.caseId !== input.caseId || existing.reportType !== input.reportType ||
+          existing.generatedBy !== ctx.user.id || existing.fileName !== input.fileName ||
+          existing.fileSize !== bytes.length || previousDigest !== digest) {
+        throw new TRPCError({ code: "CONFLICT", message: "同じ保存キーに別のPDFが登録されています" });
+      }
+      return { id: existing.id, alreadySaved: true };
+    }
+    const key = `pdf-history/case-${input.caseId}/${Date.now()}-${input.batchItemKey}.pdf`;
+    const stored = await storagePut(key, bytes, "application/pdf");
+    try {
+      const id = await createPdfGenerationHistory({ caseId: input.caseId, reportType: input.reportType,
+        fileName: input.fileName, fileKey: stored.key, fileUrl: stored.url, fileSize: bytes.length,
+        generatedBy: ctx.user.id, generatedByName: ctx.user.name ?? ctx.user.email ?? `User ${ctx.user.id}`,
+        batchItemKey: input.batchItemKey, metadata: JSON.stringify({ source: "bulk-report", pageCount: input.pageCount, sha256: digest }) });
+      return { id, alreadySaved: false };
+    } catch (error) {
+      const message = String(error instanceof Error ? (error.cause ?? error.message) : error);
+      if (/ER_DUP_ENTRY|Duplicate entry/.test(message)) {
+        const collided = await getPdfGenerationHistoryByBatchKey(input.batchItemKey);
+        if (collided?.caseId === input.caseId && collided.reportType === input.reportType &&
+            collided.generatedBy === ctx.user.id && collided.fileSize === bytes.length &&
+            collided.fileName === input.fileName && JSON.parse(collided.metadata ?? "{}").sha256 === digest) {
+          return { id: collided.id, alreadySaved: true };
+        }
+        throw new TRPCError({ code: "CONFLICT", message: "同じ保存キーに別のPDFが登録されています" });
+      }
+      throw error;
+    }
+  }),
   zipStored: protectedProcedure.input(historySelection).mutation(async ({ ctx, input }) => {
     assertStaff(ctx.user.role);
     const items = [];
@@ -115,7 +183,9 @@ export const reportBulkRouter = router({
     }
     const output = await zip.generateAsync({ type: "nodebuffer", compression: "STORE" });
     if (output.length > BULK_REPORT_MAX_BYTES + 1024 * 1024) throw new TRPCError({ code: "PAYLOAD_TOO_LARGE" });
-    const name = reportArchiveName();
+    const name = reportArchiveName(items.map(({ item, record }) => ({
+      caseId: item.caseId!, requestNumber: record.requestNumber, storeName: record.storeName,
+    })));
     const stored = await storagePut(`report-bulk/${ctx.user.id}/${Date.now()}-${name}`, output, "application/zip");
     return { url: stored.url, fileName: name, count: items.length, bytes: output.length };
   }),

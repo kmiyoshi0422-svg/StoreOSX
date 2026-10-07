@@ -37,6 +37,11 @@ function formatBytes(size: number | null) {
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function isBulkGenerated(metadata: string | null) {
+  if (!metadata) return false;
+  try { return JSON.parse(metadata).source === "bulk-report"; } catch { return false; }
+}
+
 export default function PdfHistory() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
@@ -168,6 +173,7 @@ export default function PdfHistory() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-medium truncate">{item.fileName}</p>
                       <Badge variant="outline">{item.reportType}</Badge>
+                      {isBulkGenerated(item.metadata) && <Badge variant="secondary">一括生成から保存</Badge>}
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
                       {item.requestNumber ? `${item.requestNumber} · ${item.storeName ?? ""} · ` : ""}

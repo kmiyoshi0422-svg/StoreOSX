@@ -5,6 +5,7 @@ import type { TrpcContext } from "./_core/context";
 
 const fake = vi.hoisted(() => ({
   getCaseById: vi.fn(), getPdfGenerationHistoryById: vi.fn(), getDb: vi.fn(),
+  getPdfGenerationHistoryByBatchKey: vi.fn(), createPdfGenerationHistory: vi.fn(),
   storageGetSignedUrl: vi.fn(), storagePut: vi.fn(),
 }));
 vi.mock("./db", () => fake);
@@ -12,7 +13,7 @@ vi.mock("./storage", () => ({ storageGetSignedUrl: fake.storageGetSignedUrl, sto
 
 import { reportBulkRouter } from "./reportBulkRouter";
 import { createReportZip } from "../client/src/lib/reportBulkZip";
-import { reportArchiveFileName } from "../shared/reportBulk";
+import { reportArchiveFileName, reportArchiveName } from "../shared/reportBulk";
 
 const pdf = (n: number) => Buffer.from(`%PDF-1.4\nmock-report-${n}\n%%EOF`);
 function caller(role: "owner" | "admin" | "user" | "executive" | "partner" | "customer", areaAccessMode?: "selected") {
@@ -38,6 +39,8 @@ beforeEach(() => {
     fileKey: `pdf-history/case-${id === 2 ? 9 : 1}/test-${id}.pdf` }));
   fake.storageGetSignedUrl.mockImplementation(async (key: string) => `https://example.invalid/${key}`);
   fake.storagePut.mockResolvedValue({ key: "test.zip", url: "/manus-storage/test.zip" });
+  fake.getPdfGenerationHistoryByBatchKey.mockResolvedValue(undefined);
+  fake.createPdfGenerationHistory.mockResolvedValue(777);
   vi.stubGlobal("fetch", vi.fn(async (url: string) => ({ ok: true,
     headers: new Headers({ "content-length": String(pdf(url.includes("test-2") ? 2 : 1).length) }),
     arrayBuffer: async () => pdf(url.includes("test-2") ? 2 : 1) }))); // Buffer is a Uint8Array; only stubs the network
@@ -63,6 +66,7 @@ describe("一括報告書ZIPの選択と権限", () => {
       fileKey: `pdf-history/case-1/test-${id}.pdf` }));
     const result = await caller("owner").zipStored([1, 2]);
     expect(result.count).toBe(2);
+    expect(result.fileName).toMatch(/^試験店1_TEST-ZIP-1_現調・完了報告書_\d{8}_\d{4}\.zip$/);
     const archive = await JSZip.loadAsync(fake.storagePut.mock.calls[0][1]);
     const names = Object.keys(archive.files);
     expect(names).toHaveLength(2);
@@ -118,5 +122,64 @@ describe("一括生成したA4 PDFのZIP", () => {
     const buf = Uint8Array.from(data).buffer;
     await expect(createReportZip([{ fileName: "same.pdf", bytes: buf }, { fileName: "same.pdf", bytes: buf }])).rejects.toThrow("重複");
     await expect(createReportZip([{ fileName: "a.pdf", bytes: buf }, { fileName: "b.pdf", bytes: Uint8Array.from([1,2,3]).buffer }])).rejects.toThrow("PDF形式");
+  });
+});
+
+describe("案件名・ダウンロード日付を含むZIP名", () => {
+  const date = new Date("2026-10-07T15:01:00.000Z"); // 日本時間の10月8日00:01
+  it("同じ案件の現調＋完了は店舗名と依頼番号を表示", () => {
+    expect(reportArchiveName([
+      { caseId: 7, storeName: "河芸町店", requestNumber: "297145-1" },
+      { caseId: 7, storeName: "河芸町店", requestNumber: "297145-1" },
+    ], date)).toBe("河芸町店_297145-1_現調・完了報告書_20261008_0001.zip");
+  });
+  it("異なる案件は最初の店舗名と残りの案件数を示し、危険な文字は使わない", () => {
+    expect(reportArchiveName([
+      { caseId: 7, storeName: "A/../B店", requestNumber: "1" },
+      { caseId: 8, storeName: "C店", requestNumber: "2" },
+      { caseId: 9, storeName: "D店", requestNumber: "3" },
+    ], date)).toBe("A___B店_ほか2案件_現調・完了報告書_20261008_0001.zip");
+  });
+});
+
+describe("一括生成PDFの個別履歴保存", () => {
+  const fileName = reportArchiveFileName({ caseId: 1, reportType: "現場調査報告書",
+    requestNumber: "TEST-ZIP-1", storeName: "試験店1" });
+  const batchItemKey = "f4c4843f-bc3b-4ad3-82f0-b7e32641993d";
+  const fileBase64 = pdf(1).toString("base64");
+  const input = { caseId: 1, reportType: "現場調査報告書" as const, fileName,
+    batchItemKey, pageCount: 3, fileBase64 };
+  it("社員がPDF本体・作成者・案件・ページ数を履歴へ1件だけ登録し、再送でも増えない", async () => {
+    const user = caller("user");
+    const first = await user.saveGenerated(input);
+    expect(first).toEqual({ id: 777, alreadySaved: false });
+    expect(fake.storagePut).toHaveBeenCalledWith(expect.stringMatching(/^pdf-history\/case-1\//), pdf(1), "application/pdf");
+    expect(fake.createPdfGenerationHistory).toHaveBeenCalledWith(expect.objectContaining({
+      caseId: 1, reportType: "現場調査報告書", batchItemKey, generatedBy: 12, fileSize: pdf(1).length,
+      fileName, metadata: expect.stringContaining('"pageCount":3'),
+    }));
+    const firstData = fake.createPdfGenerationHistory.mock.calls[0][0];
+    fake.getPdfGenerationHistoryByBatchKey.mockResolvedValue({ id: 777, ...firstData });
+    expect(await user.saveGenerated(input)).toEqual({ id: 777, alreadySaved: true });
+    expect(fake.storagePut).toHaveBeenCalledTimes(1);
+    expect(fake.createPdfGenerationHistory).toHaveBeenCalledTimes(1);
+  });
+  it("協力業者・顧客および社員のエリア外案件は保存できない", async () => {
+    for (const role of ["partner", "customer"] as const) {
+      await expect(caller(role).saveGenerated(input)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    }
+    await expect(caller("user", "selected").saveGenerated({ ...input, caseId: 9 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(fake.storagePut).not.toHaveBeenCalled();
+  });
+  it("別PDFの同一キー、破損PDF、案件情報が変わったPDFを拒否", async () => {
+    fake.getPdfGenerationHistoryByBatchKey.mockResolvedValue({ id: 777, caseId: 1,
+      reportType: input.reportType, fileName, generatedBy: 12, fileSize: pdf(1).length,
+      metadata: JSON.stringify({ sha256: "different" }) });
+    await expect(caller("user").saveGenerated(input)).rejects.toMatchObject({ code: "CONFLICT" });
+    fake.getPdfGenerationHistoryByBatchKey.mockResolvedValue(undefined);
+    await expect(caller("user").saveGenerated({ ...input, fileBase64: Buffer.from("not a pdf").toString("base64") }))
+      .rejects.toMatchObject({ code: "PAYLOAD_TOO_LARGE" });
+    await expect(caller("user").saveGenerated({ ...input, fileName: "別案件.pdf" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(fake.storagePut).not.toHaveBeenCalled();
   });
 });

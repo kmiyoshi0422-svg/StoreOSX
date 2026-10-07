@@ -498,6 +498,7 @@ export async function deleteCase(id: number) {
   await db.delete(caseRequestSources).where(eq(caseRequestSources.caseId, id));
   await db.delete(photoClassificationChanges).where(eq(photoClassificationChanges.caseId, id));
   await db.delete(photoClassificationRuns).where(eq(photoClassificationRuns.caseId, id));
+  await db.delete(pdfGenerationHistory).where(eq(pdfGenerationHistory.caseId, id));
   await db.delete(cases).where(eq(cases.id, id));
   await db.delete(checklistItems).where(eq(checklistItems.caseId, id));
   await db.delete(photos).where(eq(photos.caseId, id));
@@ -1884,7 +1885,13 @@ export async function getPdfGenerationHistoryById(id: number) {
     .limit(1);
   return rows[0];
 }
-
+export async function getPdfGenerationHistoryByBatchKey(batchItemKey: string) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const rows = await db.select().from(pdfGenerationHistory)
+    .where(eq(pdfGenerationHistory.batchItemKey, batchItemKey)).limit(1);
+  return rows[0];
+}
 export async function listPdfGenerationHistory(opts: {
   reportType?: string;
   search?: string;
