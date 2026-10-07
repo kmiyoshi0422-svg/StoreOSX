@@ -1,4 +1,5 @@
 import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, like, or, sql } from "drizzle-orm";
+import { hasAllAreaAccess, parseAllowedPrefectures, type AreaAccessUser } from "../shared/accessPolicy";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   cases,
@@ -1891,11 +1892,22 @@ export async function listPdfGenerationHistory(opts: {
   endDate?: Date;
   limit?: number;
   offset?: number;
+  viewer?: AreaAccessUser;
 }) {
   const db = await getDb();
   if (!db) return { items: [], total: 0 };
 
   const conditions = [];
+  if (opts.viewer) {
+    if (opts.viewer.role !== "owner" && opts.viewer.role !== "admin") {
+      // 案件に紐づかない共有PDFは社内担当者・役員へ公開しない。
+      conditions.push(isNotNull(pdfGenerationHistory.caseId));
+    }
+    if (!hasAllAreaAccess(opts.viewer)) {
+      const prefectures = parseAllowedPrefectures(opts.viewer.allowedPrefectures);
+      conditions.push(prefectures.length ? inArray(cases.prefecture, prefectures) : sql`1 = 0`);
+    }
+  }
   if (opts.reportType) {
     conditions.push(eq(pdfGenerationHistory.reportType, opts.reportType as any));
   }

@@ -199,6 +199,7 @@ import {
 import { systemRouter } from "./_core/systemRouter";
 import { estimateAssistantRouter } from "./estimateAssistantRouter";
 import { estimatePresetsRouter } from "./estimatePresetsRouter";
+import { reportBulkRouter } from "./reportBulkRouter";
 import { TRPCError } from "@trpc/server";
 import { adminProcedure, financialProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { BUDGET_RATIO, calcBudget } from "../shared/budget";
@@ -542,6 +543,7 @@ export const appRouter = router({
   system: systemRouter,
   estimateAssistant: estimateAssistantRouter,
   estimatePresets: estimatePresetsRouter,
+  reportBulk: reportBulkRouter,
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
@@ -895,8 +897,15 @@ export const appRouter = router({
         metadata: z.record(z.string(), z.unknown()).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        if (ctx.user.role === "partner") {
+        if (ctx.user.role === "partner" || ctx.user.role === "customer") {
           throw new TRPCError({ code: "FORBIDDEN", message: "PDF履歴の保存権限がありません" });
+        }
+        if (input.caseId) {
+          const caseData = await getCaseById(input.caseId);
+          if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+          await assertCaseAccess(caseData, ctx.user);
+        } else if (ctx.user.role !== "owner" && ctx.user.role !== "admin") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "共有PDFの保存権限がありません" });
         }
         const base64 = input.fileBase64.includes(",")
           ? input.fileBase64.split(",")[1]
@@ -950,7 +959,7 @@ export const appRouter = router({
         offset: z.number().int().min(0).default(0),
       }).optional())
       .query(async ({ ctx, input }) => {
-        if (ctx.user.role === "partner") {
+        if (ctx.user.role === "partner" || ctx.user.role === "customer") {
           throw new TRPCError({ code: "FORBIDDEN", message: "PDF履歴の閲覧権限がありません" });
         }
         const result = await listPdfGenerationHistory({
@@ -960,6 +969,7 @@ export const appRouter = router({
           endDate: input?.endMs ? new Date(input.endMs) : undefined,
           limit: input?.limit,
           offset: input?.offset,
+          viewer: ctx.user,
         });
         return {
           ...result,
@@ -973,11 +983,18 @@ export const appRouter = router({
     getDownloadUrl: protectedProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .query(async ({ ctx, input }) => {
-        if (ctx.user.role === "partner") {
+        if (ctx.user.role === "partner" || ctx.user.role === "customer") {
           throw new TRPCError({ code: "FORBIDDEN", message: "PDF履歴の閲覧権限がありません" });
         }
         const item = await getPdfGenerationHistoryById(input.id);
         if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "PDF履歴が見つかりません" });
+        if (item.caseId) {
+          const caseData = await getCaseById(item.caseId);
+          if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+          await assertCaseAccess(caseData, ctx.user);
+        } else if (ctx.user.role !== "owner" && ctx.user.role !== "admin") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "共有PDFの閲覧権限がありません" });
+        }
         return { url: storageUrlForRead(item.fileKey, item.fileUrl), fileName: item.fileName };
       }),
   }),

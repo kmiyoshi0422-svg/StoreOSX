@@ -1,12 +1,15 @@
 import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { Download, FileClock, FileText, Loader2, Search } from "lucide-react";
+import { Archive, Download, FileClock, FileText, Loader2, Search } from "lucide-react";
+import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { BULK_REPORT_LIMIT, BULK_REPORT_TYPES } from "../../../shared/reportBulk";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const REPORT_TYPES = [
@@ -42,6 +45,29 @@ export default function PdfHistory() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [page, setPage] = useState(0);
+  const [selected, setSelected] = useState<number[]>([]);
+  const zipStored = trpc.reportBulk.zipStored.useMutation();
+
+  const toggleSelected = (id: number) => setSelected((previous) => {
+    if (previous.includes(id)) return previous.filter((value) => value !== id);
+    if (previous.length >= BULK_REPORT_LIMIT) { toast.warning(`一度に${BULK_REPORT_LIMIT}件まで選択できます`); return previous; }
+    return [...previous, id];
+  });
+  const downloadZip = async () => {
+    try {
+      const result = await zipStored.mutateAsync(selected);
+      const anchor = document.createElement("a");
+      anchor.href = result.url;
+      anchor.download = result.fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      toast.success(`${result.count}件をZIPでダウンロードしました`);
+      setSelected([]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "ZIPの取得に失敗しました");
+    }
+  };
 
   const input = useMemo(() => ({
     search: search.trim() || undefined,
@@ -53,10 +79,10 @@ export default function PdfHistory() {
   }), [search, reportType, startDate, endDate, page]);
 
   const { data, isLoading, error } = trpc.pdfHistory.list.useQuery(input, {
-    enabled: !!user && user.role !== "partner",
+    enabled: !!user && user.role !== "partner" && user.role !== "customer",
   });
 
-  if (user?.role === "partner") {
+  if (user?.role === "partner" || user?.role === "customer") {
     return (
       <Card className="max-w-2xl mx-auto">
         <CardContent className="py-12 text-center text-muted-foreground">
@@ -77,8 +103,19 @@ export default function PdfHistory() {
           <h1 className="text-3xl font-semibold tracking-tight">PDF生成履歴</h1>
           <p className="text-sm text-muted-foreground mt-2">過去に生成した報告書・写真台帳・ダッシュボードPDFを再ダウンロードできます。</p>
         </div>
-        <Badge variant="secondary" className="text-sm px-3 py-1.5">{total.toLocaleString()} 件</Badge>
+        <div className="flex flex-wrap gap-2 items-center"><Badge variant="secondary" className="text-sm px-3 py-1.5">{total.toLocaleString()} 件</Badge>
+          <Button variant="outline" onClick={() => setLocation("/reports/bulk")}>履歴にない案件から報告書を作る</Button></div>
       </div>
+
+      <Card><CardContent className="pt-5 flex flex-wrap items-center gap-3">
+        <span className="text-sm font-medium">現調・完了の保存済みPDF：{selected.length} / {BULK_REPORT_LIMIT}件選択</span>
+        <Button disabled={selected.length < 2 || zipStored.isPending} onClick={downloadZip}>
+          {zipStored.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Archive className="h-4 w-4 mr-2" />}
+          選択した報告書をZIPで保存
+        </Button>
+        {selected.length > 0 && <Button variant="ghost" disabled={zipStored.isPending} onClick={() => setSelected([])}>選択解除</Button>}
+        <p className="w-full text-xs text-muted-foreground">ZIP対象は案件に紐づく保存済みの現調・完了PDFのみ。未生成の場合は「履歴にない案件から報告書を作る」をお使いください。</p>
+      </CardContent></Card>
 
       <Card>
         <CardHeader className="pb-3">
@@ -123,6 +160,9 @@ export default function PdfHistory() {
             <div className="divide-y">
               {data?.items.map((item) => (
                 <div key={item.id} className="p-4 flex items-center gap-4 flex-wrap md:flex-nowrap">
+                  {item.caseId && BULK_REPORT_TYPES.includes(item.reportType as (typeof BULK_REPORT_TYPES)[number]) &&
+                    <Checkbox aria-label={`${item.fileName}をZIPに含める`} checked={selected.includes(item.id)} disabled={zipStored.isPending}
+                      onCheckedChange={() => toggleSelected(item.id)} />}
                   <div className="h-11 w-11 shrink-0 flex items-center justify-center bg-red-50 text-red-700 rounded-md"><FileText className="h-5 w-5" /></div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
 import {
   FileText,
+  Archive,
   Download,
   ExternalLink,
   CheckCircle2,
@@ -78,9 +79,12 @@ export default function CompletedReports() {
             作成完了した報告書を一覧で確認し、PDFをダウンロードできます
           </p>
         </div>
-        <Badge variant="outline" className="text-base px-3 py-1">
-          {filtered.length} 件
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setLocation("/reports/bulk") }>
+            <Archive className="h-4 w-4 mr-2" />報告書を複数選んでZIP保存
+          </Button>
+          <Badge variant="outline" className="text-base px-3 py-1">{filtered.length} 件</Badge>
+        </div>
       </div>
 
       {/* フィルター */}

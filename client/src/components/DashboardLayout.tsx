@@ -37,6 +37,7 @@ const menuItems: MenuItem[] = [
   { icon: Gauge, label: "ワークロード", path: "/workload", adminOnly: true },
   { icon: GanttChart, label: "横断工程表", path: "/cross-schedule", hideForCustomer: true },
   { icon: ClipboardList, label: "完了報告書一覧", path: "/reports/completed", adminOnly: true },
+  { icon: FileClock, label: "報告書一括ZIP", path: "/reports/bulk", hideForPartner: true, hideForCustomer: true },
   { icon: FileClock, label: "PDF生成履歴", path: "/pdf-history", hideForPartner: true, hideForCustomer: true },
   { icon: FilePlus, label: "案件登録", path: "/cases/new", hideForPartner: true, hideForCustomer: true },
   { icon: FileSearch, label: "PDFから案件登録", path: "/cases/import-pdf", hideForPartner: true, hideForCustomer: true },

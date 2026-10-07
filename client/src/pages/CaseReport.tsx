@@ -29,6 +29,7 @@ import {
 import { PdfPreviewModal } from "@/components/PdfPreviewModal";
 import { toast } from "sonner";
 import { createReportPdfFromPages } from "@/lib/reportPdfPages";
+import { useBulkReportFrame } from "@/hooks/useBulkReportFrame";
 import { fileToUprightDataUrl } from "@/lib/imageOrientation";
 import { usePdfHistoryRecorder } from "@/hooks/usePdfHistoryRecorder";
 import { SignaturePad } from "@/components/SignaturePad";
@@ -176,21 +177,21 @@ export default function CaseReport({
   const canEditImpression = canEditSurveyImpression(user?.role ?? "");
   const isPartner = user?.role === "partner";
 
-  const { data: caseData, isLoading: caseLoading } = trpc.cases.get.useQuery({ id });
-  const { data: photos = [], isLoading: photosLoading } = trpc.photos.listByCase.useQuery({
+  const { data: caseData, isLoading: caseLoading, isError: caseError } = trpc.cases.get.useQuery({ id });
+  const { data: photos = [], isLoading: photosLoading, isError: photosError } = trpc.photos.listByCase.useQuery({
     caseId: id,
   });
-  const { data: signature, isLoading: sigLoading } = trpc.signatures.get.useQuery({
+  const { data: signature, isLoading: sigLoading, isError: sigError } = trpc.signatures.get.useQuery({
     caseId: id,
     reportType,
     signerRole: "staff",
   });
-  const { data: customerSignature, isLoading: customerSigLoading } = trpc.signatures.get.useQuery({
+  const { data: customerSignature, isLoading: customerSigLoading, isError: customerSigError } = trpc.signatures.get.useQuery({
     caseId: id,
     reportType,
     signerRole: "customer",
   });
-  const { data: exclusionRows = [] } = trpc.fullwidthExclusions.list.useQuery();
+  const { data: exclusionRows = [], isLoading: exclusionsLoading, isError: exclusionsError } = trpc.fullwidthExclusions.list.useQuery();
   setReportExclusions(exclusionRows.map((r) => r.term));
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -892,6 +893,12 @@ export default function CaseReport({
     }
   };
 
+  useBulkReportFrame({ caseId: id, type: "現場調査報告書", containerRef,
+    ready: !!caseData && !caseLoading && !photosLoading && !sigLoading && !customerSigLoading && !exclusionsLoading
+      && !caseError && !photosError && !sigError && !customerSigError && !exclusionsError,
+    failed: !caseLoading && !photosLoading && !sigLoading && !customerSigLoading && !exclusionsLoading
+      && (!caseData || caseError || photosError || sigError || customerSigError || exclusionsError),
+    photoCount: reportPhotos.length });
   if (caseLoading || photosLoading || sigLoading || customerSigLoading) {
     return (
       <div className="flex justify-center py-12">
