@@ -25,6 +25,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { CaseAssigneeSelect } from "@/components/CaseAssigneeSelect";
 import { useLocation } from "wouter";
 import { useMemo, useState, useCallback, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -132,8 +133,10 @@ export default function CasesList() {
   const isPartner = user?.role === 'partner';
   const canViewFinancials = user?.role === 'owner' || user?.role === 'admin' || user?.role === 'executive';
   const canViewProfit = user?.role === 'owner';
+  const canAssign = user?.role === 'owner' || user?.role === 'admin' || user?.role === 'executive' || user?.role === 'user';
   const { data: cases = [], isLoading } = trpc.cases.listSummary.useQuery();
   const { data: users = [] } = trpc.users.list.useQuery();
+  const { data: assignableUsers = [] } = trpc.users.assignable.useQuery(undefined, { enabled: canAssign });
   const userMap = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
   const utils = trpc.useUtils();
 
@@ -707,6 +710,10 @@ export default function CasesList() {
                       </AvatarFallback>
                     </Avatar>
                   )}
+                  {canAssign && (
+                    <CaseAssigneeSelect caseId={c.id} prefecture={c.prefecture} currentAssigneeId={c.assigneeId ?? null}
+                      candidates={assignableUsers} onUpdated={() => utils.cases.listSummary.invalidate()} compact />
+                  )}
                   <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
                 </div>
               );
@@ -727,7 +734,7 @@ export default function CasesList() {
                 <th className="px-3 py-2 text-left font-medium">店舗名</th>
                 <th className="px-3 py-2 text-left font-medium hidden md:table-cell">依頼番号</th>
                 <th className="px-3 py-2 text-left font-medium hidden lg:table-cell">工事区分</th>
-                <th className="px-3 py-2 text-right font-medium">出し見積</th>
+                {canViewFinancials && <th className="px-3 py-2 text-right font-medium">出し見積</th>}
                 <th className="px-3 py-2 text-left font-medium hidden sm:table-cell">担当</th>
                 <th className="px-3 py-2"></th>
               </tr>
@@ -762,8 +769,11 @@ export default function CasesList() {
                         <span className="px-3 py-2 font-mono text-xs text-muted-foreground w-[120px] shrink-0 hidden md:inline">{c.requestNumber}</span>
                         <span className="px-3 py-2 text-xs text-muted-foreground w-[100px] shrink-0 hidden lg:inline">{c.categoryLarge || "—"}</span>
                         {canViewFinancials && <span className="px-3 py-2 text-right font-mono text-xs w-[100px] shrink-0">{c.plenusQuoteAmount != null ? `¥${c.plenusQuoteAmount.toLocaleString()}` : "—"}</span>}
-                        <span className="px-3 py-2 w-[80px] shrink-0 hidden sm:inline">
-                          {assigneeUser ? (
+                        <span className="px-3 py-2 w-[180px] shrink-0 hidden sm:inline" onClick={(e) => e.stopPropagation()}>
+                          {canAssign ? (
+                            <CaseAssigneeSelect caseId={c.id} prefecture={c.prefecture} currentAssigneeId={c.assigneeId ?? null}
+                              candidates={assignableUsers} onUpdated={() => utils.cases.listSummary.invalidate()} compact />
+                          ) : assigneeUser ? (
                             <span className="text-xs">{assigneeUser.name || assigneeUser.email}</span>
                           ) : (
                             <span className="text-xs text-amber-600">未割当</span>
@@ -1105,6 +1115,10 @@ export default function CasesList() {
                             <p className="text-xs text-amber-700">要アサイン</p>
                           </div>
                         </div>
+                      )}
+                      {canAssign && (
+                        <CaseAssigneeSelect caseId={c.id} prefecture={c.prefecture} currentAssigneeId={c.assigneeId ?? null}
+                          candidates={assignableUsers} onUpdated={() => utils.cases.listSummary.invalidate()} compact />
                       )}
                       <div className="flex md:flex-col gap-2">
                         <Button

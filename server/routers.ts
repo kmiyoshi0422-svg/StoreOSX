@@ -1001,6 +1001,20 @@ export const appRouter = router({
 
   users: router({
     list: protectedProcedure.query(() => getAllUsers()),
+    assignable: protectedProcedure.query(async ({ ctx }) => {
+      if (!canManageCases(ctx.user.role)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "担当者候補を閲覧する権限がありません" });
+      }
+      const users = await getAllUsers();
+      return users.filter((user) => canManageCases(user.role)).map((user) => ({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        areaAccessMode: user.areaAccessMode,
+        allowedPrefectures: user.allowedPrefectures,
+        role: user.role,
+      }));
+    }),
     accessList: adminProcedure.query(() => getAllUsers()),
     updateAccess: adminProcedure
       .input(
@@ -1412,6 +1426,18 @@ export const appRouter = router({
         await assertCaseAccess(currentCase, ctx.user);
         if (ctx.user.role === "customer") {
           throw new TRPCError({ code: "FORBIDDEN", message: "顧客アカウントは案件を変更できません" });
+        }
+        if (data.assigneeId !== undefined) {
+          if (!canManageCases(ctx.user.role)) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "担当者を変更する権限がありません" });
+          }
+          if (data.assigneeId !== null) {
+            const assignee = (await getAllUsers()).find((user) => user.id === data.assigneeId);
+            const prefecture = data.prefecture === undefined ? currentCase.prefecture : data.prefecture;
+            if (!assignee || !canManageCases(assignee.role) || !canAccessPrefecture(assignee, prefecture)) {
+              throw new TRPCError({ code: "BAD_REQUEST", message: "担当できないユーザーです。社員以上で案件エリアを閲覧できる担当者を選んでください" });
+            }
+          }
         }
         const includesSurveyImpression =
           data.surveyImpression !== undefined || data.surveyImpressionAuthor !== undefined;

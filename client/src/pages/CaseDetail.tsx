@@ -111,6 +111,7 @@ import {
 } from "@shared/short-impression";
 import { StoreEquipmentPanel } from "./StoreEquipmentPanel";
 import { StoreMasterLinkPanel } from "./StoreMasterLinkPanel";
+import { CaseAssigneeSelect } from "@/components/CaseAssigneeSelect";
 
 
 const PhotosTab = React.lazy(() => import("./CaseDetailPhotosTab"));
@@ -173,6 +174,7 @@ export default function CaseDetail({ id }: { id: number }) {
     new URLSearchParams(window.location.search).get("tab") === "photos" ? "photos" : "info",
   );
   const { data: caseData, isLoading } = trpc.cases.get.useQuery({ id });
+  const { data: assignableUsers = [] } = trpc.users.assignable.useQuery(undefined, { enabled: canManageCase });
   // タブ別遅延取得: チェックリストと写真はタブヘッダーのバッジ表示に使うため常時取得
   const { data: checklist = [] } = trpc.checklist.listByCase.useQuery({ caseId: id });
   const { data: photos = [] } = trpc.photos.listByCase.useQuery({ caseId: id });
@@ -372,6 +374,7 @@ export default function CaseDetail({ id }: { id: number }) {
             onUpdated={() => utils.cases.get.invalidate({ id })}
             isPartner={isPartner}
             canManageCase={canManageCase}
+            assignableUsers={assignableUsers}
             canViewFinancials={canViewFinancials}
             canDeleteCase={isOwnerOrAdmin}
           />
@@ -482,6 +485,7 @@ function InfoTab({
   onUpdated,
   isPartner = false,
   canManageCase = false,
+  assignableUsers = [],
   canViewFinancials = false,
   canDeleteCase = false,
 }: {
@@ -489,6 +493,7 @@ function InfoTab({
   onUpdated: () => void;
   isPartner?: boolean;
   canManageCase?: boolean;
+  assignableUsers?: React.ComponentProps<typeof CaseAssigneeSelect>["candidates"];
   canViewFinancials?: boolean;
   canDeleteCase?: boolean;
 }) {
@@ -846,9 +851,11 @@ function InfoTab({
               社内担当者
             </h3>
           </div>
-          <AssigneeSelect
+          <CaseAssigneeSelect
             caseId={caseData.id}
+            prefecture={caseData.prefecture}
             currentAssigneeId={caseData.assigneeId ?? null}
+            candidates={assignableUsers}
             onUpdated={onUpdated}
           />
           <div className="border-t pt-4" />
@@ -1028,53 +1035,6 @@ function PartnerSelect({
           協力会社マスタから選択するとワンタップで電話発信できます。
         </p>
       )}
-    </div>
-  );
-}
-
-// 社内担当者選択コンポーネント
-function AssigneeSelect({
-  caseId,
-  currentAssigneeId,
-  onUpdated,
-}: {
-  caseId: number;
-  currentAssigneeId: number | null;
-  onUpdated: () => void;
-}) {
-  const { data: users = [] } = trpc.users.list.useQuery();
-  const updateMutation = trpc.cases.update.useMutation({
-    onSuccess: () => {
-      toast.success("担当者を更新しました");
-      onUpdated();
-    },
-    onError: (e) => toast.error(e.message),
-  });
-
-  return (
-    <div className="flex items-center gap-2">
-      <Select
-        value={currentAssigneeId ? String(currentAssigneeId) : "__none__"}
-        onValueChange={(v) => {
-          updateMutation.mutate({
-            id: caseId,
-            data: { assigneeId: v === "__none__" ? null : Number(v) },
-          });
-        }}
-        disabled={updateMutation.isPending}
-      >
-        <SelectTrigger className="flex-1">
-          <SelectValue placeholder="担当者を選択" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__none__">未割当</SelectItem>
-          {users.map((u) => (
-            <SelectItem key={u.id} value={String(u.id)}>
-              {u.name || u.email || `User #${u.id}`}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
     </div>
   );
 }
