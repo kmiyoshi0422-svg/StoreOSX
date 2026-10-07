@@ -93,6 +93,9 @@ describe("報告書の統一標準レイアウト契約", () => {
     expect(completionPageSource).toContain("generating || !previewReady");
     expect(surveySource).toContain("onPreviewReady={handlePreviewReady}");
     expect(completionPageSource).toContain("onPreviewReady={handlePreviewReady}");
-    expect(previewSource).toContain("onPreviewReady?.(previews.length)");
+    expect(previewSource).toContain("onPreviewReady?.(previews.length, profile ? previews : undefined)");
+    expect(previewSource).toContain("strict: true");
+    expect(surveySource).toContain("createReportPdfFromPages(previewPages)");
+    expect(completionPageSource).toContain("createReportPdfFromPages(previewPages)");
   });
 });

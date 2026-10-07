@@ -15,7 +15,8 @@ import { Download, Loader2, Printer, ZoomIn, ZoomOut, ChevronLeft, ChevronRight,
 import { useCallback, useEffect, useRef, useState } from "react";
 import html2canvas from "html2canvas-pro";
 import jsPDF from "jspdf";
-import { inlineImages } from "@/lib/imageDataUrl";
+import { clearDataUrlCache, inlineImages } from "@/lib/imageDataUrl";
+import { getReportPdfProfile, isLowMemoryBrowser } from "@/lib/reportPdfProfile";
 
 interface PdfPreviewModalProps {
   open: boolean;
@@ -27,7 +28,12 @@ interface PdfPreviewModalProps {
   /** ページセレクタ（CSSクラス名）。デフォルト: ".report-page, .ledger-page" */
   pageSelector?: string;
   /** 実レイアウトの全ページ描画が完了した時に呼ばれる */
-  onPreviewReady?: (pageCount: number) => void;
+  onPreviewReady?: (pageCount: number, pageJpegs?: readonly string[]) => void;
+  /** 報告書のみ。プレビュー用JPEGをPDF出力でも再利用する */
+  reportPhotoCount?: number;
+  onDownloadPdf?: () => void;
+  pdfDownloadBusy?: boolean;
+  pdfDownloadReady?: boolean;
 }
 
 const ZOOM_PRESETS = [50, 75, 100, 125, 150, 200, 300];
@@ -42,10 +48,16 @@ export function PdfPreviewModal({
   fileName,
   pageSelector = ".report-page, .ledger-page",
   onPreviewReady,
+  reportPhotoCount,
+  onDownloadPdf,
+  pdfDownloadBusy,
+  pdfDownloadReady = true,
 }: PdfPreviewModalProps) {
   const [pages, setPages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+  const previewRunId = useRef(0);
   const [currentPage, setCurrentPage] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
@@ -62,26 +74,45 @@ export function PdfPreviewModal({
   // プレビュー画像を生成
   const generatePreview = useCallback(async () => {
     if (!containerRef.current || !open) return;
+    const runId = ++previewRunId.current;
     setLoading(true);
+    setPreviewError("");
     setPages([]);
     setCurrentPage(0);
     setZoom(1);
     setPanOffset({ x: 0, y: 0 });
+    onPreviewReady?.(0);
 
+    let restore = () => {};
     try {
       // フォント読み込み待ち
       if (document.fonts && document.fonts.ready) {
         await document.fonts.ready;
       }
-      await new Promise((r) => setTimeout(r, 150));
+      if (reportPhotoCount === undefined) await new Promise((r) => setTimeout(r, 150));
 
       const pageElements = containerRef.current.querySelectorAll<HTMLElement>(pageSelector);
+      if (reportPhotoCount !== undefined && pageElements.length === 0) {
+        throw new Error("報告書ページが見つかりません。読み込み後に再度お試しください");
+      }
       const targets = pageElements.length > 0 ? Array.from(pageElements) : [containerRef.current];
+      const profile = reportPhotoCount === undefined
+        ? null
+        : getReportPdfProfile(targets.length, reportPhotoCount, isLowMemoryBrowser());
+      if (profile) {
+        restore = await inlineImages(containerRef.current, {
+          maxEdge: profile.maxImageEdge,
+          quality: profile.imageQuality,
+          concurrency: profile.imageConcurrency,
+          strict: true,
+        });
+      }
 
       const previews: string[] = [];
       // プレビューは低解像度で高速化
-      const previewScale = targets.length > 10 ? 1 : targets.length > 5 ? 1.2 : 1.5;
+      const previewScale = profile?.renderScale ?? (targets.length > 10 ? 1 : targets.length > 5 ? 1.2 : 1.5);
       for (const el of targets) {
+        if (runId !== previewRunId.current) return;
         await new Promise((r) => setTimeout(r, 0));
         const canvas = await html2canvas(el, {
           scale: previewScale,
@@ -90,22 +121,35 @@ export function PdfPreviewModal({
           backgroundColor: "#ffffff",
           logging: false,
           windowWidth: 800,
+          imageTimeout: 30_000,
+          removeContainer: true,
         });
-        previews.push(canvas.toDataURL("image/jpeg", 0.8));
+        previews.push(canvas.toDataURL("image/jpeg", profile?.jpegQuality ?? 0.8));
+        canvas.width = 0;
+        canvas.height = 0;
       }
+      if (runId !== previewRunId.current) return;
       setPages(previews);
-      onPreviewReady?.(previews.length);
+      onPreviewReady?.(previews.length, profile ? previews : undefined);
     } catch (e) {
       console.error("Preview generation failed:", e);
+      if (runId === previewRunId.current) {
+        setPreviewError(e instanceof Error ? e.message : "プレビューの生成に失敗しました");
+      }
     } finally {
-      setLoading(false);
+      restore();
+      if (reportPhotoCount !== undefined) clearDataUrlCache();
+      if (runId === previewRunId.current) setLoading(false);
     }
-  }, [containerRef, onPreviewReady, open, pageSelector]);
+  }, [containerRef, onPreviewReady, open, pageSelector, reportPhotoCount]);
 
   useEffect(() => {
     if (open) {
       generatePreview();
     }
+    return () => {
+      previewRunId.current++;
+    };
   }, [open, generatePreview]);
 
   // マウスホイールでズーム
@@ -348,14 +392,18 @@ export function PdfPreviewModal({
                 </div>
               )}
               {/* 印刷 */}
-              <Button size="sm" variant="outline" onClick={handlePrint} disabled={loading || pages.length === 0}>
+              <Button size="sm" variant="outline" onClick={handlePrint} disabled={!pdfDownloadReady || loading || pages.length === 0}>
                 <Printer className="h-4 w-4 mr-1" />
                 印刷
               </Button>
               {/* ダウンロード */}
-              <Button size="sm" onClick={handleDownload} disabled={generating || loading}>
-                {generating ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Download className="h-4 w-4 mr-1" />}
-                {generating ? "生成中..." : "PDFダウンロード"}
+              <Button
+                size="sm"
+                onClick={onDownloadPdf ?? handleDownload}
+                disabled={generating || pdfDownloadBusy || !pdfDownloadReady || loading || pages.length === 0}
+              >
+                {generating || pdfDownloadBusy ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Download className="h-4 w-4 mr-1" />}
+                {generating || pdfDownloadBusy ? "生成中..." : "PDFダウンロード"}
               </Button>
             </div>
           </div>
@@ -391,7 +439,7 @@ export function PdfPreviewModal({
             </div>
           ) : pages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
-              <p className="text-sm text-muted-foreground">プレビューを生成できませんでした</p>
+              <p className="text-sm text-muted-foreground">{previewError || "プレビューを生成できませんでした"}</p>
             </div>
           ) : (
             <div

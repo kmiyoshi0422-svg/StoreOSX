@@ -16,6 +16,8 @@ export type InlineImageOptions = {
   maxEdge?: number;
   quality?: number;
   concurrency?: number;
+  /** 報告書用: 写真取得失敗を無言のプレースホルダに置き換えない */
+  strict?: boolean;
 };
 
 /** 取得失敗画像用の軽量プレースホルダ（淡いグレー / No Image） */
@@ -149,7 +151,9 @@ async function parallelLimit<T>(tasks: (() => Promise<T>)[], limit: number): Pro
     }
   }
   const workers = Array.from({ length: Math.min(limit, tasks.length) }, () => worker());
-  await Promise.all(workers);
+  const settled = await Promise.allSettled(workers);
+  const failure = settled.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (failure) throw failure.reason;
   return results;
 }
 
@@ -165,6 +169,7 @@ export async function inlineImages(
 ): Promise<() => void> {
   const imgs = Array.from(container.querySelectorAll<HTMLImageElement>("img"));
   const originalSrcs = imgs.map((img) => img.getAttribute("src") ?? "");
+  const originalSrcsets = imgs.map((img) => img.getAttribute("srcset"));
   const maxEdge = options.maxEdge ?? 1600;
   const quality = options.quality ?? 0.84;
   const concurrency = Math.max(1, Math.min(options.concurrency ?? 4, 6));
@@ -178,33 +183,44 @@ export async function inlineImages(
       img.src = dataUrl;
       img.removeAttribute("srcset");
     } catch {
+      if (options.strict) throw new Error("写真を読み込めませんでした。接続を確認し再度プレビューしてください");
       img.src = PLACEHOLDER_DATA_URL;
       img.removeAttribute("srcset");
     }
   });
 
-  await parallelLimit(tasks, concurrency);
+  try {
+    await parallelLimit(tasks, concurrency);
 
-  // 全画像のdecodeを並列実行
-  await Promise.all(
-    imgs.map(async (img) => {
-      const src = img.getAttribute("src") ?? "";
-      if (!src) return;
-      if (typeof img.decode === "function") {
-        await img.decode().catch(() => undefined);
-      } else if (!img.complete) {
-        await new Promise<void>((resolve) => {
-          img.addEventListener("load", () => resolve(), { once: true });
-          img.addEventListener("error", () => resolve(), { once: true });
-        });
-      }
-    }),
-  );
+    // 全画像のdecodeを並列実行
+    await Promise.all(
+      imgs.map(async (img) => {
+        const src = img.getAttribute("src") ?? "";
+        if (!src) return;
+        if (typeof img.decode === "function") {
+          if (options.strict) await img.decode().catch(() => { throw new Error("写真を読み込めませんでした。接続を確認し再度プレビューしてください"); });
+          else await img.decode().catch(() => undefined);
+        } else if (!img.complete) {
+          await new Promise<void>((resolve, reject) => {
+            img.addEventListener("load", () => resolve(), { once: true });
+            img.addEventListener("error", () => options.strict ? reject(new Error("画像の読み込みに失敗しました")) : resolve(), { once: true });
+          });
+        }
+      }),
+    );
+  } catch (error) {
+    imgs.forEach((img, idx) => {
+      if (originalSrcs[idx]) img.src = originalSrcs[idx];
+      if (originalSrcsets[idx] !== null) img.setAttribute("srcset", originalSrcsets[idx]!);
+    });
+    throw error;
+  }
 
   // 復元関数
   return () => {
     imgs.forEach((img, idx) => {
       if (originalSrcs[idx]) img.src = originalSrcs[idx];
+      if (originalSrcsets[idx] !== null) img.setAttribute("srcset", originalSrcsets[idx]!);
     });
   };
 }

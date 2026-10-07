@@ -27,12 +27,9 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { PdfPreviewModal } from "@/components/PdfPreviewModal";
-import html2canvas from "html2canvas-pro";
-import jsPDF from "jspdf";
 import { toast } from "sonner";
-import { clearDataUrlCache, inlineImages } from "@/lib/imageDataUrl";
+import { createReportPdfFromPages } from "@/lib/reportPdfPages";
 import { fileToUprightDataUrl } from "@/lib/imageOrientation";
-import { getReportPdfProfile, isLowMemoryBrowser } from "@/lib/reportPdfProfile";
 import { usePdfHistoryRecorder } from "@/hooks/usePdfHistoryRecorder";
 import { SignaturePad } from "@/components/SignaturePad";
 import { Lightbox, useLightbox } from "@/components/Lightbox";
@@ -202,14 +199,19 @@ export default function CaseReport({
   const [pdfProgress, setPdfProgress] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewReady, setPreviewReady] = useState(false);
+  const previewPagesRef = useRef<readonly string[] | null>(null);
   const [signerName, setSignerName] = useState("");
   const [editingSig, setEditingSig] = useState(false);
   const [customerSignerName, setCustomerSignerName] = useState("");
   const [editingCustomerSig, setEditingCustomerSig] = useState(false);
   const [confirmComplete, setConfirmComplete] = useState(false);
-  const handlePreviewReady = useCallback((pageCount: number) => setPreviewReady(pageCount > 0), []);
+  const handlePreviewReady = useCallback((pageCount: number, pageJpegs?: readonly string[]) => {
+    previewPagesRef.current = pageJpegs?.length === pageCount && pageCount > 0 ? pageJpegs : null;
+    setPreviewReady(!!previewPagesRef.current);
+  }, []);
 
   useEffect(() => {
+    previewPagesRef.current = null;
     setPreviewReady(false);
   }, [caseData?.updatedAt, photos, signature, customerSignature]);
 
@@ -851,55 +853,16 @@ export default function CaseReport({
   const handleDownloadPDF = async () => {
     if (!containerRef.current || !caseData) return;
     setGenerating(true);
-    let restore = () => {};
     try {
       const pages = containerRef.current.querySelectorAll<HTMLElement>(".report-page");
       const totalPages = pages.length;
-      if (totalPages === 0) throw new Error("報告書ページが見つかりません");
-
-      const profile = getReportPdfProfile(
-        totalPages,
-        reportPhotos.length,
-        isLowMemoryBrowser(),
-      );
-      setPdfProgress(`画像を準備中（${reportPhotos.length}枚）...`);
-      restore = await inlineImages(containerRef.current, {
-        maxEdge: profile.maxImageEdge,
-        quality: profile.imageQuality,
-        concurrency: profile.imageConcurrency,
-      });
-
-      // フォントの読み込みを待つ（日本語フォントが未ロードだと文字化けする）
-      if (document.fonts && document.fonts.ready) {
-        await document.fonts.ready;
+      const previewPages = previewPagesRef.current;
+      if (!previewReady || !previewPages || totalPages === 0 || previewPages.length !== totalPages) {
+        throw new Error("報告書の内容が変わりました。A4レイアウトを再確認してください");
       }
-      await new Promise((r) => setTimeout(r, 100));
-
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-
-      for (let i = 0; i < totalPages; i++) {
-        setPdfProgress(`ページ ${i + 1} / ${totalPages} を処理中...`);
-        // UIを更新するためにイベントループに制御を戻す
-        await new Promise((r) => setTimeout(r, 0));
-        const canvas = await html2canvas(pages[i], {
-          scale: profile.renderScale,
-          useCORS: true,
-          allowTaint: false,
-          backgroundColor: "#ffffff",
-          logging: false,
-          windowWidth: 800,
-          imageTimeout: 30_000,
-          removeContainer: true,
-        });
-        const imgData = canvas.toDataURL("image/jpeg", profile.jpegQuality);
-        if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight, undefined, "FAST");
-        // メモリ解放: 大きなcanvasを即座にGC対象にする
-        canvas.width = 0;
-        canvas.height = 0;
-      }
+      setPdfProgress("確認済みページからPDFを組み立て中...");
+      await new Promise((r) => setTimeout(r, 0));
+      const pdf = createReportPdfFromPages(previewPages);
       setPdfProgress("PDFを保存中...");
       const safe = `${caseData.requestNumber}_${caseData.storeName}`.replace(
         /[\\/:*?"<>|]/g,
@@ -924,8 +887,6 @@ export default function CaseReport({
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "PDF生成に失敗しました");
     } finally {
-      restore();
-      clearDataUrlCache();
       setGenerating(false);
       setPdfProgress("");
     }
@@ -1855,6 +1816,10 @@ export default function CaseReport({
         fileName={`${reportType === "survey" ? "現調報告書" : "工事完了報告書"}_${caseData?.requestNumber ?? ""}_${caseData?.storeName ?? ""}`}
         pageSelector=".report-page"
         onPreviewReady={handlePreviewReady}
+        reportPhotoCount={reportPhotos.length}
+        onDownloadPdf={handleDownloadPDF}
+        pdfDownloadBusy={generating}
+        pdfDownloadReady={previewReady}
       />
     </div>
   );
