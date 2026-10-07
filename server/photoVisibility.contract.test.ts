@@ -13,10 +13,9 @@ const storeHistorySource = readFileSync(
 
 describe("写真表示URL契約", () => {
   it("案件写真APIは保存済みURLを安定した読み取りURLへ正規化する", () => {
-    expect(routerSource).toMatch(
-      /getPhotosByCaseId\(input\.caseId\)[\s\S]*photoRows\.map\(withReadableFileUrl\)/,
-    );
-    expect(routerSource).toContain("photos: photoRows.map(withReadableFileUrl)");
+    expect(routerSource).toContain('fileUrl: storageUrlForRead(file.fileKey, file.fileUrl)');
+    expect(routerSource).toContain('const visible = withReadableFileUrl(photo)');
+    expect(routerSource).toContain('photoRows.map((photo) => withVisiblePhoto(photo, ctx.user.role))');
   });
 
   it("店舗履歴は実在しないapi/storage経路ではなくAPI返却URLを使う", () => {

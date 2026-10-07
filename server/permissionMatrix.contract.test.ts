@@ -31,11 +31,13 @@ describe("実ユーザー権限マトリクス契約", () => {
     expect(dbSource).toContain('updateSet.role = "owner"');
   });
 
-  it("協力業者は指定エリアを使え、社内金額と見積APIを利用できない", () => {
-    expect(routerSource).toContain('partnerUsesSelectedAreas');
-    expect(routerSource).toContain('filterCasesByArea(rows, user)');
+  it("協力業者は全案件の概要のみ閲覧し、編集は担当・指定エリアに限定し、金額APIを利用できない", () => {
+    expect(routerSource).toContain('user.role === "partner" ? rows : filterCasesByArea(rows, user)');
+    expect(routerSource).toContain('editableIds.has');
+    expect(routerSource).toContain('await assertCaseAccess(caseData, ctx.user)');
     expect(accessPolicy).not.toContain('original.amountApproved === true');
     expect(routerSource).toContain('message: "見積金額の閲覧権限がありません"');
-    expect(accessManagementSource).toContain('指定エリアの案件と本人入力経費のみ。金額は完全非表示');
+    expect(accessManagementSource).toContain('全案件の概要・現場写真を閲覧');
+    expect(accessManagementSource).toContain('金額・見積・経費は非表示');
   });
 });

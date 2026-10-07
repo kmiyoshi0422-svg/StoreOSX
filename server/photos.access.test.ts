@@ -62,6 +62,10 @@ describe("写真APIの協力業者・顧客アクセス", () => {
       requestNumber: `TEST-PHOTO-ACCESS-NG-${suffix}`,
       storeName: "写真権限テスト山口店",
       prefecture: "山口県",
+      estimatedCost: 8800,
+      plenusQuoteAmount: 12000,
+      requesterPhone: "09000000000",
+      notes: "社内限定記録",
     })).id;
     partnerId = (await owner.partners.create({
       name: `写真権限テスト協力会社-${suffix}`,
@@ -96,18 +100,72 @@ describe("写真APIの協力業者・顧客アクセス", () => {
     expect(storagePut).not.toHaveBeenCalled();
   });
 
-  it("許可外案件は保存前に拒否し、一覧・単件・一括取得でも漏らさない", async () => {
+  it("許可外案件の写真は閲覧可能だが、保存前に変更を拒否する", async () => {
     await expect(partner.photos.upload({ caseId: deniedCaseId, ...file })).rejects.toMatchObject({ code: "FORBIDDEN" });
     expect(storagePut).not.toHaveBeenCalled();
-    await expect(partner.photos.listByCase({ caseId: deniedCaseId })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(partner.photos.get({ id: deniedPhotoId })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(partner.photos.listByCases({ caseIds: [allowedCaseId, deniedCaseId] })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect((await partner.photos.listByCase({ caseId: deniedCaseId })).some(p => p.id === deniedPhotoId)).toBe(true);
+    expect((await partner.photos.get({ id: deniedPhotoId })).id).toBe(deniedPhotoId);
+    const rows = await partner.photos.listByCases({ caseIds: [allowedCaseId, deniedCaseId] });
+    expect(rows.cases).toHaveLength(2);
+    expect(rows.cases.every(row => row.estimatedCost == null && row.plenusQuoteAmount == null)).toBe(true);
   });
 
   it("写真更新・削除は許可外案件では拒否する", async () => {
     await expect(partner.photos.update({ id: deniedPhotoId, memo: "案件外変更" })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(partner.photos.delete({ id: deniedPhotoId })).rejects.toMatchObject({ code: "FORBIDDEN" });
     expect((await owner.photos.get({ id: deniedPhotoId })).memo).not.toBe("案件外変更");
+  });
+
+  it("協力業者は全案件の概要のみを閲覧し、担当外の金額・社内情報を受け取らない", async () => {
+    const all = await partner.cases.listSummary();
+    const outside = all.find(item => item.id === deniedCaseId);
+    expect(outside).toBeTruthy();
+    expect(outside?.estimatedCost).toBeNull();
+    expect(outside?.plenusQuoteAmount).toBeNull();
+    const detail = await partner.cases.get({ id: deniedCaseId });
+    expect(detail).toMatchObject({ id: deniedCaseId, estimatedCost: null, plenusQuoteAmount: null, notes: null, requesterPhone: null, partnerToken: null });
+    const editable = await partner.cases.partnerEditableCaseIds();
+    expect(editable).toContain(allowedCaseId);
+    expect(editable).not.toContain(deniedCaseId);
+    const checklist = await partner.checklist.listByCase({ caseId: deniedCaseId });
+    expect(checklist.length).toBeGreaterThan(0);
+    await expect(partner.checklist.toggle({ id: checklist[0].id, checked: true })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(partner.checklist.updateMemo({ id: checklist[0].id, memo: "範囲外" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(partner.cases.update({ id: deniedCaseId, data: { status: "現調中" } })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect((await owner.cases.get({ id: deniedCaseId }))?.status).toBe("受付");
+  });
+
+  it("顧客の閲覧範囲は拡張しない", async () => {
+    const restrictedCustomer = appRouter.createCaller(context("customer", { areaAccessMode: "selected", allowedPrefectures: JSON.stringify(["福岡県"]) }));
+    expect((await restrictedCustomer.cases.listSummary()).some(item => item.id === deniedCaseId)).toBe(false);
+    await expect(restrictedCustomer.cases.get({ id: deniedCaseId })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("金額を含み得る経費・見積・資料には外部ロールから直接アクセスできない", async () => {
+    await expect(partner.expenses.list()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(partner.expenses.listByCase({ caseId: allowedCaseId })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(partner.estimates.listByCase({ caseId: allowedCaseId })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(partner.documents.list({ caseId: allowedCaseId })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(partner.projectFolders.list()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(partner.stores.list()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(partner.storeMaster.list()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(partner.storeEquipment.greaseTraps.list({ storeId: 1 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(partner.appSettings.getAll()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(partner.cases.listCompletedReports()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const visibleUsers = await partner.users.list();
+    expect(visibleUsers.length).toBeGreaterThan(0);
+    expect(visibleUsers.every((user) => Object.keys(user).sort().join(",") === "email,id,name,role" && user.email === null)).toBe(true);
+  });
+
+  it("担当外案件の工程・報告書完了・ステータス履歴を直接変更できない", async () => {
+    await expect(partner.schedules.listByCase({ caseId: deniedCaseId })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(partner.statusLogs.listByCase({ caseId: deniedCaseId })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(partner.schedules.create({ caseId: deniedCaseId, title: "担当外工程", startDate: "2026-10-08", endDate: "2026-10-08" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(partner.cases.markReportComplete({ caseId: deniedCaseId, reportType: "survey" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(partner.statusLogs.create({ caseId: deniedCaseId, toStatus: "完了" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(partner.statusLogs.completeWithReport({ caseId: deniedCaseId, comment: "範囲外", photos: [] })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(partner.rainLeak.create({ caseId: deniedCaseId })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(partner.surveySkip.create({ caseId: deniedCaseId, reason: "その他" })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("一括操作に許可外写真が混ざると全件非破壊で停止する", async () => {

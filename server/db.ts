@@ -1545,7 +1545,12 @@ export async function listSchedulesByCase(caseId: number) {
   if (!db) return [];
   return db.select().from(caseSchedules).where(eq(caseSchedules.caseId, caseId)).orderBy(caseSchedules.orderNo);
 }
-
+export async function getScheduleById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [row] = await db.select().from(caseSchedules).where(eq(caseSchedules.id, id)).limit(1);
+  return row;
+}
 export async function createSchedule(data: InsertCaseSchedule) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -1624,6 +1629,16 @@ export async function getRainLeakCheckItems(inspectionId: number) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(rainLeakCheckItems).where(eq(rainLeakCheckItems.inspectionId, inspectionId)).orderBy(rainLeakCheckItems.orderNo);
+}
+
+export async function getRainLeakCheckItemCaseId(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select({ caseId: rainLeakInspections.caseId })
+    .from(rainLeakCheckItems)
+    .innerJoin(rainLeakInspections, eq(rainLeakCheckItems.inspectionId, rainLeakInspections.id))
+    .where(eq(rainLeakCheckItems.id, id)).limit(1);
+  return row?.caseId ?? null;
 }
 
 export async function upsertRainLeakCheckItems(inspectionId: number, items: InsertRainLeakCheckItem[]) {

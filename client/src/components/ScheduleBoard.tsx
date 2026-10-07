@@ -156,7 +156,7 @@ export default function ScheduleBoard() {
 
   // 指定チームの担当選択肢を返す（メンバー未設定は全員、設定済みはメンバー＋現担当）。
   const assigneeOptionsFor = (team: Team, currentAssigneeId: number | null) =>
-    filterAssigneeOptions(usersQ.data ?? [], teamMemberIds[team], currentAssigneeId);
+    filterAssigneeOptions((usersQ.data ?? []).map(({ id, name }) => ({ id, name })), teamMemberIds[team], currentAssigneeId);
   const apply = trpc.routes.applySuggestion.useMutation({
     onSuccess: () => {
       toast.success("提案スケジュールを反映しました");

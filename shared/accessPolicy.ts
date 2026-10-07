@@ -102,6 +102,14 @@ export function applyFinancialVisibility<T>(row: T, role: string): T {
   return stripInternalFinancialFields(row);
 }
 
+/** 外部向けの自由記述に明示的な金額がある場合は文脈ごと非表示にし、部分伏せ字による漏れを避ける。 */
+export function redactTextWithAmounts(value: string | null | undefined): string | null | undefined {
+  if (!value) return value;
+  return /(?:[¥￥]\s*\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?\s*(?:億|万|千)?円)/.test(value)
+    ? "金額に関する記述を含むため非表示"
+    : value;
+}
+
 export function maskProfitValues<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map((item) => maskProfitValues(item)) as T;

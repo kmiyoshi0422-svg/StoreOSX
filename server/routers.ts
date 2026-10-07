@@ -88,6 +88,7 @@ import {
   setAppSetting,
   getAllAppSettings,
   listSchedulesByCase,
+  getScheduleById,
   listAllSchedulesWithCase,
   listCrossPartnerSchedules,
   listCrossPartnerRoutes,
@@ -101,6 +102,7 @@ import {
   createRainLeakInspection,
   updateRainLeakInspection,
   getRainLeakCheckItems,
+  getRainLeakCheckItemCaseId,
   upsertRainLeakCheckItems,
   updateRainLeakCheckItem,
   createDocument,
@@ -219,6 +221,7 @@ import {
   canViewProfit,
   filterCasesByArea,
   maskProfitValues,
+  redactTextWithAmounts,
 } from "../shared/accessPolicy";
 import { resolveStageStatus, syncStageFromStatus } from "../shared/stageStatus";
 import type { ProgressStage, CaseStatus } from "../shared/stageStatus";
@@ -251,12 +254,30 @@ import {
   canViewFieldMemos,
 } from "../shared/fieldMemos";
 
+const staffOnlyProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role === "partner" || ctx.user.role === "customer") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "社内専用情報へのアクセス権がありません" });
+  }
+  return next();
+});
+
 function withReadableFileUrl<
   T extends { fileKey?: string | null; fileUrl?: string | null },
 >(file: T): T & { fileUrl: string } {
   return {
     ...file,
     fileUrl: storageUrlForRead(file.fileKey, file.fileUrl),
+  };
+}
+
+function withVisiblePhoto<T extends { fileKey?: string | null; fileUrl?: string | null; memo?: string | null; workCategory?: string | null; workItem?: string | null }>(photo: T, role: string) {
+  const visible = withReadableFileUrl(photo);
+  if (role !== "partner" && role !== "customer") return visible;
+  return {
+    ...visible,
+    memo: redactTextWithAmounts(visible.memo),
+    workCategory: redactTextWithAmounts(visible.workCategory),
+    workItem: redactTextWithAmounts(visible.workItem),
   };
 }
 
@@ -311,28 +332,65 @@ async function applyCaseVisibility<T>(
   rows: T[],
   user: CaseAccessUser,
 ): Promise<T[]> {
-  const partnerUsesSelectedAreas =
-    user.role === "partner" && user.areaAccessMode === "selected";
-  const areaVisible = user.role === "partner" && !partnerUsesSelectedAreas
-    ? await filterCasesForPartner(rows, user.id)
-    : filterCasesByArea(rows, user);
-  return areaVisible.map((row) => applyFinancialVisibility(row, user.role));
+  // 協力業者には全案件の基本情報を閲覧許可するが、既存の編集範囲は変更しない。
+  const visible = user.role === "partner" ? rows : filterCasesByArea(rows, user);
+  const editableRows = user.role !== "partner" ? []
+    : user.areaAccessMode === "selected"
+      ? filterCasesByArea(rows, user)
+      : await filterCasesForPartner(rows, user.id);
+  const editableIds = new Set(editableRows.map(row => (row as { id?: number }).id));
+  return visible.map((row) => {
+    const safe = applyFinancialVisibility(row, user.role);
+    if ((user.role !== "partner" && user.role !== "customer") || !safe || typeof safe !== "object") return safe;
+    // 担当外は概要のみ公開。個人の連絡先と社内記録を広域に公開しない。
+    const result: Record<string, unknown> = { ...safe, partnerToken: null };
+    for (const key of ["requestContent", "lostReasonDetail", "partnerNotes", "notes", "surveyImpression"]) {
+      if (typeof result[key] === "string") result[key] = redactTextWithAmounts(result[key] as string);
+    }
+    if (user.role === "customer") return result as T;
+    if (!editableIds.has((row as { id?: number }).id)) {
+      for (const key of ["requesterPhone", "contractorPhone", "notes", "surveyImpression", "surveyImpressionAuthor", "partnerNotes", "partnerNotesUpdatedBy", "partnerNotesUpdatedAt"]) {
+        if (key in result) result[key] = null;
+      }
+    }
+    return result as T;
+  }) as T[];
 }
 
 async function assertCaseAccess(
   caseData: { partnerId?: number | null; prefecture?: string | null },
   user: CaseAccessUser,
 ) {
-  const visible = await applyCaseVisibility([caseData], user);
+  // 編集・従来の機能は引き続き許可エリア／担当案件に限定する。
+  const visible = user.role === "partner"
+    ? user.areaAccessMode === "selected"
+      ? filterCasesByArea([caseData], user)
+      : await filterCasesForPartner([caseData], user.id)
+    : filterCasesByArea([caseData], user);
   if (visible.length === 0) {
     throw new TRPCError({ code: "FORBIDDEN", message: "この案件へのアクセス権がありません" });
   }
 }
 
-async function assertPhotoCaseAccess(caseId: number, user: CaseAccessUser, editing = false) {
+async function assertCaseReadAccess(
+  caseData: { partnerId?: number | null; prefecture?: string | null },
+  user: CaseAccessUser,
+) {
+  if (user.role !== "partner") await assertCaseAccess(caseData, user);
+}
+
+async function assertCaseIdWriteAccess(caseId: number, user: CaseAccessUser) {
   const caseData = await getCaseById(caseId);
   if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
   await assertCaseAccess(caseData, user);
+  return caseData;
+}
+
+async function assertPhotoCaseAccess(caseId: number, user: CaseAccessUser, editing = false) {
+  const caseData = await getCaseById(caseId);
+  if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
+  if (editing) await assertCaseAccess(caseData, user);
+  else await assertCaseReadAccess(caseData, user);
   if (editing && user.role === "customer") {
     throw new TRPCError({ code: "FORBIDDEN", message: "写真を変更する権限がありません" });
   }
@@ -1000,7 +1058,11 @@ export const appRouter = router({
   }),
 
   users: router({
-    list: protectedProcedure.query(() => getAllUsers()),
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const users = await getAllUsers();
+      if (ctx.user.role !== "partner" && ctx.user.role !== "customer") return users;
+      return users.map(({ id, name, role }) => ({ id, name, role, email: null }));
+    }),
     assignable: protectedProcedure.query(async ({ ctx }) => {
       if (!canManageCases(ctx.user.role)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "担当者候補を閲覧する権限がありません" });
@@ -1342,8 +1404,17 @@ export const appRouter = router({
     get: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
       const caseData = await getCaseById(input.id);
       if (!caseData) return null;
-      await assertCaseAccess(caseData, ctx.user);
-      return applyFinancialVisibility(caseData, ctx.user.role);
+      await assertCaseReadAccess(caseData, ctx.user);
+      const [visible] = await applyCaseVisibility([caseData], ctx.user);
+      return visible;
+    }),
+    partnerEditableCaseIds: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== "partner") return [] as number[];
+      const all = await listCasesMinimal();
+      const editable = ctx.user.areaAccessMode === "selected"
+        ? filterCasesByArea(all, ctx.user)
+        : await filterCasesForPartner(all, ctx.user.id);
+      return editable.map((item) => item.id);
     }),
 
     create: protectedProcedure.input(caseInputSchema.extend({
@@ -1952,6 +2023,7 @@ export const appRouter = router({
     markReportComplete: protectedProcedure
       .input(z.object({ caseId: z.number(), reportType: z.enum(["survey", "completion"]) }))
       .mutation(async ({ input, ctx }) => {
+        await assertCaseIdWriteAccess(input.caseId, ctx.user);
         const db = await getDb();
         if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
         const { eq } = await import("drizzle-orm");
@@ -1963,7 +2035,7 @@ export const appRouter = router({
         return { success: true };
       }),
     // 完了済み報告書一覧（管理者向け）
-    listCompletedReports: protectedProcedure
+    listCompletedReports: adminProcedure
       .query(async ({ ctx }) => {
         const db = await getDb();
         if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
@@ -1992,7 +2064,7 @@ export const appRouter = router({
         return rows;
       }),
     // 報告書を差し戻す（管理者のみ）
-    rejectReport: protectedProcedure
+    rejectReport: adminProcedure
       .input(z.object({
         caseId: z.number(),
         comment: z.string().min(1, "差し戻しコメントを入力してください"),
@@ -2099,11 +2171,28 @@ export const appRouter = router({
   checklist: router({
     listByCase: protectedProcedure
       .input(z.object({ caseId: z.number() }))
-      .query(({ input }) => getChecklistByCaseId(input.caseId)),
+      .query(async ({ input, ctx }) => {
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND" });
+        await assertCaseReadAccess(caseData, ctx.user);
+        const items = await getChecklistByCaseId(input.caseId);
+        if (ctx.user.role !== "partner" && ctx.user.role !== "customer") return items;
+        return items.map((item) => ({
+          ...item,
+          title: redactTextWithAmounts(item.title) ?? item.title,
+          description: redactTextWithAmounts(item.description) ?? null,
+          memo: redactTextWithAmounts(item.memo) ?? null,
+        }));
+      }),
 
     toggle: protectedProcedure
       .input(z.object({ id: z.number(), checked: z.boolean() }))
       .mutation(async ({ ctx, input }) => {
+        const item = await import("./db").then((m) => m.getChecklistItemById(input.id));
+        if (!item) throw new TRPCError({ code: "NOT_FOUND" });
+        const caseData = await getCaseById(item.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND" });
+        await assertCaseAccess(caseData, ctx.user);
         await updateChecklistItem(input.id, {
           checked: input.checked,
           checkedAt: input.checked ? new Date() : null,
@@ -2153,7 +2242,12 @@ export const appRouter = router({
 
     updateMemo: protectedProcedure
       .input(z.object({ id: z.number(), memo: z.string() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        const item = await import("./db").then((m) => m.getChecklistItemById(input.id));
+        if (!item) throw new TRPCError({ code: "NOT_FOUND" });
+        const caseData = await getCaseById(item.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND" });
+        await assertCaseAccess(caseData, ctx.user);
         await updateChecklistItem(input.id, { memo: input.memo });
         return { success: true };
       }),
@@ -2161,6 +2255,14 @@ export const appRouter = router({
     bulkToggle: protectedProcedure
       .input(z.object({ ids: z.array(z.number()), checked: z.boolean() }))
       .mutation(async ({ ctx, input }) => {
+        if (!input.ids.length) throw new TRPCError({ code: "BAD_REQUEST" });
+        const items = await Promise.all(input.ids.map((id) => import("./db").then((m) => m.getChecklistItemById(id))));
+        if (items.some((item) => !item)) throw new TRPCError({ code: "NOT_FOUND" });
+        for (const caseId of Array.from(new Set(items.map((item) => item!.caseId)))) {
+          const caseData = await getCaseById(caseId);
+          if (!caseData) throw new TRPCError({ code: "NOT_FOUND" });
+          await assertCaseAccess(caseData, ctx.user);
+        }
         for (const id of input.ids) {
           await updateChecklistItem(id, {
             checked: input.checked,
@@ -2288,7 +2390,7 @@ export const appRouter = router({
       .query(async ({ ctx, input }) => {
         await assertPhotoCaseAccess(input.caseId, ctx.user);
         const photoRows = await getPhotosByCaseId(input.caseId);
-        return photoRows.map(withReadableFileUrl);
+        return photoRows.map((photo) => withVisiblePhoto(photo, ctx.user.role));
       }),
 
     // 複数案件の写真+案件情報を一括取得（一括写真台帳PDF用）
@@ -2299,11 +2401,11 @@ export const appRouter = router({
         if (new Set(caseRows.map((row) => row.id)).size !== new Set(input.caseIds).size) {
           throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
         }
-        for (const row of caseRows) await assertCaseAccess(row, ctx.user);
+        for (const row of caseRows) await assertCaseReadAccess(row, ctx.user);
         // 一括台帳にも協力業者・顧客向けの金額マスキングを適用する。
-        const visibleCases = caseRows.map((row) => applyFinancialVisibility(row, ctx.user.role));
+        const visibleCases = await applyCaseVisibility(caseRows, ctx.user);
         const photoRows = await getPhotosByCaseIds(input.caseIds);
-        return { photos: photoRows.map(withReadableFileUrl), cases: visibleCases };
+        return { photos: photoRows.map((photo) => withVisiblePhoto(photo, ctx.user.role)), cases: visibleCases };
       }),
 
     upload: protectedProcedure
@@ -2416,7 +2518,7 @@ export const appRouter = router({
       .input(z.object({ id: z.number() }))
       .query(async ({ ctx, input }) => {
         const photo = await assertPhotoIdAccess(input.id, ctx.user);
-        return withReadableFileUrl(photo);
+        return withVisiblePhoto(photo, ctx.user.role);
       }),
     classify: protectedProcedure
       .input(
@@ -3037,7 +3139,7 @@ export const appRouter = router({
   // 見積書（PDF/画像アップロード + LLM金額抽出）
   // ==========================================================
   estimates: router({
-    listByCase: protectedProcedure
+    listByCase: staffOnlyProcedure
       .input(z.object({ caseId: z.number() }))
       .query(async ({ input, ctx }) => {
         const caseData = await getCaseById(input.caseId);
@@ -3049,7 +3151,7 @@ export const appRouter = router({
         return listEstimatesByCase(input.caseId);
       }),
 
-    uploadFile: protectedProcedure
+    uploadFile: staffOnlyProcedure
       .input(
         z.object({
           caseId: z.number(),
@@ -3069,7 +3171,7 @@ export const appRouter = router({
         return { fileKey, url, mimeType: input.mimeType };
       }),
 
-    extractAndCreate: protectedProcedure
+    extractAndCreate: staffOnlyProcedure
       .input(
         z.object({
           caseId: z.number(),
@@ -3185,7 +3287,7 @@ export const appRouter = router({
         };
       }),
 
-    update: protectedProcedure
+    update: staffOnlyProcedure
       .input(
         z.object({
           id: z.number(),
@@ -3219,7 +3321,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    delete: protectedProcedure
+    delete: staffOnlyProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         await deleteEstimateById(input.id);
@@ -3227,7 +3329,7 @@ export const appRouter = router({
       }),
 
     // 一括取込: ファイルから金額+依頼番号/案件名/店舗名を抽出しマッチ候補を返す
-    extractAndMatch: protectedProcedure
+    extractAndMatch: staffOnlyProcedure
       .input(
         z.object({
           fileKey: z.string().min(1),
@@ -3329,7 +3431,7 @@ export const appRouter = router({
       }),
 
     // マッチ確定した見積書を一括保存
-    bulkSave: protectedProcedure
+    bulkSave: staffOnlyProcedure
       .input(
         z.object({
           rows: z.array(
@@ -3381,7 +3483,7 @@ export const appRouter = router({
       }),
 
     // 協力業者に見せる75%金額トークンを生成
-    issuePartnerToken: protectedProcedure
+    issuePartnerToken: staffOnlyProcedure
       .input(z.object({ caseId: z.number() }))
       .mutation(async ({ input }) => {
         const existing = await getCaseById(input.caseId);
@@ -3395,7 +3497,7 @@ export const appRouter = router({
       }),
 
     // 見積書OCR: 明細行レベルで抽出
-    extractLineItems: protectedProcedure
+    extractLineItems: staffOnlyProcedure
       .input(
         z.object({
           fileKey: z.string().min(1),
@@ -3493,7 +3595,7 @@ export const appRouter = router({
       }),
 
     // 明細データからExcel(.xlsx)を生成してS3に保存しURLを返す
-    generateExcel: protectedProcedure
+    generateExcel: staffOnlyProcedure
       .input(
         z.object({
           header: z.object({
@@ -3609,7 +3711,9 @@ export const appRouter = router({
         if (!c) throw new Error("リンクが無効です");
         // ロック済みドキュメントは除外して返す
         const docs = await listDocumentsByCaseForPartner(c.id);
-        return docs.map((d) => ({
+        // 外部リンクでは見積書や金額を含む帳票のURLを発行しない。
+        return docs.filter((d) => d.category === "写真" && d.mimeType?.startsWith("image/"))
+          .map((d) => ({
           id: d.id,
           fileName: d.fileName,
           fileUrl: storageUrlForRead(d.fileKey, d.fileUrl),
@@ -3648,7 +3752,7 @@ export const appRouter = router({
     }),
 
     // 住所をジオコードし cases.lat/lng を更新（抽出）
-    geocodeMissing: protectedProcedure.mutation(async () => {
+    geocodeMissing: staffOnlyProcedure.mutation(async () => {
       const list = await listCases();
       const targets = list.filter(
         (c) => c.address && (!c.latitude || !c.longitude)
@@ -3682,7 +3786,7 @@ export const appRouter = router({
         return items;
       }),
 
-    upsert: protectedProcedure
+    upsert: staffOnlyProcedure
       .input(
         z.object({
           id: z.number().optional(),
@@ -3720,7 +3824,7 @@ export const appRouter = router({
         return { id };
       }),
 
-    remove: protectedProcedure
+    remove: staffOnlyProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         await deleteRouteAssignment(input.id);
@@ -3825,14 +3929,14 @@ export const appRouter = router({
   // v11: 店舗一覧集計ルーター
   // ============================================================
   stores: router({
-    list: protectedProcedure.query(async () => listStoreSummaries()),
+    list: staffOnlyProcedure.query(async () => listStoreSummaries()),
   }),
 
   // ============================================================
   // v16: 担当者別ワークロード集計
   // ============================================================
   workload: router({
-    list: protectedProcedure
+    list: staffOnlyProcedure
       .input(
         z.object({
           start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -3991,14 +4095,14 @@ export const appRouter = router({
       }),
   }),
   expenses: router({
-    list: protectedProcedure.query(async ({ ctx }) => {
+    list: staffOnlyProcedure.query(async ({ ctx }) => {
       let rows = await listAllExpenses();
       if (!canViewInternalFinancials(ctx.user.role)) {
         rows = rows.filter((row) => row.uploadedBy === ctx.user.id);
       }
       return rows;
     }),
-    listByCase: protectedProcedure
+    listByCase: staffOnlyProcedure
       .input(z.object({ caseId: z.number().int() }))
       .query(async ({ input, ctx }) => {
         const caseData = await getCaseById(input.caseId);
@@ -4010,13 +4114,13 @@ export const appRouter = router({
         }
         return rows;
       }),
-    listUnmatched: protectedProcedure.query(async ({ ctx }) => {
+    listUnmatched: staffOnlyProcedure.query(async ({ ctx }) => {
       const rows = await listUnmatchedExpenses();
       return canViewInternalFinancials(ctx.user.role)
         ? rows
         : rows.filter((row) => row.uploadedBy === ctx.user.id);
     }),
-    uploadFile: protectedProcedure
+    uploadFile: staffOnlyProcedure
       .input(
         z.object({
           fileName: z.string().min(1),
@@ -4034,7 +4138,7 @@ export const appRouter = router({
         const { url, key: fileKey } = await storagePut(key, buffer, input.mimeType);
         return { fileKey, url, mimeType: input.mimeType };
       }),
-    extractAndMatch: protectedProcedure
+    extractAndMatch: staffOnlyProcedure
       .input(
         z.object({
           fileKey: z.string(),
@@ -4142,7 +4246,7 @@ export const appRouter = router({
           autoMatchScore: best?.score ?? 0,
         };
       }),
-    bulkSave: protectedProcedure
+    bulkSave: staffOnlyProcedure
       .input(
         z.object({
           items: z.array(
@@ -4194,7 +4298,7 @@ export const appRouter = router({
         return { count: ids.length, ids };
       }),
     // 全体（案件に紐づかない共通）経費を保存。案件選択不要。
-    saveGeneral: protectedProcedure
+    saveGeneral: staffOnlyProcedure
       .input(
         z.object({
           items: z.array(
@@ -4258,7 +4362,7 @@ export const appRouter = router({
         for (const u of users) userName.set(u.id, u.name ?? `ID:${u.id}`);
         return aggregateExpensesByUser(rows, userName);
       }),
-    update: protectedProcedure
+    update: staffOnlyProcedure
       .input(
         z.object({
           id: z.number().int(),
@@ -4297,7 +4401,7 @@ export const appRouter = router({
         for (const cid of Array.from(cids)) await syncCaseActualCost(cid);
         return { ok: true };
       }),
-    delete: protectedProcedure
+    delete: staffOnlyProcedure
       .input(z.object({ id: z.number().int() }))
       .mutation(async ({ input, ctx }) => {
         const before = await getExpenseById(input.id);
@@ -4310,7 +4414,7 @@ export const appRouter = router({
         return { ok: true };
       }),
     // CSVエクスポート用: 全経費データを返す
-    exportAll: protectedProcedure
+    exportAll: staffOnlyProcedure
       .input(z.object({ fromMs: z.number().int().nullish(), toMs: z.number().int().nullish() }).optional())
       .query(async ({ input, ctx }) => {
         const all = await listAllExpenses();
@@ -4361,7 +4465,7 @@ export const appRouter = router({
         return result;
       }),
     // 経費申請（レシート画像付き）
-    submit: protectedProcedure
+    submit: staffOnlyProcedure
       .input(z.object({
         caseId: z.number().int().nullish(),
         scope: z.enum(['案件', '全体']).default('案件'),
@@ -4941,16 +5045,16 @@ export const appRouter = router({
 
   // アプリ設定（AI生成トーン・記入者プリセット等）
   appSettings: router({
-    get: protectedProcedure
+    get: staffOnlyProcedure
       .input(z.object({ key: z.string() }))
       .query(async ({ input, ctx }) => {
         const val = await getAppSetting(input.key);
         return { key: input.key, value: val };
       }),
-    getAll: protectedProcedure.query(async () => {
+    getAll: staffOnlyProcedure.query(async () => {
       return getAllAppSettings();
     }),
-    set: protectedProcedure
+    set: staffOnlyProcedure
       .input(z.object({ key: z.string(), value: z.unknown() }))
       .mutation(async ({ input }) => {
         await setAppSetting(input.key, input.value);
@@ -4959,8 +5063,8 @@ export const appRouter = router({
   }),
   // 全角化の除外辞書（型番・メール・固有名詞などをPDFで半角のまま残す）
   fullwidthExclusions: router({
-    list: protectedProcedure.query(() => listFullwidthExclusions()),
-    add: protectedProcedure
+    list: staffOnlyProcedure.query(() => listFullwidthExclusions()),
+    add: staffOnlyProcedure
       .input(
         z.object({
           term: z.string().trim().min(1, "語を入力してください").max(255),
@@ -4975,7 +5079,7 @@ export const appRouter = router({
         });
         return { id };
       }),
-    delete: protectedProcedure
+    delete: staffOnlyProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         await deleteFullwidthExclusion(input.id);
@@ -4987,7 +5091,12 @@ export const appRouter = router({
   schedules: router({
     listByCase: protectedProcedure
       .input(z.object({ caseId: z.number() }))
-      .query(({ input }) => listSchedulesByCase(input.caseId)),
+      .query(async ({ input, ctx }) => {
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND" });
+        await assertCaseAccess(caseData, ctx.user);
+        return listSchedulesByCase(input.caseId);
+      }),
     create: protectedProcedure
       .input(z.object({
         caseId: z.number(),
@@ -5001,6 +5110,7 @@ export const appRouter = router({
         orderNo: z.number().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
+        await assertCaseIdWriteAccess(input.caseId, ctx.user);
         const { id } = await createSchedule({
           ...input,
           memo: input.memo ?? null,
@@ -5023,39 +5133,45 @@ export const appRouter = router({
         progress: z.number().min(0).max(100).optional(),
         orderNo: z.number().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const { id, ...data } = input;
+        const schedule = await getScheduleById(id);
+        if (!schedule) throw new TRPCError({ code: "NOT_FOUND" });
+        await assertCaseIdWriteAccess(schedule.caseId, ctx.user);
         await updateSchedule(id, data);
         return { success: true };
       }),
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        const schedule = await getScheduleById(input.id);
+        if (!schedule) throw new TRPCError({ code: "NOT_FOUND" });
+        await assertCaseIdWriteAccess(schedule.caseId, ctx.user);
         await deleteSchedule(input.id);
         return { success: true };
       }),
     // ICSフィードトークン取得（全件）
-    getCalendarFeedToken: protectedProcedure
+    getCalendarFeedToken: staffOnlyProcedure
       .query(async () => {
         const existing = await getAppSetting<{ token: string }>("calendarFeedToken");
         return { token: existing?.token ?? null };
       }),
     // ICSフィードトークン生成（全件）
-    generateCalendarFeedToken: protectedProcedure
+    generateCalendarFeedToken: staffOnlyProcedure
       .mutation(async () => {
         const token = generateCalendarToken();
         await setAppSetting("calendarFeedToken", { token });
         return { token };
       }),
     // ICSフィードトークン取得（案件別）
-    getCaseCalendarFeedToken: protectedProcedure
+    getCaseCalendarFeedToken: staffOnlyProcedure
       .input(z.object({ caseId: z.number() }))
       .query(async ({ input, ctx }) => {
         const tokens = await getAppSetting<Record<string, string>>("calendarFeedTokens") ?? {};
         return { token: tokens[String(input.caseId)] ?? null };
       }),
     // ICSフィードトークン生成（案件別）
-    generateCaseCalendarFeedToken: protectedProcedure
+    generateCaseCalendarFeedToken: staffOnlyProcedure
       .input(z.object({ caseId: z.number() }))
       .mutation(async ({ input }) => {
         const tokens = await getAppSetting<Record<string, string>>("calendarFeedTokens") ?? {};
@@ -5067,7 +5183,8 @@ export const appRouter = router({
     // AI工程提案（現場調査報告書+依頼案件情報から工程表の叩き台を生成）
     suggestSchedules: protectedProcedure
       .input(z.object({ caseId: z.number() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await assertCaseIdWriteAccess(input.caseId, ctx.user);
         // 案件情報を取得
         const caseData = await getCaseById(input.caseId);
         if (!caseData) throw new TRPCError({ code: "NOT_FOUND", message: "案件が見つかりません" });
@@ -5182,11 +5299,11 @@ JSONスキーマに従って回答してください。`,
   }),
   // 工程テンプレート
   scheduleTemplates: router({
-    list: protectedProcedure.query(async ({ ctx }) => {
+    list: staffOnlyProcedure.query(async ({ ctx }) => {
       return listScheduleTemplates();
     }),
 
-    create: protectedProcedure
+    create: staffOnlyProcedure
       .input(z.object({
         name: z.string().min(1),
         description: z.string().optional(),
@@ -5208,7 +5325,7 @@ JSONスキーマに従って回答してください。`,
         return { id };
       }),
 
-    delete: protectedProcedure
+    delete: staffOnlyProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         await deleteScheduleTemplate(input.id);
@@ -5222,6 +5339,7 @@ JSONスキーマに従って回答してください。`,
         description: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
+        await assertCaseIdWriteAccess(input.caseId, ctx.user);
         const schedules = await listSchedulesByCase(input.caseId);
         if (schedules.length === 0) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "工程がありません" });
@@ -5254,6 +5372,7 @@ JSONスキーマに従って回答してください。`,
         startDate: z.string(), // YYYY-MM-DD
       }))
       .mutation(async ({ input, ctx }) => {
+        await assertCaseIdWriteAccess(input.caseId, ctx.user);
         const templates = await listScheduleTemplates();
         const tpl = templates.find(t => t.id === input.templateId);
         if (!tpl) throw new TRPCError({ code: "NOT_FOUND", message: "テンプレートが見つかりません" });
@@ -5288,6 +5407,7 @@ JSONスキーマに従って回答してください。`,
     getByCaseId: protectedProcedure
       .input(z.object({ caseId: z.number() }))
       .query(async ({ input, ctx }) => {
+        await assertCaseIdWriteAccess(input.caseId, ctx.user);
         const inspection = await getRainLeakInspectionByCaseId(input.caseId);
         if (!inspection) return null;
         const items = await getRainLeakCheckItems(inspection.id);
@@ -5305,6 +5425,7 @@ JSONスキーマに従って回答してください。`,
         weather: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
+        await assertCaseIdWriteAccess(input.caseId, ctx.user);
         const { RAIN_LEAK_CHECKLIST_TEMPLATE } = await import("../shared/rain-leak-template");
         const { id } = await createRainLeakInspection({
           caseId: input.caseId,
@@ -5342,7 +5463,8 @@ JSONスキーマに従って回答してください。`,
         summary: z.string().optional(),
         overallJudgment: z.string().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await assertCaseIdWriteAccess(input.caseId, ctx.user);
         const inspection = await getRainLeakInspectionByCaseId(input.caseId);
         if (!inspection) throw new Error("調査が存在しません");
         await updateRainLeakInspection(inspection.id, {
@@ -5367,7 +5489,10 @@ JSONスキーマに従って回答してください。`,
         memo: z.string().optional(),
         photoNo: z.string().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        const caseId = await getRainLeakCheckItemCaseId(input.id);
+        if (caseId == null) throw new TRPCError({ code: "NOT_FOUND" });
+        await assertCaseIdWriteAccess(caseId, ctx.user);
         const { id, ...data } = input;
         await updateRainLeakCheckItem(id, data);
         return { success: true };
@@ -5376,7 +5501,8 @@ JSONスキーマに従って回答してください。`,
     // 集計を再計算してinspectionに保存
     recalcSummary: protectedProcedure
       .input(z.object({ caseId: z.number() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await assertCaseIdWriteAccess(input.caseId, ctx.user);
         const inspection = await getRainLeakInspectionByCaseId(input.caseId);
         if (!inspection) throw new Error("調査が存在しません");
         const items = await getRainLeakCheckItems(inspection.id);
@@ -5402,7 +5528,7 @@ JSONスキーマに従って回答してください。`,
   // Documents (図面・仕様書・資料)
   // ============================================================
   documents: router({
-    zapierConfig: protectedProcedure.query(async () => {
+    zapierConfig: staffOnlyProcedure.query(async () => {
       const config = await getZapierFileSyncConfig();
       return { configured: config.configured, tableId: ZAPIER_FILE_TABLE_ID };
     }),
@@ -5420,14 +5546,14 @@ JSONスキーマに従って回答してください。`,
         return { configured: Boolean(input.webhookUrl), tableId: ZAPIER_FILE_TABLE_ID };
       }),
 
-    list: protectedProcedure
+    list: staffOnlyProcedure
       .input(z.object({ caseId: z.number() }))
       .query(async ({ input, ctx }) => {
         const items = await listDocumentsByCase(input.caseId);
         return items.map(withReadableFileUrl);
       }),
 
-    listAll: protectedProcedure
+    listAll: staffOnlyProcedure
       .input(z.object({
         category: z.string().optional(),
         search: z.string().optional(),
@@ -5446,14 +5572,14 @@ JSONスキーマに従って回答してください。`,
         };
       }),
 
-    listSharedByTag: protectedProcedure
+    listSharedByTag: staffOnlyProcedure
       .input(z.object({ tag: z.string() }))
       .query(async ({ input, ctx }) => {
         const items = await listSharedDocumentsByTag(input.tag);
         return items.map(withReadableFileUrl);
       }),
 
-    upload: protectedProcedure
+    upload: staffOnlyProcedure
       .input(z.object({
         caseId: z.number().nullable().optional(),
         fileName: z.string(),
@@ -5503,7 +5629,7 @@ JSONスキーマに従って回答してください。`,
         return { id, fileUrl: url, zapierSyncStatus: zapierResult.status, zapierSyncError: zapierResult.error };
       }),
 
-    retryZapierSync: protectedProcedure
+    retryZapierSync: staffOnlyProcedure
       .input(z.object({ documentId: z.number().int().positive() }))
       .mutation(async ({ ctx, input }) => {
         if (ctx.user.role === "partner") {
@@ -5521,27 +5647,27 @@ JSONスキーマに従って回答してください。`,
         return result;
       }),
 
-    updateTags: protectedProcedure
+    updateTags: staffOnlyProcedure
       .input(z.object({ id: z.number(), tags: z.string() }))
       .mutation(async ({ input }) => {
         await updateDocumentTags(input.id, input.tags);
         return { success: true };
       }),
 
-    updateMemo: protectedProcedure
+    updateMemo: staffOnlyProcedure
       .input(z.object({ id: z.number(), memo: z.string().nullable() }))
       .mutation(async ({ input }) => {
         await updateDocumentMemo(input.id, input.memo);
         return { success: true };
       }),
 
-    delete: protectedProcedure
+    delete: staffOnlyProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         await deleteDocument(input.id);
         return { success: true };
       }),
-    toggleLock: protectedProcedure
+    toggleLock: staffOnlyProcedure
       .input(z.object({ id: z.number(), isLocked: z.number().min(0).max(1) }))
       .mutation(async ({ input }) => {
         await toggleDocumentLock(input.id, input.isLocked);
@@ -5551,10 +5677,10 @@ JSONスキーマに従って回答してください。`,
 
   // プロジェクトフォルダ
   projectFolders: router({
-    list: protectedProcedure.query(async ({ ctx }) => {
+    list: staffOnlyProcedure.query(async ({ ctx }) => {
       return listProjectFolders();
     }),
-    get: protectedProcedure
+    get: staffOnlyProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input, ctx }) => {
         const folder = await getProjectFolder(input.id);
@@ -5569,54 +5695,54 @@ JSONスキーマに従って回答してください。`,
           documents: folderDocs.map(withReadableFileUrl),
         };
       }),
-    create: protectedProcedure
+    create: staffOnlyProcedure
       .input(z.object({ name: z.string().min(1), description: z.string().nullable().optional() }))
       .mutation(async ({ input }) => {
         return createProjectFolder({ name: input.name, description: input.description || null });
       }),
-    update: protectedProcedure
+    update: staffOnlyProcedure
       .input(z.object({ id: z.number(), name: z.string().optional(), description: z.string().nullable().optional() }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
         await updateProjectFolder(id, data);
         return { success: true };
       }),
-    delete: protectedProcedure
+    delete: staffOnlyProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         await deleteProjectFolder(input.id);
         return { success: true };
       }),
-    addCase: protectedProcedure
+    addCase: staffOnlyProcedure
       .input(z.object({ folderId: z.number(), caseId: z.number() }))
       .mutation(async ({ input }) => {
         await addCaseToFolder(input.folderId, input.caseId);
         return { success: true };
       }),
-    removeCase: protectedProcedure
+    removeCase: staffOnlyProcedure
       .input(z.object({ folderId: z.number(), caseId: z.number() }))
       .mutation(async ({ input }) => {
         await removeCaseFromFolder(input.folderId, input.caseId);
         return { success: true };
       }),
-    addDocument: protectedProcedure
+    addDocument: staffOnlyProcedure
       .input(z.object({ folderId: z.number(), documentId: z.number() }))
       .mutation(async ({ input }) => {
         await addDocumentToFolder(input.folderId, input.documentId);
         return { success: true };
       }),
-    removeDocument: protectedProcedure
+    removeDocument: staffOnlyProcedure
       .input(z.object({ folderId: z.number(), documentId: z.number() }))
       .mutation(async ({ input }) => {
         await removeDocumentFromFolder(input.folderId, input.documentId);
         return { success: true };
       }),
-    listByCaseId: protectedProcedure
+    listByCaseId: staffOnlyProcedure
       .input(z.object({ caseId: z.number() }))
       .query(async ({ input, ctx }) => {
         return listFoldersByCaseId(input.caseId);
       }),
-    listDocumentsByFolders: protectedProcedure
+    listDocumentsByFolders: staffOnlyProcedure
       .input(z.object({ folderIds: z.array(z.number()) }))
       .query(async ({ input, ctx }) => {
         const items = await listDocumentsByFolderIds(input.folderIds);
@@ -5625,13 +5751,13 @@ JSONスキーマに従って回答してください。`,
   }),
   // ドキュメントバージョン管理
   documentVersions: router({
-    list: protectedProcedure
+    list: staffOnlyProcedure
       .input(z.object({ documentId: z.number() }))
       .query(async ({ input, ctx }) => {
         const items = await listDocumentVersions(input.documentId);
         return items.map(withReadableFileUrl);
       }),
-    create: protectedProcedure
+    create: staffOnlyProcedure
       .input(z.object({
         documentId: z.number(),
         fileKey: z.string(),
@@ -5652,7 +5778,7 @@ JSONスキーマに従って回答してください。`,
   }),
   // 全文検索
   documentSearch: router({
-    search: protectedProcedure
+    search: staffOnlyProcedure
       .input(z.object({ query: z.string().min(1), scope: z.enum(["case", "shared", "all"]).optional(), limit: z.number().optional() }))
       .query(async ({ input, ctx }) => {
         if (ctx.user.role === "partner") {
@@ -5667,7 +5793,7 @@ JSONスキーマに従って回答してください。`,
   }),
   // 横断工程表（各業者のスケジュール横断可視化）
   crossSchedule: router({
-    list: protectedProcedure
+    list: staffOnlyProcedure
       .input(z.object({ rangeStart: z.string().optional(), rangeEnd: z.string().optional() }).optional())
       .query(async ({ input, ctx }) => {
         const rangeStart = input?.rangeStart;
@@ -5684,6 +5810,9 @@ JSONスキーマに従って回答してください。`,
     listByCase: protectedProcedure
       .input(z.object({ caseId: z.number() }))
       .query(async ({ input, ctx }) => {
+        const caseData = await getCaseById(input.caseId);
+        if (!caseData) throw new TRPCError({ code: "NOT_FOUND" });
+        await assertCaseAccess(caseData, ctx.user);
         return listStatusLogsByCase(input.caseId);
       }),
     create: protectedProcedure
@@ -5697,6 +5826,7 @@ JSONスキーマに従って回答してください。`,
         // 現在のステータスを取得
         const caseData = await getCaseById(input.caseId);
         if (!caseData) throw new TRPCError({ code: 'NOT_FOUND', message: '案件が見つかりません' });
+        await assertCaseAccess(caseData, ctx.user);
         const id = await createStatusLog({
           caseId: input.caseId,
           userId: ctx.user.id,
@@ -5723,6 +5853,7 @@ JSONスキーマに従って回答してください。`,
       .mutation(async ({ ctx, input }) => {
         const caseData = await getCaseById(input.caseId);
         if (!caseData) throw new TRPCError({ code: 'NOT_FOUND', message: '案件が見つかりません' });
+        await assertCaseAccess(caseData, ctx.user);
         // 写真をS3にアップロード
         const uploadedUrls: string[] = [];
         for (const photo of input.photos) {
@@ -5763,20 +5894,20 @@ JSONスキーマに従って回答してください。`,
   // Store Master (店舗マスタ)
   // ============================================================
   storeMaster: router({
-    list: protectedProcedure.query(async ({ ctx }) => {
+    list: staffOnlyProcedure.query(async ({ ctx }) => {
       return listStoreMaster();
     }),
-    get: protectedProcedure
+    get: staffOnlyProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input, ctx }) => {
         return getStoreMasterById(input.id);
       }),
-    getByCode: protectedProcedure
+    getByCode: staffOnlyProcedure
       .input(z.object({ storeCode: z.string() }))
       .query(async ({ input, ctx }) => {
         return getStoreMasterByCode(input.storeCode);
       }),
-    create: protectedProcedure
+    create: staffOnlyProcedure
       .input(z.object({
         storeCode: z.string().nullish(),
         storeName: z.string().min(1),
@@ -5795,7 +5926,7 @@ JSONスキーマに従って回答してください。`,
         await linkMatchingCasesToStoreMaster(id, input.storeCode, input.storeName);
         return { id };
       }),
-    update: protectedProcedure
+    update: staffOnlyProcedure
       .input(z.object({
         id: z.number(),
         storeCode: z.string().nullish(),
@@ -5825,7 +5956,7 @@ JSONスキーマに従って回答してください。`,
         await deleteStoreMaster(input.id);
         return { success: true };
       }),
-    linkMatchingCases: protectedProcedure
+    linkMatchingCases: staffOnlyProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         const store = await getStoreMasterById(input.id);
@@ -5909,18 +6040,18 @@ JSONスキーマに従って回答してください。`,
           skipped: input.caseIds.length - approved.length,
         };
       }),
-    pastCases: protectedProcedure
+    pastCases: staffOnlyProcedure
       .input(z.object({ storeId: z.number() }))
       .query(async ({ input, ctx }) => {
         return listCasesByStoreId(input.storeId);
       }),
-    pastDocuments: protectedProcedure
+    pastDocuments: staffOnlyProcedure
       .input(z.object({ storeId: z.number() }))
       .query(async ({ input, ctx }) => {
         const items = await listDocumentsByStoreId(input.storeId);
         return items.map(withReadableFileUrl);
       }),
-    pastPhotos: protectedProcedure
+    pastPhotos: staffOnlyProcedure
       .input(z.object({ storeId: z.number(), limit: z.number().int().optional() }))
       .query(async ({ input, ctx }) => {
         const items = await listPhotosByStoreId(input.storeId, input.limit ?? 50);
@@ -5950,6 +6081,7 @@ JSONスキーマに従って回答してください。`,
         referenceCaseId: z.number().nullish(),
       }))
       .mutation(async ({ ctx, input }) => {
+        await assertCaseIdWriteAccess(input.caseId, ctx.user);
         const id = await createSurveySkipLog({
           ...input,
           decidedBy: ctx.user.id,
@@ -5960,9 +6092,10 @@ JSONスキーマに従って回答してください。`,
     listByCase: protectedProcedure
       .input(z.object({ caseId: z.number() }))
       .query(async ({ input, ctx }) => {
+        await assertCaseIdWriteAccess(input.caseId, ctx.user);
         return listSurveySkipLogsByCase(input.caseId);
       }),
-    stats: protectedProcedure.query(async () => {
+    stats: staffOnlyProcedure.query(async () => {
       return getSurveySkipStats();
     }),
   }),
@@ -5971,9 +6104,10 @@ JSONスキーマに従って回答してください。`,
     listMine: protectedProcedure.query(async ({ ctx }) => {
       return getPendingAiTasksByUser(ctx.user.id);
     }),
-    listByCase: protectedProcedure
+    listByCase: staffOnlyProcedure
       .input(z.object({ caseId: z.number() }))
       .query(async ({ input, ctx }) => {
+        await assertCaseIdWriteAccess(input.caseId, ctx.user);
         return getPendingAiTasksByCase(input.caseId);
       }),
     retry: protectedProcedure
@@ -6002,9 +6136,16 @@ JSONスキーマに従って回答してください。`,
         await deletePendingAiTask(input.id);
         return { success: true };
       }),
-        resolve: protectedProcedure
+    resolve: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        const { pendingAiTasks: pat } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const [task] = await db.select({ userId: pat.userId }).from(pat).where(eq(pat.id, input.id));
+        if (!task) throw new TRPCError({ code: "NOT_FOUND" });
+        if (task.userId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
         await resolvePendingAiTask(input.id);
         return { success: true };
       }),
@@ -6016,12 +6157,12 @@ JSONスキーマに従って回答してください。`,
   storeEquipment: router({
     // --- グリーストラップ ---
     greaseTraps: router({
-      list: protectedProcedure
+      list: staffOnlyProcedure
         .input(z.object({ storeId: z.number() }))
         .query(async ({ input, ctx }) => {
           return listGreaseTrapsByStore(input.storeId);
         }),
-      create: protectedProcedure
+      create: staffOnlyProcedure
         .input(z.object({
           storeId: z.number(),
           location: z.string().nullish(),
@@ -6035,7 +6176,7 @@ JSONスキーマに従って回答してください。`,
         .mutation(async ({ input }) => {
           return createGreaseTrap(input);
         }),
-      update: protectedProcedure
+      update: staffOnlyProcedure
         .input(z.object({
           id: z.number(),
           location: z.string().nullish(),
@@ -6050,7 +6191,7 @@ JSONスキーマに従って回答してください。`,
           const { id, ...data } = input;
           await updateGreaseTrap(id, data);
         }),
-      delete: protectedProcedure
+      delete: staffOnlyProcedure
         .input(z.object({ id: z.number() }))
         .mutation(async ({ input }) => {
           await deleteGreaseTrap(input.id);
@@ -6059,12 +6200,12 @@ JSONスキーマに従って回答してください。`,
 
     // --- フード排気 ---
     exhaustHoods: router({
-      list: protectedProcedure
+      list: staffOnlyProcedure
         .input(z.object({ storeId: z.number() }))
         .query(async ({ input, ctx }) => {
           return listExhaustHoodsByStore(input.storeId);
         }),
-      create: protectedProcedure
+      create: staffOnlyProcedure
         .input(z.object({
           storeId: z.number(),
           location: z.string().nullish(),
@@ -6078,7 +6219,7 @@ JSONスキーマに従って回答してください。`,
         .mutation(async ({ input }) => {
           return createExhaustHood(input);
         }),
-      update: protectedProcedure
+      update: staffOnlyProcedure
         .input(z.object({
           id: z.number(),
           location: z.string().nullish(),
@@ -6093,7 +6234,7 @@ JSONスキーマに従って回答してください。`,
           const { id, ...data } = input;
           await updateExhaustHood(id, data);
         }),
-      delete: protectedProcedure
+      delete: staffOnlyProcedure
         .input(z.object({ id: z.number() }))
         .mutation(async ({ input }) => {
           await deleteExhaustHood(input.id);
@@ -6102,7 +6243,7 @@ JSONスキーマに従って回答してください。`,
 
     // --- 温湿度記録 ---
     environmentLogs: router({
-      list: protectedProcedure
+      list: staffOnlyProcedure
         .input(z.object({
           storeId: z.number(),
           area: z.enum(["天井内", "厨房内"]).optional(),
@@ -6110,7 +6251,7 @@ JSONスキーマに従って回答してください。`,
         .query(async ({ input, ctx }) => {
           return listEnvironmentLogsByStore(input.storeId, input.area);
         }),
-      create: protectedProcedure
+      create: staffOnlyProcedure
         .input(z.object({
           storeId: z.number(),
           measurementArea: z.enum(["天井内", "厨房内"]),
@@ -6129,7 +6270,7 @@ JSONスキーマに従って回答してください。`,
           };
           return createEnvironmentLog(data as any);
         }),
-      delete: protectedProcedure
+      delete: staffOnlyProcedure
         .input(z.object({ id: z.number() }))
         .mutation(async ({ input }) => {
           await deleteEnvironmentLog(input.id);
@@ -6138,7 +6279,7 @@ JSONスキーマに従って回答してください。`,
 
     // --- 雨漏り・漏電歴 ---
     leakHistory: router({
-      list: protectedProcedure
+      list: staffOnlyProcedure
         .input(z.object({
           storeId: z.number(),
           leakType: z.enum(["雨漏り", "漏電"]).optional(),
@@ -6146,7 +6287,7 @@ JSONスキーマに従って回答してください。`,
         .query(async ({ input, ctx }) => {
           return listLeakHistoryByStore(input.storeId, input.leakType);
         }),
-      create: protectedProcedure
+      create: staffOnlyProcedure
         .input(z.object({
           storeId: z.number(),
           leakType: z.enum(["雨漏り", "漏電"]),
@@ -6168,7 +6309,7 @@ JSONスキーマに従って回答してください。`,
           };
           return createLeakHistory(data as any);
         }),
-      update: protectedProcedure
+      update: staffOnlyProcedure
         .input(z.object({
           id: z.number(),
           occurredAt: z.string().nullish(),
@@ -6189,7 +6330,7 @@ JSONスキーマに従って回答してください。`,
           };
           await updateLeakHistory(id, data as any);
         }),
-      delete: protectedProcedure
+      delete: staffOnlyProcedure
         .input(z.object({ id: z.number() }))
         .mutation(async ({ input }) => {
           await deleteLeakHistory(input.id);
@@ -6198,12 +6339,12 @@ JSONスキーマに従って回答してください。`,
 
     // --- 分電盤写真 ---
     distributionBoards: router({
-      list: protectedProcedure
+      list: staffOnlyProcedure
         .input(z.object({ storeId: z.number() }))
         .query(async ({ input, ctx }) => {
           return listDistributionBoardsByStore(input.storeId);
         }),
-      create: protectedProcedure
+      create: staffOnlyProcedure
         .input(z.object({
           storeId: z.number(),
           boardName: z.string().nullish(),
@@ -6221,7 +6362,7 @@ JSONスキーマに従って回答してください。`,
           };
           return createDistributionBoard(data as any);
         }),
-      update: protectedProcedure
+      update: staffOnlyProcedure
         .input(z.object({
           id: z.number(),
           boardName: z.string().nullish(),
@@ -6240,7 +6381,7 @@ JSONスキーマに従って回答してください。`,
           };
           await updateDistributionBoard(id, data as any);
         }),
-      delete: protectedProcedure
+      delete: staffOnlyProcedure
         .input(z.object({ id: z.number() }))
         .mutation(async ({ input }) => {
           await deleteDistributionBoard(input.id);

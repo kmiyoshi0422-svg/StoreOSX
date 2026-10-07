@@ -96,15 +96,15 @@ function Router() {
                 <Route path={"/estimates/unit-prices"}>
                   <EstimateStaffOnly><UnitPriceMaster /></EstimateStaffOnly>
                 </Route>
-                <Route path={"/expenses/import"} component={ExpenseImport} />
-                <Route path={"/expenses/submit"} component={ExpenseSubmit} />
+                <Route path={"/expenses/import"}><EstimateStaffOnly><ExpenseImport /></EstimateStaffOnly></Route>
+                <Route path={"/expenses/submit"}><EstimateStaffOnly><ExpenseSubmit /></EstimateStaffOnly></Route>
                 <Route path={"/expenses/approve"}>
                   <AdminOnly>
                     <ExpenseApprove />
                   </AdminOnly>
                 </Route>
                 <Route path={"/expenses/list"}>
-                  <ExpenseList />
+                  <EstimateStaffOnly><ExpenseList /></EstimateStaffOnly>
                 </Route>
                 <Route path={"/expenses/by-user"}>
                   <FinancialOnly>

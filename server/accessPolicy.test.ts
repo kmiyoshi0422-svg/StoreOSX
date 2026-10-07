@@ -9,6 +9,7 @@ import {
   applyFinancialVisibility,
   filterCasesByArea,
   maskProfitValues,
+  redactTextWithAmounts,
   stripInternalFinancialFields,
 } from "../shared/accessPolicy";
 
@@ -97,5 +98,12 @@ describe("role and area access policy", () => {
     const customer = applyFinancialVisibility(row, "customer");
     expect(customer.estimatedCost).toBeNull();
     expect(customer.plenusQuoteAmount).toBeNull();
+  });
+
+  it("明示された金額を含む自由記述は部分伏せ字にせず全文を非表示にする", () => {
+    expect(redactTextWithAmounts("漏電の調査をお願いします")).toBe("漏電の調査をお願いします");
+    expect(redactTextWithAmounts("修繕費は30,000円程度です")).toBe("金額に関する記述を含むため非表示");
+    expect(redactTextWithAmounts("希望額 ￥15,000")).toBe("金額に関する記述を含むため非表示");
+    expect(redactTextWithAmounts("概算5万円で対応")).toBe("金額に関する記述を含むため非表示");
   });
 });

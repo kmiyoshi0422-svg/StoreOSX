@@ -112,6 +112,7 @@ import {
 import { StoreEquipmentPanel } from "./StoreEquipmentPanel";
 import { StoreMasterLinkPanel } from "./StoreMasterLinkPanel";
 import { CaseAssigneeSelect } from "@/components/CaseAssigneeSelect";
+import { PartnerCaseReadOnly } from "@/components/PartnerCaseReadOnly";
 
 
 const PhotosTab = React.lazy(() => import("./CaseDetailPhotosTab"));
@@ -174,6 +175,7 @@ export default function CaseDetail({ id }: { id: number }) {
     new URLSearchParams(window.location.search).get("tab") === "photos" ? "photos" : "info",
   );
   const { data: caseData, isLoading } = trpc.cases.get.useQuery({ id });
+  const { data: editableIds, isLoading: editableLoading } = trpc.cases.partnerEditableCaseIds.useQuery(undefined, { enabled: isPartner });
   const { data: assignableUsers = [] } = trpc.users.assignable.useQuery(undefined, { enabled: canManageCase });
   // タブ別遅延取得: チェックリストと写真はタブヘッダーのバッジ表示に使うため常時取得
   const { data: checklist = [] } = trpc.checklist.listByCase.useQuery({ caseId: id });
@@ -190,6 +192,11 @@ export default function CaseDetail({ id }: { id: number }) {
   }
   if (!caseData) {
     return <div className="text-center py-12 text-muted-foreground">案件が見つかりません</div>;
+  }
+
+  if (isPartner) {
+    if (editableLoading || !editableIds) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>;
+    if (!editableIds.includes(id)) return <PartnerCaseReadOnly caseData={caseData} photos={photos} checklist={checklist} />;
   }
 
   return (

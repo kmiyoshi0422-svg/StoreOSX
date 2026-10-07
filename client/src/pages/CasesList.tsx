@@ -135,6 +135,7 @@ export default function CasesList() {
   const canViewProfit = user?.role === 'owner';
   const canAssign = user?.role === 'owner' || user?.role === 'admin' || user?.role === 'executive' || user?.role === 'user';
   const { data: cases = [], isLoading } = trpc.cases.listSummary.useQuery();
+  const { data: editableIds } = trpc.cases.partnerEditableCaseIds.useQuery(undefined, { enabled: isPartner });
   const { data: users = [] } = trpc.users.list.useQuery();
   const { data: assignableUsers = [] } = trpc.users.assignable.useQuery(undefined, { enabled: canAssign });
   const userMap = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
@@ -150,16 +151,18 @@ export default function CasesList() {
 
   const handleStatusChange = useCallback(
     (caseId: number, newStatus: string) => {
+      if (isPartner && !editableIds?.includes(caseId)) return;
       updateStatusMutation.mutate({ id: caseId, data: { status: newStatus as any } });
     },
-    [updateStatusMutation]
+    [updateStatusMutation, editableIds, isPartner]
   );
 
   const handleStageChange = useCallback(
     (caseId: number, newStage: string) => {
+      if (isPartner && !editableIds?.includes(caseId)) return;
       updateStatusMutation.mutate({ id: caseId, data: { progressStage: newStage as any }, forceStage: true });
     },
-    [updateStatusMutation]
+    [updateStatusMutation, editableIds, isPartner]
   );
 
   // URLクエリを初期フィルタとして読み込む（ダッシュボードKPIからの遷移用）
@@ -665,6 +668,7 @@ export default function CasesList() {
                   <Select
                     value={(c.progressStage as string) ?? "未対応"}
                     onValueChange={(v) => handleStageChange(c.id, v)}
+                    disabled={isPartner && !editableIds?.includes(c.id)}
                   >
                     <SelectTrigger
                       className={`h-6 w-auto min-w-[60px] px-2 text-[9px] font-medium border ${STAGE_BADGE[(c.progressStage as ProgressStage) ?? "未対応"]} shrink-0`}
@@ -683,6 +687,7 @@ export default function CasesList() {
                   <Select
                     value={c.status}
                     onValueChange={(v) => handleStatusChange(c.id, v)}
+                    disabled={isPartner && !editableIds?.includes(c.id)}
                   >
                     <SelectTrigger
                       className={`h-6 w-auto min-w-[70px] px-2 text-[9px] font-medium border ${STATUS_COLORS[c.status]} shrink-0`}
@@ -830,6 +835,7 @@ export default function CasesList() {
                       <Select
                         value={stage}
                         onValueChange={(v) => { handleStageChange(c.id, v); }}
+                        disabled={isPartner && !editableIds?.includes(c.id)}
                       >
                         <SelectTrigger
                           className={`h-5 w-auto min-w-[60px] px-1.5 text-[10px] font-medium border ${STAGE_BADGE[stage]}`}
@@ -848,6 +854,7 @@ export default function CasesList() {
                       <Select
                         value={c.status}
                         onValueChange={(v) => { handleStatusChange(c.id, v); }}
+                        disabled={isPartner && !editableIds?.includes(c.id)}
                       >
                         <SelectTrigger
                           className={`h-5 w-auto min-w-[60px] px-1.5 text-[10px] font-medium border ${STATUS_COLORS[c.status]}`}
@@ -931,6 +938,7 @@ export default function CasesList() {
                         <Select
                           value={stage}
                           onValueChange={(v) => handleStageChange(c.id, v)}
+                          disabled={isPartner && !editableIds?.includes(c.id)}
                         >
                           <SelectTrigger
                             className={`h-6 w-auto min-w-[70px] px-2 text-[10px] font-medium border ${STAGE_BADGE[stage]}`}
@@ -949,6 +957,7 @@ export default function CasesList() {
                         <Select
                           value={c.status}
                           onValueChange={(v) => handleStatusChange(c.id, v)}
+                          disabled={isPartner && !editableIds?.includes(c.id)}
                         >
                           <SelectTrigger
                             className={`h-6 w-auto min-w-[70px] px-2 text-[10px] font-medium border ${STATUS_COLORS[c.status]}`}
@@ -1011,7 +1020,7 @@ export default function CasesList() {
                               {new Date(c.requestDate).toLocaleDateString("ja-JP")}
                             </span>
                           )}
-                          {c.requestDate && c.actualCost != null && (
+                          {canViewFinancials && c.requestDate && c.actualCost != null && (
                             <span className="font-mono text-emerald-700">
                               実績: ¥{c.actualCost.toLocaleString()}
                             </span>
