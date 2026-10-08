@@ -192,7 +192,8 @@ export default function CaseReport({
     reportType,
     signerRole: "customer",
   });
-  const { data: exclusionRows = [], isLoading: exclusionsLoading, isError: exclusionsError } = trpc.fullwidthExclusions.list.useQuery();
+  const isInternal = !!user && user.role !== "partner" && user.role !== "customer";
+  const { data: exclusionRows = [], isLoading: exclusionsLoading, isError: exclusionsError } = trpc.fullwidthExclusions.list.useQuery(undefined, { enabled: isInternal });
   setReportExclusions(exclusionRows.map((r) => r.term));
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -268,17 +269,17 @@ export default function CaseReport({
   // 保留中のAIタスクを取得
   const { data: pendingTasks = [], refetch: refetchPending } = trpc.pendingAiTasks.listByCase.useQuery(
     { caseId: id },
-    { enabled: reportType === "survey" }
+    { enabled: isInternal && reportType === "survey" }
   );
   const dismissTaskMut = trpc.pendingAiTasks.dismiss.useMutation({
     onSuccess: () => refetchPending(),
   });
 
   // 設定からAI生成トーン・文章量を取得
-  const { data: impressionConfigData } = trpc.appSettings.get.useQuery({ key: "impression_config" });
-  const { data: impressionAuthorsData } = trpc.appSettings.get.useQuery({ key: "impression_authors" });
+  const { data: impressionConfigData } = trpc.appSettings.get.useQuery({ key: "impression_config" }, { enabled: isInternal });
+  const { data: impressionAuthorsData } = trpc.appSettings.get.useQuery({ key: "impression_authors" }, { enabled: isInternal });
   const presetAuthors: string[] = (impressionAuthorsData?.value as string[] | null) ?? [];
-  const { data: impressionTemplatesData } = trpc.appSettings.get.useQuery({ key: "impression_templates" });
+  const { data: impressionTemplatesData } = trpc.appSettings.get.useQuery({ key: "impression_templates" }, { enabled: isInternal });
   const presetTemplates: string[] = (impressionTemplatesData?.value as string[] | null) ?? [];
 
   const handleGenerateImpression = async (pendingTaskId?: number) => {
@@ -928,7 +929,7 @@ export default function CaseReport({
     <div>
       {/* Toolbar */}
       <div className="no-print sticky top-0 z-10 -mx-4 px-4 py-3 bg-background/95 backdrop-blur border-b border-border/60 mb-6">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <Button
             variant="ghost"
             size="sm"
@@ -938,18 +939,18 @@ export default function CaseReport({
             <ArrowLeft className="h-3.5 w-3.5" />
             案件詳細に戻る
           </Button>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={() => setPreviewOpen(true)} data-a4-layout-preview-trigger="true">
               <Eye className="h-4 w-4" />
               A4レイアウトを確認{previewReady ? "済み" : ""}
             </Button>
             <Button
-              onClick={handleDownloadPDF}
-              disabled={generating || !previewReady}
-              title={previewReady ? "確認済みレイアウトをPDF保存" : "先にA4レイアウトを確認してください"}
+              onClick={() => previewReady ? handleDownloadPDF() : setPreviewOpen(true)}
+              disabled={generating}
+              title={previewReady ? "確認済みレイアウトをPDF保存" : "PDF出力のためA4プレビューを開きます"}
             >
               {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-              {generating ? (pdfProgress || "PDF生成中...") : previewReady ? "PDFダウンロード" : "プレビュー後にPDF"}
+              {generating ? (pdfProgress || "PDF生成中...") : previewReady ? "PDFダウンロード" : "PDF出力"}
             </Button>
             {caseData.reportStatus !== "completed" ? (
               <Button

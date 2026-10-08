@@ -266,6 +266,12 @@ describe("cases.bulkImport CSV一括登録", () => {
       ],
     });
     expect(result.inserted).toBe(2);
+    // このテストで作成した依頼番号だけを片付ける。既存案件は変更しない。
+    const owner = appRouter.createCaller(createOwnerContext());
+    for (const requestNumber of [`TEST-${stamp}-1`, `TEST-${stamp}-2`]) {
+      const created = (await owner.cases.list()).find(c => c.requestNumber === requestNumber);
+      if (created) await owner.cases.delete({ id: created.id });
+    }
   });
 });
 
@@ -381,7 +387,7 @@ describe("v5: partners.history 発注履歴", () => {
       estimatedCost: 50000,
       actualCost: 48000,
     });
-    await caller.cases.create({
+    const c2 = await caller.cases.create({
       requestNumber: `HIST-${stamp}-2`,
       brand: "ほっともっと",
       storeName: "履歴テスト店",
@@ -403,7 +409,8 @@ describe("v5: partners.history 発注履歴", () => {
 
     // クリーンアップ
     await caller.cases.delete({ id: c1.id });
-    // 紐付けが残るので、削除前にpartnerId外す手間は省略しpartner deleteへ
+    await caller.cases.delete({ id: c2.id });
+    await caller.partners.delete({ id: created.id });
   });
 });
 
@@ -452,6 +459,10 @@ describe("v8: partners.bulkCreate 一括登録", () => {
     });
     expect(res.inserted).toBe(2);
     expect(res.results.every((r) => r.ok)).toBe(true);
+    const testNames = new Set([`テスト電気${stamp}A`, `テスト給排水${stamp}B`]);
+    for (const partner of await caller.partners.list()) {
+      if (testNames.has(partner.name)) await caller.partners.delete({ id: partner.id });
+    }
   });
 });
 

@@ -89,8 +89,11 @@ describe("報告書の統一標準レイアウト契約", () => {
   it("印刷・PDF前にA4全ページを確認し、プレビュー完了後だけ直接出力できる", () => {
     expect(surveySource).toContain('data-a4-layout-preview-trigger="true"');
     expect(completionPageSource).toContain('data-a4-layout-preview-trigger="true"');
-    expect(surveySource).toContain("generating || !previewReady");
-    expect(completionPageSource).toContain("generating || !previewReady");
+    expect(surveySource).toContain("previewReady ? handleDownloadPDF() : setPreviewOpen(true)");
+    expect(completionPageSource).toContain("previewReady ? handleDownloadPDF() : setPreviewOpen(true)");
+    expect(surveySource).toContain("if (!previewReady || !previewPages");
+    expect(completionPageSource).toContain("if (!previewReady || !previewPages");
+    expect(previewSource).toContain("!pdfDownloadReady || loading || pages.length === 0");
     expect(surveySource).toContain("onPreviewReady={handlePreviewReady}");
     expect(completionPageSource).toContain("onPreviewReady={handlePreviewReady}");
     expect(previewSource).toContain("onPreviewReady?.(previews.length, profile ? previews : undefined)");

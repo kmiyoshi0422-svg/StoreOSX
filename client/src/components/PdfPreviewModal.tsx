@@ -65,6 +65,14 @@ export function PdfPreviewModal({
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLDivElement>(null);
+  const [previewWidth, setPreviewWidth] = useState(595);
+  useEffect(() => {
+    if (!open) return;
+    const resize = () => setPreviewWidth(Math.min(595, Math.max(160, window.innerWidth * 0.95 - 36)));
+    resize();
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, [open]);
 
   // ズームリセット（ページ変更時）
   const resetView = useCallback(() => {
@@ -340,12 +348,12 @@ export function PdfPreviewModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[95vw] w-[1000px] max-h-[95vh] flex flex-col p-0 gap-0">
         {/* ヘッダー */}
-        <DialogHeader className="px-4 py-3 border-b flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <DialogTitle className="text-base font-semibold">
+        <DialogHeader className="px-4 py-3 pr-10 border-b flex-shrink-0">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+            <DialogTitle className="text-base font-semibold shrink-0 whitespace-nowrap">
               PDFプレビュー
             </DialogTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
               {/* ズームコントロール */}
               <div className="flex items-center gap-0.5 border rounded-md px-1">
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={zoomOut} disabled={zoom <= ZOOM_MIN} title="縮小 (Ctrl+-)">
@@ -379,11 +387,11 @@ export function PdfPreviewModal({
               </div>
               {/* ページナビ */}
               {pages.length > 1 && (
-                <div className="flex items-center gap-0.5 border rounded-md px-1">
+                <div className="flex shrink-0 items-center gap-0.5 border rounded-md px-1">
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={prevPage} disabled={currentPage === 0} title="前のページ (←)">
                     <ChevronLeft className="h-3.5 w-3.5" />
                   </Button>
-                  <span className="text-xs font-medium w-16 text-center">
+                  <span className="text-xs font-medium w-16 text-center whitespace-nowrap">
                     {currentPage + 1} / {pages.length}
                   </span>
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={nextPage} disabled={currentPage >= pages.length - 1} title="次のページ (→)">
@@ -393,7 +401,7 @@ export function PdfPreviewModal({
               )}
               {/* 印刷 */}
               <Button size="sm" variant="outline" onClick={handlePrint} disabled={!pdfDownloadReady || loading || pages.length === 0}>
-                <Printer className="h-4 w-4 mr-1" />
+                <Printer className="h-4 w-4 mr-1 shrink-0" />
                 印刷
               </Button>
               {/* ダウンロード */}
@@ -439,7 +447,8 @@ export function PdfPreviewModal({
             </div>
           ) : pages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
-              <p className="text-sm text-muted-foreground">{previewError || "プレビューを生成できませんでした"}</p>
+              <p role="alert" className="text-sm text-muted-foreground">{previewError || "プレビューを生成できませんでした"}</p>
+              <Button variant="outline" onClick={generatePreview}>再試行</Button>
             </div>
           ) : (
             <div
@@ -450,7 +459,7 @@ export function PdfPreviewModal({
                 transformOrigin: "top center",
               }}
             >
-              <div className="bg-white shadow-lg border rounded-sm" style={{ width: "595px" }}>
+              <div className="bg-white shadow-lg border rounded-sm" style={{ width: `${previewWidth}px` }}>
                 <img
                   src={pages[currentPage]}
                   alt={`Page ${currentPage + 1}`}

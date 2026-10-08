@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { useLocation } from "wouter";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
@@ -140,6 +141,8 @@ export default function CompletionReport({ id }: { id: number }) {
   const [, setLocation] = useLocation();
   const utils = trpc.useUtils();
   const reportType = "completion" as const;
+  const { user } = useAuth();
+  const isInternal = !!user && user.role !== "partner" && user.role !== "customer";
 
   const { data: caseData, isLoading: caseLoading, isError: caseError } = trpc.cases.get.useQuery({ id });
   const { data: photos = [], isLoading: photosLoading, isError: photosError } = trpc.photos.listByCase.useQuery({
@@ -158,7 +161,7 @@ export default function CompletionReport({ id }: { id: number }) {
   const { data: draftData, isLoading: draftLoading, isError: draftError } = trpc.reportDraft.get.useQuery({
     caseId: id,
   });
-  const { data: exclusionRows = [], isLoading: exclusionsLoading, isError: exclusionsError } = trpc.fullwidthExclusions.list.useQuery();
+  const { data: exclusionRows = [], isLoading: exclusionsLoading, isError: exclusionsError } = trpc.fullwidthExclusions.list.useQuery(undefined, { enabled: isInternal });
   // 除外辞書をモジュールスコープに反映（レンダリング前に同期的に適用）
   setReportExclusions(exclusionRows.map((r) => r.term));
 
@@ -755,7 +758,7 @@ function CompletionReportView(props: ViewProps) {
             <ArrowLeft className="h-4 w-4 mr-1" />
             案件へ戻る
           </Button>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -786,12 +789,12 @@ function CompletionReportView(props: ViewProps) {
             </Button>
             <Button
               size="sm"
-              onClick={handleDownloadPDF}
-              disabled={generating || !previewReady}
-              title={previewReady ? "確認済みレイアウトをPDF保存" : "先にA4レイアウトを確認してください"}
+              onClick={() => previewReady ? handleDownloadPDF() : setPreviewOpen(true)}
+              disabled={generating}
+              title={previewReady ? "確認済みレイアウトをPDF保存" : "PDF出力のためA4プレビューを開きます"}
             >
               {generating ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
-              {previewReady ? "PDFダウンロード" : "プレビュー後にPDF"}
+              {previewReady ? "PDFダウンロード" : "PDF出力"}
             </Button>
           </div>
         </div>
