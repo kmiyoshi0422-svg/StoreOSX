@@ -41,7 +41,7 @@ function eligibleForReport(record: {
 }, type: BulkReportType) {
   return type === "現場調査報告書"
     ? Boolean(record.surveyDate || record.surveyImpression || record.reportStatus === "completed")
-    : Boolean(record.completedAt || record.status === "完了");
+    : record.status !== "失注" && Boolean(record.completedAt || record.status === "完了");
 }
 
 export const reportBulkRouter = router({

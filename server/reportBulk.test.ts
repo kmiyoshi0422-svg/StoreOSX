@@ -47,6 +47,12 @@ beforeEach(() => {
 });
 
 describe("一括報告書ZIPの選択と権限", () => {
+  it("失注・未完了案件を完了報告書として生成しない", async () => {
+    fake.getCaseById.mockImplementation(async (id: number) => ({ ...row(id), status: id === 1 ? "失注" : "受付", completedAt: id === 1 ? new Date() : null }));
+    await expect(caller("owner").validate([{ caseId: 1, reportType: "施工完了報告書" }, { caseId: 2, reportType: "施工完了報告書" }])).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller("owner").validate([{ caseId: 2, reportType: "施工完了報告書" }, { caseId: 1, reportType: "施工完了報告書" }])).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(fake.storagePut).not.toHaveBeenCalled();
+  });
   it.each(["partner", "customer"] as const)("%s の選択・履歴ZIPを拒否", async (role) => {
     await expect(caller(role).validate([{ caseId: 1, reportType: "現場調査報告書" },
       { caseId: 2, reportType: "施工完了報告書" }])).rejects.toMatchObject({ code: "FORBIDDEN" });

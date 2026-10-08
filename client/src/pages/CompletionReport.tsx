@@ -794,7 +794,7 @@ function CompletionReportView(props: ViewProps) {
               title={previewReady ? "確認済みレイアウトをPDF保存" : "PDF出力のためA4プレビューを開きます"}
             >
               {generating ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
-              {previewReady ? "PDFダウンロード" : "PDF出力"}
+              {generating ? "作成中…" : previewReady ? "PDFダウンロード" : "PDF出力"}
             </Button>
           </div>
         </div>
@@ -1117,6 +1117,7 @@ function CompletionReportView(props: ViewProps) {
         onDownloadPdf={handleDownloadPDF}
         pdfDownloadBusy={generating}
         pdfDownloadReady={previewReady}
+        pdfDownloadStatus="作成中… PDF生成・履歴保存が終わるまでお待ちください"
       />
     </div>
   );

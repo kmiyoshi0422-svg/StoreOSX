@@ -30,7 +30,7 @@ for (const report of ['survey','completion']) {
  console.log('BEFORE',report, await page.evaluate(()=>({pages:document.querySelectorAll('.report-page').length,images:document.querySelectorAll('.report-container img').length})));
  const output = await page.evaluateHandle(() => Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(x=>x.textContent==='PDF出力') ?? document.querySelector('[data-a4-layout-preview-trigger]'));
  await (output.asElement() as any).click();
- try { await page.waitForFunction(()=>!document.body.innerText.includes('プレビューを生成中'),{timeout:80_000}); }catch(e){errors.push('PREVIEW_TIMEOUT')}
+ try { await page.waitForFunction(()=>Array.from(document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')).some(b=>b.textContent?.includes('PDFダウンロード') && !b.disabled),{timeout:80_000}); }catch(e){errors.push('PREVIEW_TIMEOUT')}
  await page.screenshot({path:`/tmp/report-${report}-${process.env.REPRO_MOBILE ? 'mobile' : 'desktop'}-repro.png`});
  console.log('AFTER',report,await page.evaluate(()=>({text:document.querySelector('[role="dialog"]')?.textContent,buttons:Array.from(document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')).map(x=>({text:x.textContent,disabled:x.disabled})),images:document.querySelectorAll('[role="dialog"] img').length})), 'ERRORS',errors);
  if(process.env.REPRO_DOWNLOAD){

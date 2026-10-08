@@ -2119,13 +2119,14 @@ export const appRouter = router({
       .query(async ({ ctx }) => {
         const db = await getDb();
         if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
-        const { eq } = await import("drizzle-orm");
+        const { eq, or, isNotNull } = await import("drizzle-orm");
         const rows = await db
           .select({
             id: casesTable.id,
             storeName: casesTable.storeName,
             requestNumber: casesTable.requestNumber,
             brand: casesTable.brand,
+            prefecture: casesTable.prefecture,
             status: casesTable.status,
             reportStatus: casesTable.reportStatus,
             reportCompletedAt: casesTable.reportCompletedAt,
@@ -2140,8 +2141,8 @@ export const appRouter = router({
             completedAt: casesTable.completedAt,
           })
           .from(casesTable)
-          .where(eq(casesTable.reportStatus, "completed"));
-        return rows;
+          .where(or(eq(casesTable.reportStatus, "completed"), eq(casesTable.status, "完了"), isNotNull(casesTable.completedAt)));
+        return filterCasesByArea(rows, ctx.user).map(row => ({ ...row, canCompletion: row.status !== "失注" && (!!row.completedAt || row.status === "完了") }));
       }),
     // 報告書を差し戻す（管理者のみ）
     rejectReport: adminProcedure

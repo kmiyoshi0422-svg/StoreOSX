@@ -14,6 +14,7 @@ import {
 import { trpc } from "@/lib/trpc";
 import { calcCaseProfit } from "@shared/profit";
 import { CASE_STATUSES, PROGRESS_STAGES } from "@shared/stageStatus";
+import { CASE_DATE_FIELDS, matchesCaseDateFilter, validCaseDateRange, type CaseDateField, type CaseDateFilter } from "@shared/caseDateFilter";
 import { toast } from "sonner";
 import {
   resolveCasePrefecture,
@@ -28,7 +29,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { CaseAssigneeSelect } from "@/components/CaseAssigneeSelect";
 import { CaseResponseDateEditor } from "@/components/CaseResponseDateEditor";
 import { useLocation } from "wouter";
-import { useMemo, useState, useCallback, useRef } from "react";
+import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useDebounce } from "@/hooks/useDebounce";
 import {
@@ -183,6 +184,11 @@ export default function CasesList() {
   const [urgency, setUrgency] = useState(initialParams.urgency);
   const [statusFilter, setStatusFilter] = useState(initialParams.status);
   const [assignee, setAssignee] = useState("all");
+  const [dateField, setDateField] = useState<CaseDateField>("firstResponseDate");
+  const [dateMode, setDateMode] = useState<CaseDateFilter["mode"]>("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const dateRangeValid = validCaseDateRange({ from: dateFrom, to: dateTo });
   const [storeDialogKey, setStoreDialogKey] = useState<string | null>(null);
   const [groupByPref, setGroupByPref] = useState(false);
   const [viewMode, setViewMode] = useState<"card" | "compact" | "table">(() => {
@@ -192,6 +198,7 @@ export default function CasesList() {
     return "card";
   });
   const [prefFilter, setPrefFilter] = useState("all");
+  const [cardPage, setCardPage] = useState(1);
   // 折り畳んだ地方ラベルの集合（デフォルトは全展開）
   const [collapsedRegions, setCollapsedRegions] = useState<Set<string>>(new Set());
   const toggleRegion = (label: string) =>
@@ -260,6 +267,7 @@ export default function CasesList() {
       if (assignee !== "all" && assignee !== "mine" && assignee !== "unassigned") {
         if (c.assigneeId !== Number(assignee)) return false;
       }
+      if (!matchesCaseDateFilter(c, { field: dateField, mode: dateMode, from: dateFrom, to: dateTo })) return false;
       if (debouncedQ) {
         const keyword = debouncedQ.toLowerCase();
         return (
@@ -272,7 +280,17 @@ export default function CasesList() {
       }
       return true;
     });
-  }, [cases, debouncedQ, stageTab, urgency, statusFilter, prefFilter, assignee, user?.id]);
+  }, [cases, debouncedQ, stageTab, urgency, statusFilter, prefFilter, assignee, user?.id, dateField, dateMode, dateFrom, dateTo]);
+
+  const cardPageSize = 30;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / cardPageSize));
+  const visiblePage = Math.min(cardPage, pageCount);
+  const pagedCards = useMemo(() => filtered.slice((visiblePage - 1) * cardPageSize, visiblePage * cardPageSize), [filtered, visiblePage]);
+  useEffect(() => { setCardPage(1); }, [debouncedQ, stageTab, urgency, statusFilter, prefFilter, assignee, dateField, dateMode, dateFrom, dateTo, viewMode, groupByPref]);
+  const paginationControls = (viewMode === "card" || groupByPref) && filtered.length > 0 ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-3 py-2">
+    <p className="text-sm text-muted-foreground">全{filtered.length}件のうち {(visiblePage - 1) * cardPageSize + 1}〜{Math.min(visiblePage * cardPageSize, filtered.length)}件を表示（{visiblePage} / {pageCount}ページ）</p>
+    <div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={visiblePage === 1} onClick={() => setCardPage(visiblePage - 1)}>前の30件</Button><Button variant="outline" size="sm" disabled={visiblePage >= pageCount} onClick={() => setCardPage(visiblePage + 1)}>次の30件</Button></div>
+  </div> : null;
 
   // アクティブなクイックフィルタ（チップ表示用）
   const activeQuickFilter = useMemo(() => {
@@ -307,7 +325,7 @@ export default function CasesList() {
   // 県別グルーピング（県見出し→案件配列、標準の都道府県順、未分類は最後）
   const prefGroups = useMemo(() => {
     const map = new Map<string, typeof filtered>();
-    for (const c of filtered) {
+    for (const c of pagedCards) {
       const label = resolveCasePrefecture(c);
       const arr = map.get(label) ?? [];
       arr.push(c);
@@ -316,7 +334,7 @@ export default function CasesList() {
     return Array.from(map.entries())
       .map(([label, list]) => ({ label, list }))
       .sort((a, b) => prefectureSortIndex(a.label) - prefectureSortIndex(b.label));
-  }, [filtered]);
+  }, [pagedCards]);
 
   // 地方（エリア）→ 県 の二段グルーピング
   const regionGroups = useMemo(() => {
@@ -429,7 +447,7 @@ export default function CasesList() {
           />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="md:w-36">
+          <SelectTrigger className="md:w-36" aria-label="ステータス検索">
             <SelectValue placeholder="ステータス" />
           </SelectTrigger>
           <SelectContent>
@@ -442,6 +460,7 @@ export default function CasesList() {
             <SelectItem value="施工中">施工中</SelectItem>
             <SelectItem value="完了">完了</SelectItem>
             <SelectItem value="クローズ">クローズ</SelectItem>
+            <SelectItem value="失注">失注</SelectItem>
           </SelectContent>
         </Select>
         <Select
@@ -517,6 +536,28 @@ export default function CasesList() {
         </ToggleGroup>
       </div>
 
+      <section aria-label="対応日検索フィルター" className="rounded-lg border bg-muted/20 p-4 space-y-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1 min-w-[180px]"><Label htmlFor="case-date-field">絞り込む日付</Label>
+            <select id="case-date-field" className="h-9 w-full border rounded-md bg-background px-2 text-sm" value={dateField} onChange={e => setDateField(e.target.value as CaseDateField)}>
+              {CASE_DATE_FIELDS.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1"><Label htmlFor="case-date-mode">入力状態</Label>
+            <select id="case-date-mode" className="h-9 border rounded-md bg-background px-2 text-sm" value={dateMode} onChange={e => { setDateMode(e.target.value as CaseDateFilter["mode"]); if (e.target.value === "unset") { setDateFrom(""); setDateTo(""); } }}>
+              <option value="all">すべて</option><option value="set">日付入力済み</option><option value="unset">日付未設定</option>
+            </select>
+          </div>
+          <div className="space-y-1"><Label htmlFor="case-date-from">開始日（含む）</Label><Input id="case-date-from" type="date" value={dateFrom} disabled={dateMode === "unset"} onChange={e => setDateFrom(e.target.value)} className="w-[165px]" /></div>
+          <div className="space-y-1"><Label htmlFor="case-date-to">終了日（含む）</Label><Input id="case-date-to" type="date" value={dateTo} disabled={dateMode === "unset"} onChange={e => setDateTo(e.target.value)} className="w-[165px]" /></div>
+          <Button variant="outline" size="sm" onClick={() => { setDateMode("all"); setDateFrom(""); setDateTo(""); }}>日付条件を解除</Button>
+          <Button variant="ghost" size="sm" onClick={() => { setQ(""); setStageTab("all"); setStatusFilter("all"); setUrgency("all"); setAssignee("all"); setPrefFilter("all"); setDateMode("all"); setDateFrom(""); setDateTo(""); window.history.replaceState(null, "", "/cases"); }}>すべての検索条件を解除</Button>
+        </div>
+        {!dateRangeValid ? <p role="alert" className="text-sm text-destructive">有効な日付を入力し、終了日は開始日以降にしてください。</p> :
+          <p className="text-xs text-muted-foreground">ステータス・検索語と組み合わせて検索できます。日本時間の日付で比較し、初回対応・現調の実績と予定日は別々に検索します。期間指定では未設定の案件は含みません。</p>}
+        <p role="status" aria-live="polite" className="text-sm font-medium">検索結果：{filtered.length} / {cases.length}件</p>
+      </section>
+
       {/* 複数案件を抱える店舗サマリー */}
       {multiCaseStores.length > 0 && (
         <Card className="border-amber-200 bg-amber-50/40">
@@ -558,6 +599,7 @@ export default function CasesList() {
       )}
 
       {/* List */}
+      {paginationControls}
       {isLoading ? (
         <div className="text-sm text-muted-foreground py-8 text-center">読み込み中...</div>
       ) : filtered.length === 0 ? (
@@ -636,7 +678,7 @@ export default function CasesList() {
           })}
         </div>
       ) : viewMode === "card" ? (
-        <div className="grid gap-3">{filtered.map((c) => renderCard(c))}</div>
+        <div className="grid gap-3">{pagedCards.map((c) => renderCard(c))}</div>
       ) : viewMode === "compact" ? (
         <div
           ref={scrollParentRef}
@@ -795,6 +837,8 @@ export default function CasesList() {
           </table>
         </div>
       )}
+
+      {paginationControls}
 
       {/* 同一店舗案件ダイアログ */}
       <Dialog open={!!storeDialogKey} onOpenChange={(open) => !open && setStoreDialogKey(null)}>

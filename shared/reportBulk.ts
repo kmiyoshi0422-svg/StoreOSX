@@ -43,3 +43,19 @@ export function reportArchiveName(items: ReadonlyArray<NamedCase>, date = new Da
   const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "00";
   return `${identity}_現調・完了報告書_${value("year")}${value("month")}${value("day")}_${value("hour")}${value("minute")}.zip`;
 }
+
+export function reportMergedPdfName(items: ReadonlyArray<NamedCase & { reportType: BulkReportType }>, date = new Date()) {
+  const base = reportArchiveName(items, date).slice(0, -4);
+  const label = items.every(item => item.reportType === "施工完了報告書") ? "完了報告書一括" : "報告書一括";
+  return base.replace("現調・完了報告書", label) + ".pdf";
+}
+
+/** URL選択は信頼しない。最終対象は候補とvalidate APIで再検証する。 */
+export function parseBulkCompletionSelection(value: string | null): number[] {
+  if (!value) return [];
+  const ids = value.split(",").map(Number);
+  if (ids.length > BULK_REPORT_LIMIT || ids.some(id => !Number.isSafeInteger(id) || id <= 0) || new Set(ids).size !== ids.length) {
+    throw new Error(`有効な案件IDを重複なく${BULK_REPORT_LIMIT}件以内で選択してください`);
+  }
+  return ids;
+}

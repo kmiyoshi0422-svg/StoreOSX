@@ -863,10 +863,10 @@ export default function CaseReport({
       if (!previewReady || !previewPages || totalPages === 0 || previewPages.length !== totalPages) {
         throw new Error("報告書の内容が変わりました。A4レイアウトを再確認してください");
       }
-      setPdfProgress("確認済みページからPDFを組み立て中...");
+      setPdfProgress("作成中… 確認済みページからPDFを組み立てています");
       await new Promise((r) => setTimeout(r, 0));
       const pdf = createReportPdfFromPages(previewPages);
-      setPdfProgress("PDFを保存中...");
+      setPdfProgress("作成中… PDFを保存しています");
       const safe = `${caseData.requestNumber}_${caseData.storeName}`.replace(
         /[\\/:*?"<>|]/g,
         "_",
@@ -874,7 +874,7 @@ export default function CaseReport({
       const fileName = `${config.fileLabel}_${safe}.pdf`;
       pdf.save(fileName);
       try {
-        setPdfProgress("生成履歴を保存中...");
+        setPdfProgress("作成中… 生成履歴を保存しています");
         await recordPdf({
           pdf,
           fileName,
@@ -1835,6 +1835,7 @@ export default function CaseReport({
         onDownloadPdf={handleDownloadPDF}
         pdfDownloadBusy={generating}
         pdfDownloadReady={previewReady}
+        pdfDownloadStatus={pdfProgress}
       />
     </div>
   );

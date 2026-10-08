@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { Archive, FileText, Loader2, Search, CheckCircle2 } from "lucide-react";
+import { Archive, FileText, Loader2, Search, CheckCircle2, Download } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -9,8 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { createReportZip } from "@/lib/reportBulkZip";
+import { createMergedReportPdf } from "@/lib/reportBulkPdf";
 import { blobToBase64 } from "@/lib/pdfHistory";
-import { BULK_REPORT_HISTORY_MAX_PDF_BYTES, BULK_REPORT_LIMIT, BULK_REPORT_MAX_BYTES, reportArchiveName, type BulkReportType } from "../../../shared/reportBulk";
+import { BULK_REPORT_HISTORY_MAX_PDF_BYTES, BULK_REPORT_LIMIT, BULK_REPORT_MAX_BYTES, reportArchiveName, reportMergedPdfName, parseBulkCompletionSelection, type BulkReportType } from "../../../shared/reportBulk";
 
 const types: BulkReportType[] = ["現場調査報告書", "施工完了報告書"];
 type Choice = { caseId: number; reportType: BulkReportType };
@@ -53,8 +54,14 @@ async function captureOne(item: Choice & { requestNumber: string; storeName: str
 export default function ReportBulkDownload() {
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
-  const [choices, setChoices] = useState<Choice[]>([]);
+  const [completionOnly, setCompletionOnly] = useState(() => new URLSearchParams(window.location.search).get("reportType") === "completion");
+  const [format, setFormat] = useState<"pdf" | "zip">("pdf");
+  const [choices, setChoices] = useState<Choice[]>(() => {
+    try { return parseBulkCompletionSelection(new URLSearchParams(window.location.search).get("caseIds")).map(caseId => ({ caseId, reportType: "施工完了報告書" as const })); }
+    catch { return []; }
+  });
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
   const [progress, setProgress] = useState("");
   const [reports, setReports] = useState<ReadyReport[]>([]);
   const [verified, setVerified] = useState<Set<string>>(new Set());
@@ -67,6 +74,17 @@ export default function ReportBulkDownload() {
   const validate = trpc.reportBulk.validate.useMutation();
   const saveGenerated = trpc.reportBulk.saveGenerated.useMutation();
   const utils = trpc.useUtils();
+  const importedChecked = useRef(false);
+  useEffect(() => {
+    if (!candidates || importedChecked.current) return;
+    importedChecked.current = true;
+    try {
+      const imported = parseBulkCompletionSelection(new URLSearchParams(window.location.search).get("caseIds"));
+      const allowed = imported.filter(id => candidates.some(row => row.id === id && row.canCompletion));
+      if (allowed.length !== imported.length) toast.warning("アクセスできない・完了対象外の案件は選択から外しました");
+      if (imported.length) setChoices(allowed.map(caseId => ({ caseId, reportType: "施工完了報告書" })));
+    } catch(e) { toast.error(e instanceof Error ? e.message : "選択内容が不正です"); }
+  }, [candidates]);
   useEffect(() => () => { mounted.current = false; reportsRef.current.forEach((report) => URL.revokeObjectURL(report.url)); }, []);
   const clearReports = () => {
     setLastSavedCount(0);
@@ -78,7 +96,7 @@ export default function ReportBulkDownload() {
   };
   const visible = useMemo(() => (candidates || []).filter((row) =>
     `${row.requestNumber} ${row.storeName}`.toLowerCase().includes(search.trim().toLowerCase()) &&
-    (row.canSurvey || row.canCompletion)), [candidates, search]);
+    (completionOnly ? row.canCompletion : row.canSurvey || row.canCompletion)), [candidates, search, completionOnly]);
   const toggle = (choice: Choice) => {
     if (busy) return;
     clearReports();
@@ -89,14 +107,17 @@ export default function ReportBulkDownload() {
     });
   };
   const generate = async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
+    setProgress("作成中… 選択した案件の権限を確認しています");
     clearReports();
     const prepared: ReadyReport[] = [];
     try {
       const valid = await validate.mutateAsync(choices);
       let total = 0;
       for (let index = 0; index < valid.length; index++) {
-        setProgress(`${index + 1} / ${valid.length} 件目のA4 PDFを生成中：${valid[index].requestNumber}`);
+        setProgress(`作成中… ${index + 1} / ${valid.length} 件目のA4 PDF：${valid[index].requestNumber}`);
         const report = await captureOne(valid[index]);
         total += report.bytes.byteLength;
         if (report.bytes.byteLength > BULK_REPORT_HISTORY_MAX_PDF_BYTES) {
@@ -119,18 +140,22 @@ export default function ReportBulkDownload() {
     } catch (error) {
       prepared.forEach((report) => URL.revokeObjectURL(report.url));
       if (mounted.current) toast.error(error instanceof Error ? error.message : "報告書一括生成に失敗しました");
-    } finally { if (mounted.current) { setBusy(false); setProgress(""); } }
+    } finally { busyRef.current = false; if (mounted.current) { setBusy(false); setProgress(""); } }
   };
   const download = async () => {
-    if (reports.length < 2 || verified.size !== reports.length) return;
+    if (busyRef.current || reports.length < 2 || verified.size !== reports.length) return;
+    busyRef.current = true;
     setBusy(true);
     let savedCount = 0;
     try {
-      setProgress("ZIPファイルを作成中…");
-      const blob = await createReportZip(reports, (percent) => setProgress(`ZIPファイルを作成中…${percent}%`));
+      setProgress("作成中… 案件の権限・状態を再確認しています");
+      await validate.mutateAsync(reports.map(({ caseId, reportType }) => ({ caseId, reportType })));
+      const blob = format === "pdf"
+        ? await createMergedReportPdf(reports, setProgress)
+        : await createReportZip(reports, (percent) => setProgress(`作成中… ZIPファイル ${percent}%`));
       for (let index = 0; index < reports.length; index++) {
         const report = reports[index];
-        setProgress(`個別PDFを履歴に保存中… ${index + 1} / ${reports.length}件`);
+        setProgress(`作成中… 個別PDFを履歴に保存 ${index + 1} / ${reports.length}件`);
         const fileBase64 = await blobToBase64(new Blob([report.bytes], { type: "application/pdf" }));
         await saveGenerated.mutateAsync({
           caseId: report.caseId, reportType: report.reportType, fileName: report.fileName,
@@ -142,30 +167,30 @@ export default function ReportBulkDownload() {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = reportArchiveName(reports);
+      anchor.download = format === "pdf" ? reportMergedPdfName(reports) : reportArchiveName(reports);
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      toast.success(`${reports.length}件の報告書を履歴に保存し、ZIPでダウンロードしました。PDF生成履歴から再確認できます`);
+      toast.success(`${reports.length}件の報告書を履歴に保存し、${format === "pdf" ? "1つのPDF" : "ZIP"}でダウンロードしました。PDF生成履歴から再確認できます`);
       setLastSavedCount(reports.length);
       setPreviewOpen(false);
     } catch (error) {
       if (savedCount > 0) await utils.pdfHistory.list.invalidate();
       const reason = error instanceof Error ? error.message : "保存できませんでした";
-      toast.error(`${reason}${savedCount ? `。${savedCount}件は履歴に保存済みです。同じ画面から再試行しても重複しません` : "。ZIPはダウンロードしていません"}`);
-    } finally { setBusy(false); setProgress(""); }
+      toast.error(`${reason}${savedCount ? `。${savedCount}件は履歴に保存済みです。同じ画面から再試行しても重複しません` : "。ファイルはダウンロードしていません"}`);
+    } finally { busyRef.current = false; setBusy(false); setProgress(""); }
   };
 
   return <div className="space-y-5 pb-14">
     <div className="flex flex-wrap items-end justify-between gap-3 border-b pb-5">
       <div><p className="text-xs tracking-[0.18em] uppercase text-muted-foreground">REPORT ARCHIVE</p>
-        <h1 className="text-2xl font-semibold mt-1">報告書を選んでZIPダウンロード</h1>
+        <h1 className="text-2xl font-semibold mt-1">報告書一括PDF・ZIPダウンロード</h1>
         <p className="text-sm text-muted-foreground mt-2">現調・完了報告書を2〜{BULK_REPORT_LIMIT}件選択。既存のA4全ページ・写真・署名を使用します。</p></div>
       <Button variant="outline" onClick={() => navigate("/pdf-history")}>PDF生成履歴を確認</Button>
     </div>
     <Card><CardContent className="pt-5 space-y-3">
-      <p className="text-sm">PDF生成履歴に保存されていない案件も、ここから報告書を生成できます。ZIPに入れる前に<strong>全件をプレビューで確認</strong>してください。確認済みの個別PDFはZIP保存時に自動で生成履歴へ記録します。原本がない写真は作りません。</p>
+      <p className="text-sm">複数の報告書を<strong>1つのPDFに結合</strong>、または個別PDFをZIPで保存できます。出力前に<strong>全件をプレビューで確認</strong>してください。個別PDFも自動で生成履歴へ記録します。元の写真・署名はそのまま維持し、未登録写真は作りません。</p>
       {lastSavedCount > 0 && <div className="flex flex-wrap items-center gap-2 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-900">
         {lastSavedCount}件の個別PDFを生成履歴に保存しました。
         <Button size="sm" variant="outline" onClick={() => navigate("/pdf-history")}>PDFを再確認する</Button>
@@ -173,13 +198,15 @@ export default function ReportBulkDownload() {
       <div className="relative max-w-lg"><Search className="h-4 w-4 absolute top-3 left-3 text-muted-foreground" />
         <Input className="pl-9" placeholder="依頼番号・店舗名で検索" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
       <div className="flex flex-wrap items-center gap-3">
+        <label className="text-sm flex items-center gap-2">報告書の種類<select aria-label="一括対象の報告書種類" className="border rounded-md bg-background p-2" disabled={busy} value={completionOnly ? "completion" : "all"} onChange={e => { setCompletionOnly(e.target.value === "completion"); setChoices([]); clearReports(); }}><option value="all">現調・完了</option><option value="completion">完了報告書のみ</option></select></label>
+        <label className="text-sm flex items-center gap-2">出力形式<select aria-label="一括出力形式" className="border rounded-md bg-background p-2" disabled={busy} value={format} onChange={e => setFormat(e.target.value as "pdf" | "zip")}><option value="pdf">1つのPDFにまとめる</option><option value="zip">個別PDFをZIPで保存</option></select></label>
         <span className="text-sm font-medium">選択済み {choices.length} / {BULK_REPORT_LIMIT}件</span>
-        <Button disabled={busy || choices.length < 2} onClick={generate}>
+        <Button disabled={busy || isLoading || !!error || choices.length < 2} onClick={generate}>
           {busy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileText className="h-4 w-4 mr-2" />}
-          A4 PDFを生成して確認
+          {busy ? "作成中…" : "選択した報告書のPDFを作成"}
         </Button>
         {choices.length > 0 && <Button variant="ghost" disabled={busy} onClick={() => { setChoices([]); clearReports(); }}>選択解除</Button>}
-        {progress && <span role="status" className="text-sm text-primary">{progress}</span>}
+        {busy && <div role="status" aria-live="polite" aria-busy="true" className="w-full rounded-md bg-primary/10 px-3 py-3 flex gap-2 items-center text-sm text-primary"><Loader2 className="h-4 w-4 animate-spin shrink-0" />{progress || "作成中… この画面を閉じずにお待ちください"}</div>}
       </div>
     </CardContent></Card>
     <Card><CardHeader><CardTitle className="text-base">案件別の報告書</CardTitle></CardHeader>
@@ -189,7 +216,7 @@ export default function ReportBulkDownload() {
           <p className="py-8 text-center text-muted-foreground">対象の案件がありません</p> :
           visible.map((row) => <div key={row.id} className="flex flex-wrap items-center gap-3 border-b py-3 last:border-b-0">
             <div className="min-w-[190px] flex-1"><p className="font-medium">{row.requestNumber} · {row.storeName}</p></div>
-            {types.map((type) => { const available = type === "現場調査報告書" ? row.canSurvey : row.canCompletion;
+            {(completionOnly ? types.filter(type => type === "施工完了報告書") : types).map((type) => { const available = type === "現場調査報告書" ? row.canSurvey : row.canCompletion;
               const checked = choices.some((choice) => choice.caseId === row.id && choice.reportType === type);
               return <label key={type} className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${available ? "cursor-pointer" : "opacity-40"}`}>
                 <Checkbox checked={checked} disabled={!available || busy} onCheckedChange={() => toggle({ caseId: row.id, reportType: type })} />{type}
@@ -216,8 +243,9 @@ export default function ReportBulkDownload() {
           <div className="shrink-0 flex flex-wrap items-center justify-between gap-3">
             <span className="text-sm">{verified.size} / {reports.length}件を確認済み。各PDFの全ページ・写真・署名を確認してください。</span>
             <Button disabled={busy || verified.size !== reports.length} onClick={download}>
-              <Archive className="h-4 w-4 mr-2" />{busy ? progress || "ZIPを生成中…" : "確認した報告書をZIPでダウンロード"}
+              {busy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : format === "pdf" ? <Download className="h-4 w-4 mr-2" /> : <Archive className="h-4 w-4 mr-2" />}{busy ? "作成中…" : format === "pdf" ? "確認した報告書を1つのPDFでダウンロード" : "確認した報告書をZIPでダウンロード"}
             </Button>
+            {busy && <p role="status" aria-live="polite" className="w-full text-sm text-primary">{progress}</p>}
           </div>
         </>}
       </DialogContent>

@@ -34,6 +34,7 @@ interface PdfPreviewModalProps {
   onDownloadPdf?: () => void;
   pdfDownloadBusy?: boolean;
   pdfDownloadReady?: boolean;
+  pdfDownloadStatus?: string;
 }
 
 const ZOOM_PRESETS = [50, 75, 100, 125, 150, 200, 300];
@@ -52,11 +53,13 @@ export function PdfPreviewModal({
   onDownloadPdf,
   pdfDownloadBusy,
   pdfDownloadReady = true,
+  pdfDownloadStatus,
 }: PdfPreviewModalProps) {
   const [pages, setPages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [previewError, setPreviewError] = useState("");
+  const [creationStatus, setCreationStatus] = useState("");
   const previewRunId = useRef(0);
   const [currentPage, setCurrentPage] = useState(0);
   const [zoom, setZoom] = useState(1);
@@ -84,6 +87,7 @@ export function PdfPreviewModal({
     if (!containerRef.current || !open) return;
     const runId = ++previewRunId.current;
     setLoading(true);
+    setCreationStatus("作成中… フォントと報告書を準備しています");
     setPreviewError("");
     setPages([]);
     setCurrentPage(0);
@@ -108,6 +112,7 @@ export function PdfPreviewModal({
         ? null
         : getReportPdfProfile(targets.length, reportPhotoCount, isLowMemoryBrowser());
       if (profile) {
+        setCreationStatus("作成中… 写真・署名を読み込んでいます");
         restore = await inlineImages(containerRef.current, {
           maxEdge: profile.maxImageEdge,
           quality: profile.imageQuality,
@@ -119,8 +124,10 @@ export function PdfPreviewModal({
       const previews: string[] = [];
       // プレビューは低解像度で高速化
       const previewScale = profile?.renderScale ?? (targets.length > 10 ? 1 : targets.length > 5 ? 1.2 : 1.5);
-      for (const el of targets) {
+      for (let index = 0; index < targets.length; index++) {
+        const el = targets[index];
         if (runId !== previewRunId.current) return;
+        setCreationStatus(`作成中… A4 ${index + 1} / ${targets.length}ページを描画しています`);
         await new Promise((r) => setTimeout(r, 0));
         const canvas = await html2canvas(el, {
           scale: previewScale,
@@ -147,7 +154,7 @@ export function PdfPreviewModal({
     } finally {
       restore();
       if (reportPhotoCount !== undefined) clearDataUrlCache();
-      if (runId === previewRunId.current) setLoading(false);
+      if (runId === previewRunId.current) { setLoading(false); setCreationStatus(""); }
     }
   }, [containerRef, onPreviewReady, open, pageSelector, reportPhotoCount]);
 
@@ -286,6 +293,7 @@ export function PdfPreviewModal({
   const handleDownload = async () => {
     if (!containerRef.current) return;
     setGenerating(true);
+    setCreationStatus("作成中… PDF用の写真を読み込んでいます");
 
     const restore = await inlineImages(containerRef.current).catch(() => () => {});
     try {
@@ -303,6 +311,7 @@ export function PdfPreviewModal({
 
       const renderScale = targets.length > 10 ? 1.5 : targets.length > 5 ? 1.8 : 2;
       for (let i = 0; i < targets.length; i++) {
+        setCreationStatus(`作成中… PDF ${i + 1} / ${targets.length}ページ`);
         await new Promise((r) => setTimeout(r, 0));
         const canvas = await html2canvas(targets[i], {
           scale: renderScale,
@@ -324,6 +333,7 @@ export function PdfPreviewModal({
     } finally {
       restore();
       setGenerating(false);
+      setCreationStatus("");
     }
   };
 
@@ -345,7 +355,7 @@ export function PdfPreviewModal({
   const zoomPercent = Math.round(zoom * 100);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={value => { if (!generating && !pdfDownloadBusy) onOpenChange(value); }}>
       <DialogContent className="max-w-[95vw] w-[1000px] max-h-[95vh] flex flex-col p-0 gap-0">
         {/* ヘッダー */}
         <DialogHeader className="px-4 py-3 pr-10 border-b flex-shrink-0">
@@ -400,7 +410,7 @@ export function PdfPreviewModal({
                 </div>
               )}
               {/* 印刷 */}
-              <Button size="sm" variant="outline" onClick={handlePrint} disabled={!pdfDownloadReady || loading || pages.length === 0}>
+              <Button size="sm" variant="outline" onClick={handlePrint} disabled={generating || pdfDownloadBusy || !pdfDownloadReady || loading || pages.length === 0}>
                 <Printer className="h-4 w-4 mr-1 shrink-0" />
                 印刷
               </Button>
@@ -411,11 +421,13 @@ export function PdfPreviewModal({
                 disabled={generating || pdfDownloadBusy || !pdfDownloadReady || loading || pages.length === 0}
               >
                 {generating || pdfDownloadBusy ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Download className="h-4 w-4 mr-1" />}
-                {generating || pdfDownloadBusy ? "生成中..." : "PDFダウンロード"}
+                {loading || generating || pdfDownloadBusy ? "作成中…" : "PDFダウンロード"}
               </Button>
             </div>
           </div>
         </DialogHeader>
+
+        {(generating || pdfDownloadBusy) && <div role="status" aria-live="polite" aria-busy="true" className="px-4 py-3 bg-primary/10 border-b flex gap-2 items-center text-sm text-primary"><Loader2 className="h-4 w-4 animate-spin shrink-0" />{pdfDownloadStatus || creationStatus || "作成中… PDFを保存しています。お待ちください"}</div>}
 
         {/* ズームヒント */}
         {zoom > 1 && (
@@ -441,9 +453,9 @@ export function PdfPreviewModal({
           onMouseLeave={handleMouseUp}
         >
           {loading ? (
-            <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <div role="status" aria-live="polite" aria-busy="true" className="flex flex-col items-center justify-center py-20 gap-3">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">プレビューを生成中...</p>
+              <p className="text-sm text-muted-foreground">{creationStatus || "作成中… プレビューを準備しています"}</p>
             </div>
           ) : pages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
