@@ -114,6 +114,8 @@ import { StoreMasterLinkPanel } from "./StoreMasterLinkPanel";
 import { CaseAssigneeSelect } from "@/components/CaseAssigneeSelect";
 import { PartnerCaseReadOnly } from "@/components/PartnerCaseReadOnly";
 import { EmergencySurveyDateCard } from "@/components/EmergencySurveyDateCard";
+import { CaseResponsibilitySelect } from "@/components/CaseResponsibilitySelect";
+import { officerName } from "@shared/caseResponsibility";
 
 
 const PhotosTab = React.lazy(() => import("./CaseDetailPhotosTab"));
@@ -522,6 +524,7 @@ function InfoTab({
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
     status: caseData.status,
+    // 責任者は専用APIで保存し、この一般編集フォームでは変更しない。
     urgency: caseData.urgency,
     prefecture: caseData.prefecture ?? "",
     address: caseData.address ?? "",
@@ -541,6 +544,7 @@ function InfoTab({
     form.categoryLarge && CATEGORY_MEDIUM_OPTIONS[form.categoryLarge]
       ? CATEGORY_MEDIUM_OPTIONS[form.categoryLarge]
       : [];
+  const { data: responsibilityHistory = [] } = trpc.responsibility.history.useQuery({ caseId: caseData.id }, { enabled: canManageCase });
 
   const handleSave = () => {
     const { estimatedCost, ...nonFinancialForm } = form;
@@ -849,6 +853,12 @@ function InfoTab({
       </Card>
 
       {canManageCase && <EmergencySurveyDateCard caseData={caseData} onUpdated={onUpdated} />}
+      {canManageCase && <Card><CardContent className="p-5 space-y-3">
+        <h3 className="font-serif-jp font-semibold">案件責任者（指定5名）</h3>
+        <p className="text-xs text-muted-foreground">案件責任者と作業担当者は別です。登録時に未決定でも、必ず5名のいずれかを決定してください。</p>
+        <CaseResponsibilitySelect caseId={caseData.id} current={caseData.responsibleOfficer} onUpdated={onUpdated} />
+        {responsibilityHistory.length > 0 && <details className="text-xs"><summary className="cursor-pointer">責任者の変更履歴</summary><div className="mt-2 space-y-2">{responsibilityHistory.map(log => <p key={log.id}>{new Date(log.changedAt).toLocaleString("ja-JP")} · {officerName(log.beforeOfficer)} → {officerName(log.afterOfficer)} · {log.changedByName}</p>)}</div></details>}
+      </CardContent></Card>}
 
       {/* 協力業者作業メモ欄 */}
       <PartnerNotesCard caseId={caseData.id} partnerNotes={(caseData as any).partnerNotes ?? ""} partnerNotesUpdatedAt={(caseData as any).partnerNotesUpdatedAt ?? null} partnerNotesUpdatedBy={(caseData as any).partnerNotesUpdatedBy ?? null} isPartner={isPartner} onUpdated={onUpdated} />

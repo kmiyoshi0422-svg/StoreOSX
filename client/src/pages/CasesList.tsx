@@ -28,6 +28,8 @@ import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { CaseAssigneeSelect } from "@/components/CaseAssigneeSelect";
 import { CaseResponseDateEditor } from "@/components/CaseResponseDateEditor";
+import { CaseResponsibilitySelect } from "@/components/CaseResponsibilitySelect";
+import { RESPONSIBLE_OFFICERS } from "@shared/caseResponsibility";
 import { useLocation } from "wouter";
 import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -184,6 +186,7 @@ export default function CasesList() {
   const [urgency, setUrgency] = useState(initialParams.urgency);
   const [statusFilter, setStatusFilter] = useState(initialParams.status);
   const [assignee, setAssignee] = useState("all");
+  const [responsibleFilter, setResponsibleFilter] = useState("all");
   const [dateField, setDateField] = useState<CaseDateField>("firstResponseDate");
   const [dateMode, setDateMode] = useState<CaseDateFilter["mode"]>("all");
   const [dateFrom, setDateFrom] = useState("");
@@ -263,6 +266,8 @@ export default function CasesList() {
       } else if (urgency !== "all" && c.urgency !== urgency) return false;
       if (prefFilter !== "all" && resolveCasePrefecture(c) !== prefFilter) return false;
       if (assignee === "mine" && c.assigneeId !== user?.id) return false;
+      if (responsibleFilter === "pending" && c.responsibleOfficer != null) return false;
+      if (responsibleFilter !== "all" && responsibleFilter !== "pending" && c.responsibleOfficer !== responsibleFilter) return false;
       if (assignee === "unassigned" && c.assigneeId != null) return false;
       if (assignee !== "all" && assignee !== "mine" && assignee !== "unassigned") {
         if (c.assigneeId !== Number(assignee)) return false;
@@ -280,13 +285,13 @@ export default function CasesList() {
       }
       return true;
     });
-  }, [cases, debouncedQ, stageTab, urgency, statusFilter, prefFilter, assignee, user?.id, dateField, dateMode, dateFrom, dateTo]);
+  }, [cases, debouncedQ, stageTab, urgency, statusFilter, prefFilter, assignee, responsibleFilter, user?.id, dateField, dateMode, dateFrom, dateTo]);
 
   const cardPageSize = 30;
   const pageCount = Math.max(1, Math.ceil(filtered.length / cardPageSize));
   const visiblePage = Math.min(cardPage, pageCount);
   const pagedCards = useMemo(() => filtered.slice((visiblePage - 1) * cardPageSize, visiblePage * cardPageSize), [filtered, visiblePage]);
-  useEffect(() => { setCardPage(1); }, [debouncedQ, stageTab, urgency, statusFilter, prefFilter, assignee, dateField, dateMode, dateFrom, dateTo, viewMode, groupByPref]);
+  useEffect(() => { setCardPage(1); }, [debouncedQ, stageTab, urgency, statusFilter, prefFilter, assignee, responsibleFilter, dateField, dateMode, dateFrom, dateTo, viewMode, groupByPref]);
   const paginationControls = (viewMode === "card" || groupByPref) && filtered.length > 0 ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-3 py-2">
     <p className="text-sm text-muted-foreground">全{filtered.length}件のうち {(visiblePage - 1) * cardPageSize + 1}〜{Math.min(visiblePage * cardPageSize, filtered.length)}件を表示（{visiblePage} / {pageCount}ページ）</p>
     <div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={visiblePage === 1} onClick={() => setCardPage(visiblePage - 1)}>前の30件</Button><Button variant="outline" size="sm" disabled={visiblePage >= pageCount} onClick={() => setCardPage(visiblePage + 1)}>次の30件</Button></div>
@@ -373,7 +378,7 @@ export default function CasesList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between border-b border-border/60 pb-6">
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between border-b border-border/60 pb-6">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-2">Cases</p>
           <h1 className="font-serif-jp text-3xl font-semibold tracking-tight">案件一覧</h1>
@@ -392,7 +397,7 @@ export default function CasesList() {
             </button>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setLocation("/cases/import-pdf")}>
             PDFから登録
           </Button>
@@ -436,6 +441,7 @@ export default function CasesList() {
       </Tabs>
 
       {/* Filters */}
+      {canAssign && <div className="flex flex-wrap items-center gap-3"><Button variant="outline" size="sm" onClick={() => setLocation("/my-cases")}>自分の担当案件・個別集計</Button><Select value={responsibleFilter} onValueChange={setResponsibleFilter}><SelectTrigger aria-label="責任者で検索" className="w-[210px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">全案件責任者</SelectItem><SelectItem value="pending">責任者未決定</SelectItem>{RESPONSIBLE_OFFICERS.map(x => <SelectItem key={x.key} value={x.key}>{x.name}</SelectItem>)}</SelectContent></Select></div>}
       <div className="flex flex-col md:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -551,7 +557,7 @@ export default function CasesList() {
           <div className="space-y-1"><Label htmlFor="case-date-from">開始日（含む）</Label><Input id="case-date-from" type="date" value={dateFrom} disabled={dateMode === "unset"} onChange={e => setDateFrom(e.target.value)} className="w-[165px]" /></div>
           <div className="space-y-1"><Label htmlFor="case-date-to">終了日（含む）</Label><Input id="case-date-to" type="date" value={dateTo} disabled={dateMode === "unset"} onChange={e => setDateTo(e.target.value)} className="w-[165px]" /></div>
           <Button variant="outline" size="sm" onClick={() => { setDateMode("all"); setDateFrom(""); setDateTo(""); }}>日付条件を解除</Button>
-          <Button variant="ghost" size="sm" onClick={() => { setQ(""); setStageTab("all"); setStatusFilter("all"); setUrgency("all"); setAssignee("all"); setPrefFilter("all"); setDateMode("all"); setDateFrom(""); setDateTo(""); window.history.replaceState(null, "", "/cases"); }}>すべての検索条件を解除</Button>
+          <Button variant="ghost" size="sm" onClick={() => { setQ(""); setStageTab("all"); setStatusFilter("all"); setUrgency("all"); setAssignee("all"); setResponsibleFilter("all"); setPrefFilter("all"); setDateMode("all"); setDateFrom(""); setDateTo(""); window.history.replaceState(null, "", "/cases"); }}>すべての検索条件を解除</Button>
         </div>
         {!dateRangeValid ? <p role="alert" className="text-sm text-destructive">有効な日付を入力し、終了日は開始日以降にしてください。</p> :
           <p className="text-xs text-muted-foreground">ステータス・検索語と組み合わせて検索できます。日本時間の日付で比較し、初回対応・現調の実績と予定日は別々に検索します。期間指定では未設定の案件は含みません。</p>}
@@ -762,6 +768,7 @@ export default function CasesList() {
                     <CaseAssigneeSelect caseId={c.id} prefecture={c.prefecture} currentAssigneeId={c.assigneeId ?? null}
                       candidates={assignableUsers} onUpdated={() => utils.cases.listSummary.invalidate()} compact />
                   )}
+                  {canAssign && <CaseResponsibilitySelect caseId={c.id} current={c.responsibleOfficer} compact />}
                   <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
                 </div>
               );
@@ -784,6 +791,7 @@ export default function CasesList() {
                 <th className="px-3 py-2 text-left font-medium hidden lg:table-cell">工事区分</th>
                 {canViewFinancials && <th className="px-3 py-2 text-right font-medium">出し見積</th>}
                 <th className="px-3 py-2 text-left font-medium hidden sm:table-cell">担当</th>
+                {canAssign && <th className="px-3 py-2 text-left font-medium hidden md:table-cell">案件責任者</th>}
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
@@ -827,6 +835,7 @@ export default function CasesList() {
                             <span className="text-xs text-amber-600">未割当</span>
                           )}
                         </span>
+                        {canAssign && <span className="px-2 w-[180px] shrink-0 hidden md:inline"><CaseResponsibilitySelect caseId={c.id} current={c.responsibleOfficer} compact /></span>}
                         <span className="px-3 py-2 w-[40px] shrink-0"><ChevronRight className="h-4 w-4 text-muted-foreground" /></span>
                       </div>
                     );
@@ -1141,6 +1150,7 @@ export default function CasesList() {
 
                     {/* Assignee badge & actions */}
                     <div className="flex flex-col items-start md:items-end gap-2 w-full md:w-auto md:shrink-0">
+                      {canAssign && <div className="space-y-1"><p className="text-[10px] text-muted-foreground">案件責任者（指定5名）</p><CaseResponsibilitySelect caseId={c.id} current={c.responsibleOfficer} compact /></div>}
                       {canAssign ? (
                         <CaseAssigneeSelect caseId={c.id} prefecture={c.prefecture} currentAssigneeId={c.assigneeId ?? null}
                           candidates={assignableUsers} onUpdated={() => utils.cases.listSummary.invalidate()}

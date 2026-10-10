@@ -206,6 +206,8 @@ import { systemRouter } from "./_core/systemRouter";
 import { estimateAssistantRouter } from "./estimateAssistantRouter";
 import { estimatePresetsRouter } from "./estimatePresetsRouter";
 import { reportBulkRouter } from "./reportBulkRouter";
+import { caseResponsibilityRouter } from "./caseResponsibilityRouter";
+import { OFFICER_KEYS } from "../shared/caseResponsibility";
 import { TRPCError } from "@trpc/server";
 import { adminProcedure, financialProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { BUDGET_RATIO, calcBudget } from "../shared/budget";
@@ -460,6 +462,7 @@ const caseInputSchema = z.object({
     .default("未対応"),
   urgency: z.enum(["S", "A", "B", "C"]).default("B"),
   assigneeId: z.number().int().nullish(),
+  responsibleOfficer: z.enum(OFFICER_KEYS).nullish(),
   estimatedCost: z.number().int().nullish(),
   plenusQuoteAmount: z.number().int().nullish(),
   estimatedMaterialCost: z.number().int().nullish(),
@@ -612,6 +615,7 @@ export const appRouter = router({
   estimateAssistant: estimateAssistantRouter,
   estimatePresets: estimatePresetsRouter,
   reportBulk: reportBulkRouter,
+  responsibility: caseResponsibilityRouter,
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
@@ -1577,6 +1581,9 @@ export const appRouter = router({
         }
         if (data.surveyDate !== undefined || data.firstResponseDate !== undefined || data.responsePlannedDate !== undefined) {
           throw new TRPCError({ code: "FORBIDDEN", message: "対応日・現調日は専用の入力欄から更新してください" });
+        }
+        if (data.responsibleOfficer !== undefined) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "案件責任者は専用の選択欄から変更してください" });
         }
         if (data.assigneeId !== undefined) {
           if (!canManageCases(ctx.user.role)) {

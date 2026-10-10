@@ -66,6 +66,7 @@ import {
   InsertStatusLog,
   emergencySurveyDateLogs,
   caseResponseDateLogs,
+  caseResponsibilityLogs,
   storeMaster,
   InsertStoreMaster,
   surveySkipLogs,
@@ -329,6 +330,7 @@ export async function listCasesSummary() {
       urgency: cases.urgency,
       assigneeId: cases.assigneeId,
       requestDate: cases.requestDate,
+      responsibleOfficer: cases.responsibleOfficer,
       constructionDate: cases.constructionDate,
       plenusQuoteAmount: cases.plenusQuoteAmount,
       estimatedCost: cases.estimatedCost,
@@ -461,15 +463,19 @@ export async function createCase(data: InsertCase, requestSource?: {
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  if (requestSource) {
+  if (requestSource || data.responsibleOfficer) {
     return db.transaction(async tx => {
       const result = await tx.insert(cases).values(data).$returningId();
       const id = result[0].id;
-      await tx.insert(caseRequestSources).values({
+      if (requestSource) await tx.insert(caseRequestSources).values({
         caseId: id,
         ...requestSource,
         createdAt: Date.now(),
       });
+      if (data.responsibleOfficer && data.createdBy) {
+        const [author] = await tx.select({ name: users.name }).from(users).where(eq(users.id, data.createdBy)).limit(1);
+        await tx.insert(caseResponsibilityLogs).values({ caseId: id, beforeOfficer: null, afterOfficer: data.responsibleOfficer, changedBy: data.createdBy, changedByName: author?.name ?? `User #${data.createdBy}` });
+      }
       return id;
     });
   }
@@ -568,6 +574,7 @@ export async function deleteCase(id: number) {
   if (!db) throw new Error("Database not available");
   await db.delete(emergencySurveyDateLogs).where(eq(emergencySurveyDateLogs.caseId, id));
   await db.delete(caseResponseDateLogs).where(eq(caseResponseDateLogs.caseId, id));
+  await db.delete(caseResponsibilityLogs).where(eq(caseResponsibilityLogs.caseId, id));
   await db.delete(internalCaseNotifications).where(eq(internalCaseNotifications.caseId, id));
   await db.delete(caseFieldMemos).where(eq(caseFieldMemos.caseId, id));
   await db.delete(estimateAiCandidateEdits).where(eq(estimateAiCandidateEdits.caseId, id));

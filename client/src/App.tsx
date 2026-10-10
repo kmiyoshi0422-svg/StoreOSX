@@ -54,6 +54,7 @@ const CompletedReports = lazy(() => import("./pages/CompletedReports"));
 const PdfHistory = lazy(() => import("./pages/PdfHistory"));
 const ReportBulkDownload = lazy(() => import("./pages/ReportBulkDownload"));
 const AccessManagement = lazy(() => import("./pages/AccessManagement"));
+const MyCases = lazy(() => import("./pages/MyCases"));
 
 // ─── Loading fallback ─────────────────────────────────────
 function PageLoader() {
@@ -80,6 +81,7 @@ function Router() {
               <Switch>
                 <Route path={"/"} component={Home} />
                 <Route path={"/cases"} component={CasesList} />
+                <Route path={"/my-cases"} component={MyCases} />
                 <Route path={"/cases/new"} component={CaseNew} />
                 <Route path={"/cases/import"} component={CsvImport} />
                 <Route path={"/cases/import-pdf"} component={CasePdfImport} />

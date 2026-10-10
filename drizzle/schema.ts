@@ -77,6 +77,7 @@ export const cases = mysqlTable("cases", {
   urgency: mysqlEnum("urgency", ["S", "A", "B", "C"]).default("B").notNull(),
   // 担当者
   assigneeId: int("assigneeId"), // users.id
+  responsibleOfficer: mysqlEnum("responsible_officer", ["kihara", "noguchi", "kono", "miyoshi", "shindo"]), // 作業担当者とは独立した案件責任者
   // 見積（予算）
   estimatedCost: int("estimatedCost"), // 協力業者の見積金額合計＝原価（円）
   plenusQuoteAmount: int("plenusQuoteAmount"), // プレナスへ提出した見積金額＝売上/請求額（円）
@@ -136,12 +137,30 @@ export const cases = mysqlTable("cases", {
   statusCreatedIdx: index("idx_cases_status_created").on(t.status, t.createdAt),
   progressStageIdx: index("idx_cases_progress_stage").on(t.progressStage),
   assigneeIdx: index("idx_cases_assignee").on(t.assigneeId),
+  responsibleIdx: index("idx_cases_responsible").on(t.responsibleOfficer, t.createdAt),
   brandIdx: index("idx_cases_brand").on(t.brand),
   partnerIdx: index("idx_cases_partner").on(t.partnerId),
   storeIdx: index("idx_cases_store").on(t.storeId),
 }));
 export type Case = typeof cases.$inferSelect;
 export type InsertCase = typeof cases.$inferInsert;
+
+/** 確認済み本人アカウントのみ登録。権限ロールとは独立。 */
+export const responsibleOfficerAccounts = mysqlTable("responsible_officer_accounts", {
+  userId: int("user_id").primaryKey(),
+  officerKey: mysqlEnum("officer_key", ["kihara", "noguchi", "kono", "miyoshi", "shindo"]).notNull(),
+  confirmedAt: timestamp("confirmed_at").defaultNow().notNull(),
+}, t => ({ officerIdx: index("idx_officer_accounts_key").on(t.officerKey) }));
+
+export const caseResponsibilityLogs = mysqlTable("case_responsibility_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("case_id").notNull(),
+  beforeOfficer: varchar("before_officer", { length: 32 }),
+  afterOfficer: varchar("after_officer", { length: 32 }),
+  changedBy: int("changed_by").notNull(),
+  changedByName: varchar("changed_by_name", { length: 255 }).notNull(),
+  changedAt: timestamp("changed_at").defaultNow().notNull(),
+}, t => ({ caseIdx: index("idx_responsibility_logs_case").on(t.caseId, t.changedAt) }));
 
 /** 初回対応実績・対応予定の変更履歴。現調実績の監査とは別管理。 */
 export const caseResponseDateLogs = mysqlTable("case_response_date_logs", {

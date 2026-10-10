@@ -31,6 +31,7 @@ type MenuItem = { icon: typeof LayoutDashboard; label: string; path: string; adm
 const menuItems: MenuItem[] = [
   { icon: LayoutDashboard, label: "ダッシュボード", path: "/" },
   { icon: ClipboardList, label: "案件一覧", path: "/cases" },
+  { icon: Users, label: "自分の担当案件", path: "/my-cases", hideForCustomer: true },
   { icon: Building2, label: "店舗一覧", path: "/stores", hideForPartner: true, hideForCustomer: true },
   { icon: MapPinned, label: "案件マップ", path: "/cases/map" },
   { icon: Images, label: "写真台帳・一括PDF", path: "/photo-ledger/batch", hideForPartner: true, hideForCustomer: true },

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ResponsibilityAlert } from "@/components/ResponsibilityAlert";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -304,7 +305,7 @@ export default function Home() {
 
   // partner向けダッシュボードを表示
   if (isPartner) {
-    return <div className="space-y-6">{periodControls}<PartnerDashboard cases={cases} attentionCases={attentionCases} isLoading={isLoading} setLocation={setLocation} userName={user?.name ?? "協力業者"} /></div>;
+    return <div className="space-y-6"><Button variant="outline" onClick={() => setLocation("/my-cases")}>自分の担当案件・個別集計を見る</Button>{periodControls}<PartnerDashboard cases={cases} attentionCases={attentionCases} isLoading={isLoading} setLocation={setLocation} userName={user?.name ?? "協力業者"} /></div>;
   }
 
   const openDrilldown = (key: string, label?: string) => {
@@ -477,6 +478,8 @@ export default function Home() {
 
   return (
     <div className="space-y-8">
+      {canManageCases && <ResponsibilityAlert />}
+      <Button variant="outline" onClick={() => setLocation("/my-cases")}>自分の担当案件・個別集計を見る</Button>
       <div className="border-b border-border/60 pb-6 flex items-end justify-between gap-4 flex-wrap">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-2">Store OSX · Dashboard</p>
