@@ -16,6 +16,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
+import { PersonalProgressCharts } from "@/components/PersonalProgressCharts";
 import {
   CASE_DATE_FIELDS,
   matchesCaseDateFilter,
@@ -116,6 +117,7 @@ export default function MyCases() {
   const [caseTab, setCaseTab] = useState<CaseTab>("all");
   const [responsibilityFilter, setResponsibilityFilter] = useState<ResponsibilityFilter>("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [stageFilter, setStageFilter] = useState("all");
   const [urgencyFilter, setUrgencyFilter] = useState("all");
   const [searchText, setSearchText] = useState("");
   const [dateField, setDateField] = useState<CaseDateField>("firstResponseDate");
@@ -144,6 +146,7 @@ export default function MyCases() {
       if (responsibilityFilter === "responsible" && !isResponsible) return false;
       if (responsibilityFilter === "assigned" && !isAssigned) return false;
       if (statusFilter !== "all" && row.status !== statusFilter) return false;
+      if (stageFilter !== "all" && (row.progressStage || "未対応") !== stageFilter) return false;
       if (urgencyFilter !== "all" && row.urgency !== urgencyFilter) return false;
       if (!matchesCaseDateFilter(row, { field: dateField, mode: dateMode, from: dateFrom, to: dateTo })) return false;
 
@@ -165,6 +168,7 @@ export default function MyCases() {
     caseTab,
     responsibilityFilter,
     statusFilter,
+    stageFilter,
     urgencyFilter,
     searchText,
     dateField,
@@ -187,6 +191,7 @@ export default function MyCases() {
     caseTab,
     responsibilityFilter,
     statusFilter,
+    stageFilter,
     urgencyFilter,
     searchText,
     dateField,
@@ -199,6 +204,7 @@ export default function MyCases() {
     setCaseTab("all");
     setResponsibilityFilter("all");
     setStatusFilter("all");
+    setStageFilter("all");
     setUrgencyFilter("all");
     setSearchText("");
     setDateField("firstResponseDate");
@@ -211,6 +217,7 @@ export default function MyCases() {
     caseTab !== "all" ||
     responsibilityFilter !== "all" ||
     statusFilter !== "all" ||
+    stageFilter !== "all" ||
     urgencyFilter !== "all" ||
     Boolean(searchText) ||
     dateField !== "firstResponseDate" ||
@@ -317,6 +324,7 @@ export default function MyCases() {
           </div>
 
           <div className="grid gap-3 border-t border-border/70 pt-4 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="space-y-1.5"><Label>進捗</Label><Select value={stageFilter} onValueChange={setStageFilter}><SelectTrigger aria-label="進捗で絞り込む"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">全進捗</SelectItem>{PROGRESS_STAGES.map(stage => <SelectItem key={stage} value={stage}>{stage}</SelectItem>)}</SelectContent></Select></div>
             <div className="space-y-1.5 xl:col-span-2">
               <Label htmlFor="my-cases-date-field">日付の種類</Label>
               <Select value={dateField} onValueChange={(value) => setDateField(value as CaseDateField)}>
@@ -394,28 +402,8 @@ export default function MyCases() {
             </Card>
           ))}
         </div>
-        <div className="grid gap-3 lg:grid-cols-2">
-          <Card className="shadow-none">
-            <CardContent className="p-4">
-              <p className="mb-3 text-sm font-medium">ステータス別</p>
-              {statusBreakdown.length ? (
-                <div className="flex flex-wrap gap-2">
-                  {statusBreakdown.map((status) => <Badge key={status} variant="outline" className={STATUS_COLORS[status] ?? "bg-muted text-muted-foreground"}>{status} {filteredSummary.byStatus[status]}件</Badge>)}
-                </div>
-              ) : <p className="text-sm text-muted-foreground">該当案件がありません。</p>}
-            </CardContent>
-          </Card>
-          <Card className="shadow-none">
-            <CardContent className="p-4">
-              <p className="mb-3 text-sm font-medium">進捗別</p>
-              {stageBreakdown.length ? (
-                <div className="flex flex-wrap gap-2">
-                  {stageBreakdown.map((stage) => <Badge key={stage} variant="outline" className={STAGE_COLORS[stage] ?? "bg-muted text-muted-foreground"}>{stage} {filteredSummary.byStage[stage]}件</Badge>)}
-                </div>
-              ) : <p className="text-sm text-muted-foreground">該当案件がありません。</p>}
-            </CardContent>
-          </Card>
-        </div>
+        <PersonalProgressCharts byStatus={filteredSummary.byStatus} byStage={filteredSummary.byStage}
+          onStatus={setStatusFilter} onStage={setStageFilter} />
       </section>
 
       <section aria-label="担当案件一覧" className="space-y-3">

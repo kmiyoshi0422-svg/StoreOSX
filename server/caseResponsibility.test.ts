@@ -35,4 +35,28 @@ describe('責任者・本人限定API実DB',()=>{
  it('登録時の責任者選択も監査し、不明責任者の登録を拒否',async()=>{const created=await caller(userIds[0]).cases.create({requestNumber:`TEST-RESPONSIBILITY-CREATE-${Date.now()}`,storeName:'登録責任者監査テスト',prefecture:'山口県',responsibleOfficer:'kono'});ids.push(created.id);const history=await caller(userIds[0]).responsibility.history({caseId:created.id});expect(history[0]).toMatchObject({beforeOfficer:null,afterOfficer:'kono',changedBy:userIds[0]});await expect(caller(userIds[0]).cases.create({requestNumber:'TEST-BAD-RESPONSIBILITY',storeName:'無効責任者',responsibleOfficer:'other' as any})).rejects.toMatchObject({code:'BAD_REQUEST'});});
  it('同じ確認済み本人の複数アカウント作業担当を重複なく集計',async()=>{await db.insert(responsibleOfficerAccounts).values({userId:userIds[1],officerKey:'kihara'});try{const result=await caller(userIds[1]).responsibility.personal();expect(new Set(result.rows.map(x=>x.id))).toEqual(new Set([fixtureId,assignedId]));expect(result.rows.find(x=>x.id===assignedId)?.isOwnAssignment).toBe(true);expect(result.rows.find(x=>x.id===fixtureId)?.isOwnAssignment).toBe(false);}finally{await db.delete(responsibleOfficerAccounts).where(eq(responsibleOfficerAccounts.userId,userIds[1]));}});
  it('個人担当APIでも協力業者へ初回対応・対応予定を公開しない',async()=>{await db.update(cases).set({firstResponseDate:new Date(),responsePlannedDate:new Date()}).where(eq(cases.id,assignedId));const result=await caller(userIds[2],'partner').responsibility.personal();expect(result.rows[0].firstResponseDate).toBeNull();expect(result.rows[0].responsePlannedDate).toBeNull();});
+ it('本人以外・外部の一括割当、重複ID、101件、無効責任者を拒否',async()=>{
+   for(const who of [caller(userIds[1],'admin'),caller(userIds[2],'partner'),caller(userIds[3],'customer')])await expect(who.responsibility.bulkAssign({caseIds:[fixtureId],officerKey:'kono'})).rejects.toMatchObject({code:'FORBIDDEN'});
+   await expect(caller(userIds[0]).responsibility.bulkAssign({caseIds:[fixtureId,fixtureId],officerKey:'kono'})).rejects.toMatchObject({code:'BAD_REQUEST'});
+   await expect(caller(userIds[0]).responsibility.bulkAssign({caseIds:Array.from({length:101},(_,i)=>i+1),officerKey:'kono'})).rejects.toMatchObject({code:'BAD_REQUEST'});
+   await expect(caller(userIds[0]).responsibility.bulkAssign({caseIds:[fixtureId],officerKey:'other' as any})).rejects.toMatchObject({code:'BAD_REQUEST'});
+ });
+ it('選択した未決定案件を原子的に割当・全件監査、競合とエリア外では他案件も一切変更しない',async()=>{
+   const localIds:number[]=[];
+   for(let i=0;i<3;i++){const [row]=await db.insert(cases).values({requestNumber:`TEST-RESPONSIBILITY-BULK-${Date.now()}-${i}`,storeName:'一括割当テスト',prefecture:i===2?'東京都':'山口県',requestDate:new Date('2026-10-01T00:00:00+09:00'),createdAt:new Date(Date.now()-6*86400000),assigneeId:userIds[0],partnerId:companyId}).$returningId();localIds.push(row.id);ids.push(row.id);}
+   const who=caller(userIds[0],'user',['山口県']);
+   await expect(who.responsibility.bulkAssign({caseIds:[localIds[0],localIds[2]],officerKey:'kono'})).rejects.toMatchObject({code:'FORBIDDEN'});
+   expect((await who.cases.get({id:localIds[0]}))?.responsibleOfficer).toBeNull();
+   await expect(who.responsibility.bulkAssign({caseIds:[localIds[0],fixtureId],officerKey:'kono'})).rejects.toMatchObject({code:'CONFLICT'});
+   expect((await who.cases.get({id:localIds[0]}))?.responsibleOfficer).toBeNull();
+   await db.update(cases).set({status:'完了'}).where(eq(cases.id,localIds[1]));
+   await expect(who.responsibility.bulkAssign({caseIds:[localIds[0],localIds[1]],officerKey:'kono'})).rejects.toMatchObject({code:'CONFLICT'});
+   await db.update(cases).set({status:'受付'}).where(eq(cases.id,localIds[1]));
+   const before=await db.select().from(cases).where(inArray(cases.id,localIds.slice(0,2))).orderBy(cases.id);
+   const result=await who.responsibility.bulkAssign({caseIds:localIds.slice(0,2),officerKey:'shindo'});expect(result.count).toBe(2);
+   const after=await db.select().from(cases).where(inArray(cases.id,localIds.slice(0,2))).orderBy(cases.id);
+   for(let i=0;i<2;i++){expect(after[i].responsibleOfficer).toBe('shindo');for(const key of ['status','progressStage','partnerId','assigneeId','requestDate','surveyDate','constructionDate','completedAt','firstResponseDate','responsePlannedDate'] as const)expect(after[i][key]).toEqual(before[i][key]);expect(await who.responsibility.history({caseId:localIds[i]})).toHaveLength(1);}
+   await expect(who.responsibility.bulkAssign({caseIds:localIds.slice(0,2),officerKey:'kono'})).rejects.toMatchObject({code:'CONFLICT'});
+   expect((await who.cases.get({id:localIds[0]}))?.responsibleOfficer).toBe('shindo');
+ });
 });

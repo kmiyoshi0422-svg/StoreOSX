@@ -48,6 +48,26 @@ export const caseResponsibilityRouter = router({
     }));
     return {eligible:true,officerKey,count:rows.length,rows};
   }),
+  bulkAssign: protectedProcedure.input(z.object({
+    caseIds:z.array(z.number().int().positive()).min(1).max(100), officerKey:z.enum(OFFICER_KEYS),
+  })).mutation(async({ctx,input})=>{
+    if(!canManageCases(ctx.user.role)||!await getConfirmedOfficer(ctx.user.id))
+      throw new TRPCError({code:'FORBIDDEN',message:'一括割当は指定5名の本人アカウントだけが利用できます'});
+    const ids=Array.from(new Set(input.caseIds)).sort((a,b)=>a-b);
+    if(ids.length!==input.caseIds.length)throw new TRPCError({code:'BAD_REQUEST',message:'選択案件が重複しています'});
+    const db=await getDb();if(!db)throw new TRPCError({code:'INTERNAL_SERVER_ERROR'});
+    return db.transaction(async tx=>{
+      const locked=await tx.select().from(cases).where(inArray(cases.id,ids)).orderBy(cases.id).for('update');
+      if(locked.length!==ids.length)throw new TRPCError({code:'CONFLICT',message:'選択案件が削除されています。一覧を更新してください。変更は行っていません'});
+      for(const row of locked){
+        if(!canAccessPrefecture(ctx.user,row.prefecture))throw new TRPCError({code:'FORBIDDEN',message:'許可エリア外の案件が含まれるため、全件の更新を停止しました'});
+        if(!requiresResponsibilityAlert(row))throw new TRPCError({code:'CONFLICT',message:'責任者決定済みまたは対象外になった案件があります。一覧を更新してください。変更は行っていません'});
+      }
+      await tx.update(cases).set({responsibleOfficer:input.officerKey}).where(inArray(cases.id,ids));
+      await tx.insert(caseResponsibilityLogs).values(ids.map(caseId=>({caseId,beforeOfficer:null,afterOfficer:input.officerKey,changedBy:ctx.user.id,changedByName:ctx.user.name??`User #${ctx.user.id}`})));
+      return {success:true,count:ids.length,caseIds:ids};
+    });
+  }),
   set: protectedProcedure.input(z.object({caseId:z.number().int().positive(),officerKey:z.enum(OFFICER_KEYS)})).mutation(async({ctx,input})=>{
     if(!canManageCases(ctx.user.role))throw new TRPCError({code:'FORBIDDEN',message:'案件責任者の選択は社員以上のみです'});
     const current=await getCaseById(input.caseId);if(!current)throw new TRPCError({code:'NOT_FOUND'});
