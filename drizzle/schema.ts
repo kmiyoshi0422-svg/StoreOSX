@@ -1236,3 +1236,13 @@ export const caseFieldMemos = mysqlTable("case_field_memos", {
 }));
 export type CaseFieldMemo = typeof caseFieldMemos.$inferSelect;
 export type InsertCaseFieldMemo = typeof caseFieldMemos.$inferInsert;
+
+// 社内自由メモ。案件DTO・社外報告書へ混入させない独立保存。
+export const caseInternalMemos = mysqlTable("case_internal_memos", {
+  caseId: int("case_id").primaryKey(),
+  body: text("body").notNull(),
+  version: int("version").notNull().default(1),
+  updatedBy: int("updated_by").notNull(),
+  updatedByName: varchar("updated_by_name", { length: 128 }).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});

@@ -115,6 +115,7 @@ import { CaseAssigneeSelect } from "@/components/CaseAssigneeSelect";
 import { PartnerCaseReadOnly } from "@/components/PartnerCaseReadOnly";
 import { EmergencySurveyDateCard } from "@/components/EmergencySurveyDateCard";
 import { CompletionDeadlineCard } from "@/components/CompletionDeadlineCard";
+import { CaseInternalMemoPanel } from "@/components/CaseInternalMemoPanel";
 import { CaseResponsibilitySelect } from "@/components/CaseResponsibilitySelect";
 import { officerName } from "@shared/caseResponsibility";
 
@@ -321,11 +322,14 @@ export default function CaseDetail({ id }: { id: number }) {
         <div className="relative w-full">
           {/* スクロールヒント（右側フェード） */}
           <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none z-10 md:hidden" />
-          <TabsList className="flex h-auto gap-1 p-1 w-full overflow-x-auto scrollbar-hide [-webkit-overflow-scrolling:touch] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <TabsList className="flex justify-start h-auto gap-1 p-1 w-full overflow-x-auto scrollbar-hide [-webkit-overflow-scrolling:touch] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <TabsTrigger value="info" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
               <Info className="h-3.5 w-3.5" />
               基本情報
             </TabsTrigger>
+            {canManageCase && <TabsTrigger value="memo" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
+              <PenLine className="h-3.5 w-3.5" />メモ
+            </TabsTrigger>}
             <TabsTrigger value="checklist" className="flex-none px-3 py-2 text-sm whitespace-nowrap">
               <ListChecks className="h-3.5 w-3.5" />
               チェック
@@ -390,6 +394,10 @@ export default function CaseDetail({ id }: { id: number }) {
             canDeleteCase={isOwnerOrAdmin}
           />
         </TabsContent>
+
+        {canManageCase && <TabsContent value="memo" forceMount className="data-[state=inactive]:hidden">
+          <CaseInternalMemoPanel key={id} caseId={id} active={activeTab === "memo"} />
+        </TabsContent>}
 
         <TabsContent value="checklist">
           <ChecklistTab

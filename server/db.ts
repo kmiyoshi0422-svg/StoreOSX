@@ -68,6 +68,7 @@ import {
   caseResponseDateLogs,
   caseResponsibilityLogs,
   caseDeadlineLogs,
+  caseInternalMemos,
   storeMaster,
   InsertStoreMaster,
   surveySkipLogs,
@@ -577,6 +578,7 @@ export async function deleteCase(id: number) {
   await db.delete(caseResponseDateLogs).where(eq(caseResponseDateLogs.caseId, id));
   await db.delete(caseResponsibilityLogs).where(eq(caseResponsibilityLogs.caseId, id));
   await db.delete(caseDeadlineLogs).where(eq(caseDeadlineLogs.caseId, id));
+  await db.delete(caseInternalMemos).where(eq(caseInternalMemos.caseId, id));
   await db.delete(internalCaseNotifications).where(eq(internalCaseNotifications.caseId, id));
   await db.delete(caseFieldMemos).where(eq(caseFieldMemos.caseId, id));
   await db.delete(estimateAiCandidateEdits).where(eq(estimateAiCandidateEdits.caseId, id));
