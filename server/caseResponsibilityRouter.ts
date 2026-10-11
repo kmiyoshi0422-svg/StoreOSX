@@ -27,6 +27,7 @@ async function personalRows() {
     prefecture:cases.prefecture,status:cases.status,urgency:cases.urgency,progressStage:cases.progressStage,
     requestContent:cases.requestContent,requestDate:cases.requestDate,createdAt:cases.createdAt,
     firstResponseDate:cases.firstResponseDate,responsePlannedDate:cases.responsePlannedDate,surveyDate:cases.surveyDate,
+    completionDeadline:cases.completionDeadline,
     constructionDate:cases.constructionDate,assigneeId:cases.assigneeId,responsibleOfficer:cases.responsibleOfficer,partnerId:cases.partnerId,
   }).from(cases).orderBy(desc(cases.createdAt));
 }

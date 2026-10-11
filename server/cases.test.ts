@@ -316,10 +316,6 @@ describe("checklist.toggle 自動ステータス遷移", () => {
 describe("partners router 協力会社マスタ", () => {
   it("create→list→update→delete のフルライフサイクル", async () => {
     const caller = appRouter.createCaller(createAuthContext());
-
-    const before = await caller.partners.list();
-    const beforeCount = before.length;
-
     const created = await caller.partners.create({
       name: `テスト電気${Date.now()}`,
       category: "電気",
@@ -328,22 +324,22 @@ describe("partners router 協力会社マスタ", () => {
       picPhone: "090-1234-5678",
       isActive: true,
     });
-    expect(created.id).toBeGreaterThan(0);
-
-    const afterCreate = await caller.partners.list();
-    expect(afterCreate.length).toBe(beforeCount + 1);
-
-    await caller.partners.update({
-      id: created.id,
-      data: { pic: "鈴木一郎", category: "給排水" },
-    });
-    const got = await caller.partners.get({ id: created.id });
-    expect(got?.pic).toBe("鈴木一郎");
-    expect(got?.category).toBe("給排水");
-
-    await caller.partners.delete({ id: created.id });
+    try {
+      expect(created.id).toBeGreaterThan(0);
+      const afterCreate = await caller.partners.list();
+      expect(afterCreate.some(row => row.id === created.id)).toBe(true);
+      await caller.partners.update({
+        id: created.id,
+        data: { pic: "鈴木一郎", category: "給排水" },
+      });
+      const got = await caller.partners.get({ id: created.id });
+      expect(got?.pic).toBe("鈴木一郎");
+      expect(got?.category).toBe("給排水");
+    } finally {
+      await caller.partners.delete({ id: created.id });
+    }
     const afterDelete = await caller.partners.list();
-    expect(afterDelete.length).toBe(beforeCount);
+    expect(afterDelete.some(row => row.id === created.id)).toBe(false);
   }, 30000);
 });
 

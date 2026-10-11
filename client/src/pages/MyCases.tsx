@@ -17,6 +17,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import { PersonalProgressCharts } from "@/components/PersonalProgressCharts";
+import { PartnerDeadlineSummary, PartnerDeadlineBadge, deadlineCardClass } from "@/components/PartnerDeadlineSummary";
+import { deadlineInfo } from "@shared/caseDeadline";
 import {
   CASE_DATE_FIELDS,
   matchesCaseDateFilter,
@@ -107,7 +109,7 @@ function CountPill({ count }: { count: number }) {
 export default function MyCases() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
-  const personalQuery = trpc.responsibility.personal.useQuery();
+  const personalQuery = trpc.responsibility.personal.useQuery(undefined, { refetchInterval: 60_000 });
 
   const rows = personalQuery.data?.rows ?? [];
   const serverSummary = personalQuery.data?.summary;
@@ -125,6 +127,9 @@ export default function MyCases() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
+  const [deadlineFilter, setDeadlineFilter] = useState<'all' | 'attention'>('all');
+  const [clock, setClock] = useState(Date.now());
+  useEffect(() => { const timer = setInterval(() => setClock(Date.now()), 60_000); return () => clearInterval(timer); }, []);
 
   const dateRangeValid = validCaseDateRange({ from: dateFrom, to: dateTo });
 
@@ -148,6 +153,7 @@ export default function MyCases() {
       if (statusFilter !== "all" && row.status !== statusFilter) return false;
       if (stageFilter !== "all" && (row.progressStage || "未対応") !== stageFilter) return false;
       if (urgencyFilter !== "all" && row.urgency !== urgencyFilter) return false;
+      if (assignmentKind === 'partner' && deadlineFilter === 'attention' && !['soon', 'today', 'overdue'].includes(deadlineInfo({ status: row.status, deadline: row.completionDeadline }, clock).state)) return false;
       if (!matchesCaseDateFilter(row, { field: dateField, mode: dateMode, from: dateFrom, to: dateTo })) return false;
 
       if (!keyword) return true;
@@ -164,6 +170,8 @@ export default function MyCases() {
     rows,
     officerKey,
     assignmentKind,
+    deadlineFilter,
+    clock,
     user?.id,
     caseTab,
     responsibilityFilter,
@@ -188,6 +196,7 @@ export default function MyCases() {
   useEffect(() => {
     setPage(1);
   }, [
+    deadlineFilter,
     caseTab,
     responsibilityFilter,
     statusFilter,
@@ -201,6 +210,7 @@ export default function MyCases() {
   ]);
 
   const clearFilters = () => {
+    setDeadlineFilter('all');
     setCaseTab("all");
     setResponsibilityFilter("all");
     setStatusFilter("all");
@@ -214,6 +224,7 @@ export default function MyCases() {
   };
 
   const hasFilters =
+    deadlineFilter !== 'all' ||
     caseTab !== "all" ||
     responsibilityFilter !== "all" ||
     statusFilter !== "all" ||
@@ -273,6 +284,8 @@ export default function MyCases() {
           </TabsTrigger>
         </TabsList>
       </Tabs>
+
+      {assignmentKind === 'partner' && <PartnerDeadlineSummary rows={rows.map(row => ({ status: row.status, deadline: row.completionDeadline }))} filter={deadlineFilter} onFilter={setDeadlineFilter} sourceLabel="完了期限" />}
 
       {assignmentKind !== "partner" && (
         <section aria-label="担当区分" className="flex flex-col gap-2 rounded-lg border bg-muted/20 p-3 sm:flex-row sm:items-center">
@@ -443,7 +456,7 @@ export default function MyCases() {
               ].filter((item): item is { label: string; value: string } => Boolean(item.value));
 
               return (
-                <Card key={row.id} className="overflow-hidden border-border/80 transition-shadow hover:shadow-md">
+                <Card key={row.id} data-deadline-state={assignmentKind === 'partner' ? deadlineInfo({ status: row.status, deadline: row.completionDeadline }, clock).state : undefined} className={`overflow-hidden transition-shadow hover:shadow-md ${assignmentKind === 'partner' ? deadlineCardClass(row.status, row.completionDeadline) : 'border-border/80'}`}>
                   <CardContent className="p-4 sm:p-5">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0 flex-1">
@@ -471,6 +484,7 @@ export default function MyCases() {
                         案件詳細へ <ChevronRight className="h-4 w-4" />
                       </Button>
                     </div>
+                    <div className="mt-3"><PartnerDeadlineBadge status={row.status} deadline={row.completionDeadline} sourceLabel="完了期限" /></div>
                     <div className="mt-4 flex flex-col gap-2 border-t border-border/70 pt-3 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
                         <span className="inline-flex items-center gap-1 font-medium text-foreground/80"><CalendarDays className="h-3.5 w-3.5" />日付</span>

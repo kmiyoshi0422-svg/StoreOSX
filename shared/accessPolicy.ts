@@ -98,6 +98,9 @@ export function stripInternalFinancialFields<T>(row: T): T {
 }
 
 export function applyFinancialVisibility<T>(row: T, role: string): T {
+  if ((role === 'partner' || role === 'customer') && row && typeof row === 'object' && 'completionDeadline' in row) {
+    row = { ...row, completionDeadline: null };
+  }
   if (canViewInternalFinancials(role)) return row;
   return stripInternalFinancialFields(row);
 }

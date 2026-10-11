@@ -114,6 +114,7 @@ import { StoreMasterLinkPanel } from "./StoreMasterLinkPanel";
 import { CaseAssigneeSelect } from "@/components/CaseAssigneeSelect";
 import { PartnerCaseReadOnly } from "@/components/PartnerCaseReadOnly";
 import { EmergencySurveyDateCard } from "@/components/EmergencySurveyDateCard";
+import { CompletionDeadlineCard } from "@/components/CompletionDeadlineCard";
 import { CaseResponsibilitySelect } from "@/components/CaseResponsibilitySelect";
 import { officerName } from "@shared/caseResponsibility";
 
@@ -853,6 +854,7 @@ function InfoTab({
       </Card>
 
       {canManageCase && <EmergencySurveyDateCard caseData={caseData} onUpdated={onUpdated} />}
+      {canManageCase && <CompletionDeadlineCard caseId={caseData.id} canEdit />}
       {canManageCase && <Card><CardContent className="p-5 space-y-3">
         <h3 className="font-serif-jp font-semibold">案件責任者（指定5名）</h3>
         <p className="text-xs text-muted-foreground">案件責任者と作業担当者は別です。登録時に未決定でも、必ず5名のいずれかを決定してください。</p>

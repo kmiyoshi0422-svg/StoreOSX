@@ -207,6 +207,7 @@ import { estimateAssistantRouter } from "./estimateAssistantRouter";
 import { estimatePresetsRouter } from "./estimatePresetsRouter";
 import { reportBulkRouter } from "./reportBulkRouter";
 import { caseResponsibilityRouter } from "./caseResponsibilityRouter";
+import { caseDeadlineRouter } from "./caseDeadlineRouter";
 import { OFFICER_KEYS } from "../shared/caseResponsibility";
 import { TRPCError } from "@trpc/server";
 import { adminProcedure, financialProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -354,6 +355,7 @@ async function applyCaseVisibility<T>(
     // 初回対応実績と社内の対応予定は、全案件を読める外部ユーザーには公開しない。
     result.firstResponseDate = null;
     result.responsePlannedDate = null;
+    result.completionDeadline = null; // 自社担当専用APIだけで期限を公開
     for (const key of ["requestContent", "lostReasonDetail", "partnerNotes", "notes", "surveyImpression"]) {
       if (typeof result[key] === "string") result[key] = redactTextWithAmounts(result[key] as string);
     }
@@ -503,6 +505,7 @@ const caseUpdateSchema = caseInputSchema.partial().extend({
   is10mYen: z.boolean().optional(),
   revisitCount: z.number().int().min(0).optional(),
   firstResponseDate: z.date().nullish(),
+  completionDeadline: z.string().nullish(),
   responsePlannedDate: z.date().nullish(),
 });
 
@@ -616,6 +619,7 @@ export const appRouter = router({
   estimatePresets: estimatePresetsRouter,
   reportBulk: reportBulkRouter,
   responsibility: caseResponsibilityRouter,
+  deadline: caseDeadlineRouter,
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
@@ -1584,6 +1588,9 @@ export const appRouter = router({
         }
         if (data.responsibleOfficer !== undefined) {
           throw new TRPCError({ code: "FORBIDDEN", message: "案件責任者は専用の選択欄から変更してください" });
+        }
+        if (data.completionDeadline !== undefined) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "完了期限は専用の入力欄から変更してください" });
         }
         if (data.assigneeId !== undefined) {
           if (!canManageCases(ctx.user.role)) {

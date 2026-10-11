@@ -102,6 +102,7 @@ export const cases = mysqlTable("cases", {
   surveyDate: timestamp("surveyDate"), // 現調日
   firstResponseDate: timestamp("first_response_date"), // 緊急案件の初回対応実績（現調日ではない）
   responsePlannedDate: timestamp("response_planned_date"), // 通常案件の対応予定（施工日ではない）
+  completionDeadline: varchar("completion_deadline", { length: 10 }), // 約束した完了期限のJST暦日。予定/実績と独立
   constructionDate: timestamp("constructionDate"), // 施工日
   completedAt: timestamp("completedAt"), // 完了日
   lostReason: mysqlEnum("lostReason", ["高額なため", "対応に不備", "別業者手配", "その他"]),
@@ -144,6 +145,17 @@ export const cases = mysqlTable("cases", {
 }));
 export type Case = typeof cases.$inferSelect;
 export type InsertCase = typeof cases.$inferInsert;
+
+export const caseDeadlineLogs = mysqlTable("case_deadline_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  caseId: int("case_id").notNull(),
+  beforeDeadline: varchar("before_deadline", { length: 10 }),
+  afterDeadline: varchar("after_deadline", { length: 10 }),
+  reason: varchar("reason", { length: 500 }).notNull(),
+  changedBy: int("changed_by").notNull(),
+  changedByName: varchar("changed_by_name", { length: 255 }).notNull(),
+  changedAt: timestamp("changed_at").defaultNow().notNull(),
+}, t => ({ caseIdx: index("idx_case_deadline_logs_case").on(t.caseId, t.changedAt) }));
 
 /** 確認済み本人アカウントのみ登録。権限ロールとは独立。 */
 export const responsibleOfficerAccounts = mysqlTable("responsible_officer_accounts", {
