@@ -1,6 +1,7 @@
 import { COOKIE_NAME } from "@shared/const";
 import { DEFAULT_CHECKLIST } from "../shared/checklist-template";
 import { PARTNER_SHORT_IMPRESSION_MAX_LENGTH } from "../shared/short-impression";
+import { buildCaseAssigneeRoster, isExcludedCaseAssignee } from "../shared/caseAssigneeRoster";
 import { z } from "zod";
 import {
   createCase,
@@ -1088,14 +1089,15 @@ export const appRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "担当者候補を閲覧する権限がありません" });
       }
       const users = await getAllUsers();
-      return users.filter((user) => canManageCases(user.role)).map((user) => ({
+      const bindings = await getAppSetting<Record<string, string>>("responsibility.confirmedEmailBindings") ?? {};
+      return buildCaseAssigneeRoster(users.map((user) => ({
         id: user.id,
         name: user.name,
         email: user.email,
         areaAccessMode: user.areaAccessMode,
         allowedPrefectures: user.allowedPrefectures,
         role: user.role,
-      }));
+      })), bindings);
     }),
     accessList: adminProcedure.query(() => getAllUsers()),
     updateAccess: adminProcedure
@@ -1601,6 +1603,9 @@ export const appRouter = router({
           if (data.assigneeId !== null) {
             const assignee = (await getAllUsers()).find((user) => user.id === data.assigneeId);
             const prefecture = data.prefecture === undefined ? currentCase.prefecture : data.prefecture;
+            if (isExcludedCaseAssignee(data.assigneeId) && data.assigneeId !== currentCase.assigneeId) {
+              throw new TRPCError({ code: "BAD_REQUEST", message: "この利用者は社内担当者の新規割当候補から除外されています" });
+            }
             if (!assignee || !canManageCases(assignee.role) || !canAccessPrefecture(assignee, prefecture)) {
               throw new TRPCError({ code: "BAD_REQUEST", message: "担当できないユーザーです。社員以上で案件エリアを閲覧できる担当者を選んでください" });
             }

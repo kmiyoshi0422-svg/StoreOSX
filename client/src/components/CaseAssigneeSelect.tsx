@@ -11,6 +11,7 @@ export type AssignableUser = {
   role: string;
   areaAccessMode: "all" | "selected";
   allowedPrefectures: string | null;
+  canAssign?: boolean;
 };
 
 export function CaseAssigneeSelect({
@@ -40,7 +41,7 @@ export function CaseAssigneeSelect({
     onError: (error) => toast.error(error.message),
   });
   const eligible = candidates.filter((candidate) => canAccessPrefecture(candidate, prefecture));
-  const hasCurrent = currentAssigneeId !== null && eligible.some((candidate) => candidate.id === currentAssigneeId);
+  const hasCurrent = currentAssigneeId !== null && eligible.some((candidate) => candidate.id === currentAssigneeId && candidate.canAssign !== false);
 
   return (
     <Select
@@ -48,7 +49,7 @@ export function CaseAssigneeSelect({
       disabled={mutation.isPending}
       onValueChange={(value) => {
         const next = value === "__none__" ? null : Number(value);
-        if (next === currentAssigneeId || (next !== null && !eligible.some((candidate) => candidate.id === next))) return;
+        if (next === currentAssigneeId || (next !== null && !eligible.some((candidate) => candidate.id === next && candidate.canAssign !== false))) return;
         mutation.mutate({ id: caseId, data: { assigneeId: next } });
       }}
     >
@@ -66,7 +67,7 @@ export function CaseAssigneeSelect({
           <SelectItem value={String(currentAssigneeId)} disabled>現在の担当者（候補外）</SelectItem>
         )}
         {eligible.map((candidate) => (
-          <SelectItem key={candidate.id} value={String(candidate.id)}>
+          <SelectItem key={candidate.id} value={String(candidate.id)} disabled={candidate.canAssign === false}>
             {candidate.name || candidate.email || `User #${candidate.id}`}
           </SelectItem>
         ))}
