@@ -33,9 +33,13 @@ export function CaseAssigneeSelect({
   triggerContent?: ReactNode;
   triggerClassName?: string;
 }) {
+  const utils = trpc.useUtils();
   const mutation = trpc.cases.update.useMutation({
     onSuccess: () => {
       toast.success("担当者を更新しました");
+      void utils.internalStaff.summary.invalidate();
+      void utils.internalStaff.assignments.invalidate();
+      void utils.responsibility.personal.invalidate();
       onUpdated();
     },
     onError: (error) => toast.error(error.message),

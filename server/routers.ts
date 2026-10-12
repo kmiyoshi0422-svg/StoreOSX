@@ -210,6 +210,7 @@ import { reportBulkRouter } from "./reportBulkRouter";
 import { caseResponsibilityRouter } from "./caseResponsibilityRouter";
 import { caseDeadlineRouter } from "./caseDeadlineRouter";
 import { caseInternalMemoRouter } from "./caseInternalMemoRouter";
+import { internalStaffRouter } from "./internalStaffRouter";
 import { OFFICER_KEYS } from "../shared/caseResponsibility";
 import { TRPCError } from "@trpc/server";
 import { adminProcedure, financialProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -623,6 +624,7 @@ export const appRouter = router({
   responsibility: caseResponsibilityRouter,
   deadline: caseDeadlineRouter,
   internalMemo: caseInternalMemoRouter,
+  internalStaff: internalStaffRouter,
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
