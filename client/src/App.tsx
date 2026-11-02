@@ -56,6 +56,8 @@ const ReportBulkDownload = lazy(() => import("./pages/ReportBulkDownload"));
 const AccessManagement = lazy(() => import("./pages/AccessManagement"));
 const MyCases = lazy(() => import("./pages/MyCases"));
 const InternalStaff = lazy(() => import("./pages/InternalStaff"));
+const OwnerPeople = lazy(() => import("./pages/OwnerPeople"));
+import { PermissionRefreshBoundary } from "./components/PermissionRefreshBoundary";
 
 // ─── Loading fallback ─────────────────────────────────────
 function PageLoader() {
@@ -83,6 +85,7 @@ function Router() {
                 <Route path={"/"} component={Home} />
                 <Route path={"/cases"} component={CasesList} />
                 <Route path={"/my-cases"} component={MyCases} />
+                <Route path={"/settings/people"} component={OwnerPeople} />
                 <Route path={"/internal-staff"} component={InternalStaff} />
                 <Route path={"/cases/new"} component={CaseNew} />
                 <Route path={"/cases/import"} component={CsvImport} />
@@ -179,7 +182,7 @@ function App() {
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <Toaster />
-          <Router />
+          <PermissionRefreshBoundary><Router /></PermissionRefreshBoundary>
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

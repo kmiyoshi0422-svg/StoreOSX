@@ -27,7 +27,7 @@ import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
-type MenuItem = { icon: typeof LayoutDashboard; label: string; path: string; adminOnly?: boolean; financialOnly?: boolean; hideForPartner?: boolean; hideForCustomer?: boolean };
+type MenuItem = { icon: typeof LayoutDashboard; label: string; path: string; adminOnly?: boolean; ownerOnly?: boolean; financialOnly?: boolean; hideForPartner?: boolean; hideForCustomer?: boolean };
 const menuItems: MenuItem[] = [
   { icon: LayoutDashboard, label: "ダッシュボード", path: "/" },
   { icon: ClipboardList, label: "案件一覧", path: "/cases" },
@@ -65,6 +65,7 @@ const menuItems: MenuItem[] = [
   { icon: BookMarked, label: "全角化除外辞書", path: "/settings/exclusions", hideForPartner: true, hideForCustomer: true },
   { icon: Sparkles, label: "所感AI設定", path: "/settings/impression", hideForPartner: true, hideForCustomer: true },
   { icon: ShieldCheck, label: "役割・閲覧エリア", path: "/settings/access", adminOnly: true },
+  { icon: ShieldCheck, label: "利用者区分の変更", path: "/settings/people", ownerOnly: true },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -155,6 +156,7 @@ function DashboardLayoutContent({
   const isPartner = user?.role === "partner";
   const isCustomer = user?.role === "customer";
   const visibleMenuItems = menuItems.filter(item => {
+    if (item.ownerOnly && user?.role !== "owner") return false;
     if (item.adminOnly && !isAdmin) return false;
     if (item.financialOnly && !canViewFinancials) return false;
     if (item.hideForPartner && isPartner) return false;

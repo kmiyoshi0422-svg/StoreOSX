@@ -12,7 +12,8 @@ async function groups() {
   const db = await getDb(); if (!db) throw new TRPCError({code:'INTERNAL_SERVER_ERROR',message:'DBへ接続できません'});
   const [users, bindings, accounts] = await Promise.all([getAllUsers(), getAppSetting<Record<string,string>>('responsibility.confirmedEmailBindings'),
     db.select({userId:responsibleOfficerAccounts.userId,officerKey:responsibleOfficerAccounts.officerKey}).from(responsibleOfficerAccounts)]);
-  return buildInternalStaffGroups(users, bindings ?? {}, accounts);
+  // 旧社内担当が残る社外利用者は候補外の引継ぎ枠へ。0件の社外利用者は件数集計時に除外。
+  return buildInternalStaffGroups(users, bindings ?? {}, accounts, true);
 }
 export const internalStaffRouter = router({
   summary: protectedProcedure.query(async ({ctx}) => {

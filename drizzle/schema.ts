@@ -1246,3 +1246,16 @@ export const caseInternalMemos = mysqlTable("case_internal_memos", {
   updatedByName: varchar("updated_by_name", { length: 128 }).notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });
+
+/** 最高管理者による担当情報・利用者区分の変更監査。元の案件/PDFや履歴とは独立。 */
+export const ownerManagementLogs = mysqlTable("owner_management_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  kind: mysqlEnum("kind", ["user_category", "case_assignment"]).notNull(),
+  targetId: int("target_id").notNull(),
+  beforeJson: text("before_json").notNull(),
+  afterJson: text("after_json").notNull(),
+  reason: varchar("reason", { length: 500 }).notNull(),
+  changedBy: int("changed_by").notNull(),
+  changedByName: varchar("changed_by_name", { length: 128 }).notNull(),
+  changedAt: timestamp("changed_at").defaultNow().notNull(),
+}, t => ({ targetIdx: index("idx_owner_management_target").on(t.kind, t.targetId) }));

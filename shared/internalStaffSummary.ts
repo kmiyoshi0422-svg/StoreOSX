@@ -4,14 +4,15 @@ import { OFFICER_KEYS, officerName, isActiveCase, type ResponsibleOfficerKey } f
 
 export type AssignmentCountCase = { id: number; assigneeId: number | null; status: string };
 export type StaffGroup = { key: string; name: string; userIds: number[]; canAssign: boolean; pending: boolean; legacy: boolean };
-export function buildInternalStaffGroups(users: RosterUser[], bindings: Record<string, string>, accounts: {userId:number;officerKey:string}[]) {
+export function buildInternalStaffGroups(users: RosterUser[], bindings: Record<string, string>, accounts: {userId:number;officerKey:string}[], includeFormerStaff = false) {
   const groups = new Map<string, StaffGroup>();
   const accountKeys = new Map(accounts.map(x => [x.userId, x.officerKey]));
   for (const user of users) {
-    if (!canManageCases(user.role)) continue;
+    const internal = canManageCases(user.role);
+    if (!internal && !includeFormerStaff) continue;
     const rawKey = (user.email ? bindings[user.email.trim().toLowerCase()] : undefined) ?? accountKeys.get(user.id);
     const officerKey = OFFICER_KEYS.includes(rawKey as ResponsibleOfficerKey) ? rawKey as ResponsibleOfficerKey : null;
-    const legacy = isExcludedCaseAssignee(user.id);
+    const legacy = !internal || isExcludedCaseAssignee(user.id);
     const key = !legacy && officerKey ? `officer:${officerKey}` : `user:${user.id}`;
     const current = groups.get(key);
     if (current) current.userIds.push(user.id);

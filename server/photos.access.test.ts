@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import type { TrpcContext } from "./_core/context";
 import { appRouter } from "./routers";
 import { storagePut } from "./storage";
+import { updatePartner } from "./db";
 
 vi.mock("./storage", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./storage")>()),
@@ -70,7 +71,8 @@ describe("写真APIの協力業者・顧客アクセス", () => {
     partnerId = (await owner.partners.create({
       name: `写真権限テスト協力会社-${suffix}`,
     })).id;
-    await owner.partners.update({ id: partnerId, data: { userId: 990932 } });
+    // 合成fixtureの紐付け。実利用者のリンク変更はownerPeople APIだけで行う。
+    await updatePartner(partnerId, { userId: 990932 });
     await owner.cases.update({ id: allowedCaseId, data: { partnerId } });
     allowedPhotoId = (await owner.photos.upload({ caseId: allowedCaseId, ...file })).id;
     deniedPhotoId = (await owner.photos.upload({ caseId: deniedCaseId, ...file })).id;

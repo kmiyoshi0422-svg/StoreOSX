@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { OwnerCaseAssignmentEditor } from "@/components/OwnerCaseAssignmentEditor";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -902,6 +903,7 @@ function InfoTab({
           />
           <div className="border-t pt-4" />
           <h3 className="font-serif-jp font-semibold">システム記載の取引先</h3>
+          <OwnerCaseAssignmentEditor caseData={caseData} onUpdated={onUpdated} />
           <dl className="space-y-2 text-sm">
             <Row label="協力会社" value={caseData.contractorName || "—"} />
             <Row label="担当者" value={caseData.contractorPic || "—"} />

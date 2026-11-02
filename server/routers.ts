@@ -1,6 +1,7 @@
 import { COOKIE_NAME } from "@shared/const";
 import { DEFAULT_CHECKLIST } from "../shared/checklist-template";
 import { PARTNER_SHORT_IMPRESSION_MAX_LENGTH } from "../shared/short-impression";
+import { ownerPeopleRouter } from "./ownerPeopleRouter";
 import { buildCaseAssigneeRoster, isExcludedCaseAssignee } from "../shared/caseAssigneeRoster";
 import { z } from "zod";
 import {
@@ -1080,6 +1081,7 @@ export const appRouter = router({
       }),
   }),
 
+  ownerPeople: ownerPeopleRouter,
   users: router({
     list: protectedProcedure.query(async ({ ctx }) => {
       const users = await getAllUsers();
@@ -1118,6 +1120,15 @@ export const appRouter = router({
         }
         if (target.role === "owner") {
           throw new TRPCError({ code: "FORBIDDEN", message: "オーナー権限は変更できません" });
+        }
+        if (input.role === "owner") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "この画面から最高管理者を付与することはできません" });
+        }
+        if (input.role !== target.role && ctx.user.role !== "owner") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "役割の変更は最高管理者のみ実行できます。管理者は閲覧エリアのみ変更できます" });
+        }
+        if (input.role !== target.role && (input.role === "partner" || target.role === "partner")) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "社内／協力業者の区分変更は最高管理者の利用者区分管理から確認して実行してください" });
         }
         if (ctx.user.id === input.id && !["admin", "owner"].includes(input.role)) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "自分自身の管理者権限は解除できません" });
@@ -1193,6 +1204,9 @@ export const appRouter = router({
       )
       .mutation(async ({ ctx, input }) => {
         if (!canManageCases(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: "協力会社を変更する権限がありません" });
+        if (input.data.userId !== undefined) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "利用者と業者の紐付けは最高管理者の利用者区分管理から実行してください" });
+        }
         await updatePartner(input.id, input.data);
         return { success: true } as const;
       }),
@@ -1602,7 +1616,8 @@ export const appRouter = router({
           if (!canManageCases(ctx.user.role)) {
             throw new TRPCError({ code: "FORBIDDEN", message: "担当者を変更する権限がありません" });
           }
-          if (data.assigneeId !== null) {
+          // 区分変更・退任後の既存担当は履歴として維持できる。新しい割当だけ資格を検証する。
+          if (data.assigneeId !== null && data.assigneeId !== currentCase.assigneeId) {
             const assignee = (await getAllUsers()).find((user) => user.id === data.assigneeId);
             const prefecture = data.prefecture === undefined ? currentCase.prefecture : data.prefecture;
             if (isExcludedCaseAssignee(data.assigneeId) && data.assigneeId !== currentCase.assigneeId) {

@@ -30,6 +30,7 @@ export default function InternalStaff() {
   </CardContent></Card>;}
   return <div className="mx-auto max-w-6xl space-y-5" aria-label="社内担当者一覧">
     <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="flex items-center gap-2 text-2xl font-semibold"><Users className="h-6 w-6"/>社内担当者一覧</h1><p className="mt-1 text-sm text-muted-foreground">作業担当者の現在の担当件数です。案件責任者とは別に集計します。</p></div><Button variant="outline" disabled={summary.isFetching} onClick={()=>{void summary.refetch();if(target)void details.refetch();}}><RefreshCw className={`mr-2 h-4 w-4 ${summary.isFetching?'animate-spin':''}`}/>{summary.isFetching?'更新中…':'最新の件数に更新'}</Button></div>
+    {user?.role === 'owner' && <Link href="/settings/people"><Button variant="outline">社内／協力業者の区分を変更</Button></Link>}
     <div className="rounded-xl border bg-card p-4 text-sm leading-relaxed"><strong>対応中</strong>＝完了・クローズ・失注以外。<strong>全担当</strong>には過去の完了・失注も含みます。件数を押すと対象案件を確認できます。<br/>{summary.data?.areaLimited?'表示・集計はあなたの許可エリア内だけです。':'表示・集計は閲覧を許可された全エリアです。'}<br/>{summary.data&&<>未割当の対応中案件：<strong>{summary.data.unassignedActive}件</strong> ／ 更新 {new Date(summary.data.updatedAt).toLocaleTimeString('ja-JP')}</>}</div>
     <Input value={search} onChange={e=>setSearch(e.target.value)} placeholder="担当者名で検索" aria-label="担当者名で検索" className="max-w-sm"/>
     {summary.isError&&<div role="alert" className="rounded-lg bg-destructive/10 p-4 text-sm">件数を取得できませんでした。{summary.error.message} <Button variant="outline" size="sm" onClick={()=>void summary.refetch()}>再試行</Button></div>}

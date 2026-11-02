@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,6 +46,7 @@ function parseAreas(value: string | null) {
 
 export default function AccessManagement() {
   const utils = trpc.useUtils();
+  const { user: currentUser } = useAuth();
   const { data: users = [], isLoading } = trpc.users.accessList.useQuery();
   const [editing, setEditing] = useState<UserRow | null>(null);
   const [role, setRole] = useState<Role>("user");
@@ -55,6 +58,8 @@ export default function AccessManagement() {
       toast.success("役割・閲覧エリアを更新しました");
       setEditing(null);
       await utils.users.accessList.invalidate();
+      await utils.users.assignable.invalidate();
+      await utils.ownerPeople.list.invalidate();
     },
     onError: (error) => toast.error(error.message),
   });
@@ -82,13 +87,15 @@ export default function AccessManagement() {
       <div>
         <h1 className="text-2xl font-semibold">役割・閲覧エリア管理</h1>
         <p className="mt-1 text-sm text-muted-foreground">役割ごとの金額権限と、案件を閲覧できる都道府県を管理します。</p>
+        <p className="mt-2 text-xs text-muted-foreground">役割の変更は最高管理者だけが行えます。管理者は閲覧・編集エリアを設定できます。</p>
+        {currentUser?.role === "owner" && <Link href="/settings/people"><Button variant="outline" className="mt-3">社内／協力業者の区分を変更する</Button></Link>}
       </div>
 
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2 text-base"><ShieldCheck className="h-5 w-5" /> 権限の線引き</CardTitle></CardHeader>
         <CardContent className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-3">
           <div><strong>最高管理者</strong><p className="text-muted-foreground">全情報・利益・全エリア・権限設定</p></div>
-          <div><strong>管理者</strong><p className="text-muted-foreground">利益以外の全情報・全エリア・権限設定</p></div>
+          <div><strong>管理者</strong><p className="text-muted-foreground">利益以外の全情報・全エリア・エリア設定。役割変更は最高管理者のみ</p></div>
           <div><strong>役員</strong><p className="text-muted-foreground">利益以外の金額情報。設定したエリアのみ</p></div>
           <div><strong>社員</strong><p className="text-muted-foreground">社内金額を除く情報。設定したエリアのみ</p></div>
           <div><strong>協力業者</strong><p className="text-muted-foreground">全案件の概要・現場写真を閲覧。編集は担当案件または指定エリアだけ。金額・見積・経費は非表示</p></div>
@@ -126,7 +133,7 @@ export default function AccessManagement() {
         <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto">
           <DialogHeader><DialogTitle>{editing?.name || "ユーザー"}の権限設定</DialogTitle><DialogDescription>管理者は常に全エリアです。協力業者は全案件の概要を閲覧できます。このエリア設定は編集可能な案件だけを制限し、未指定時は担当案件のみ編集できます。</DialogDescription></DialogHeader>
           <div className="space-y-5">
-            <div className="grid gap-2"><Label>役割</Label><Select value={role} onValueChange={(value) => { const next = value as Role; setRole(next); if (["owner", "admin"].includes(next)) setMode("all"); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{(["admin", "executive", "user", "partner", "customer"] as Role[]).map((item) => <SelectItem key={item} value={item}>{ROLE_LABELS[item]}</SelectItem>)}</SelectContent></Select></div>
+            <div className="grid gap-2"><Label>役割</Label><Select value={role} disabled={currentUser?.role !== "owner" || editing?.role === "partner"} onValueChange={(value) => { const next = value as Role; setRole(next); if (["owner", "admin"].includes(next)) setMode("all"); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{(["admin", "executive", "user", "partner", "customer"] as Role[]).map((item) => <SelectItem key={item} value={item} disabled={item === "partner"}>{ROLE_LABELS[item]}</SelectItem>)}</SelectContent></Select><p className="text-xs text-muted-foreground">社内／協力業者の変更は「利用者区分の変更」で会社紐付けと変更内容を確認して実行します。</p></div>
             <div className="grid gap-2"><Label>{role === "partner" ? "案件の編集範囲（閲覧は全案件）" : "案件の閲覧範囲"}</Label><Select value={mode} disabled={["owner", "admin"].includes(role)} onValueChange={(value) => setMode(value as AccessMode)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{role === "partner" ? "担当案件のみ（エリア未指定）" : "全エリア"}</SelectItem><SelectItem value="selected">{role === "partner" ? "選択した都道府県の案件を編集" : "選択した都道府県のみ"}</SelectItem></SelectContent></Select></div>
             {mode === "selected" && (
               <div className="space-y-4">
