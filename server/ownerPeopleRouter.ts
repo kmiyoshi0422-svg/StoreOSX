@@ -82,7 +82,7 @@ export const ownerPeopleRouter = router({
       const after=caseAssignmentSnapshot({...input.next,contractorName:input.next.contractorName?.trim()||null,contractorPic:input.next.contractorPic?.trim()||null,contractorPhone:input.next.contractorPhone?.trim()||null});
       if(after.assigneeId!==null && after.assigneeId!==before.assigneeId){
         const [person]=await tx.select().from(users).where(eq(users.id,after.assigneeId)).for('update');
-        if(!person||!canManageCases(person.role)||isExcludedCaseAssignee(person.id)||!canAccessPrefecture(person,row.prefecture))throw new TRPCError({code:'BAD_REQUEST',message:'社員以上で案件エリアを閲覧できる社内担当者を選んでください'});
+        if(!person||person.disabledAt||!canManageCases(person.role)||isExcludedCaseAssignee(person.id)||!canAccessPrefecture(person,row.prefecture))throw new TRPCError({code:'BAD_REQUEST',message:'社員以上で案件エリアを閲覧できる社内担当者を選んでください'});
       }
       if(after.partnerId!==null && after.partnerId!==before.partnerId){
         const [company]=await tx.select().from(partners).where(eq(partners.id,after.partnerId)).for('update');

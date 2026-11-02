@@ -36,6 +36,12 @@ export function registerOAuthRoutes(app: Express) {
         lastSignedIn: new Date(),
       });
 
+      const person = await db.getUserByOpenId(userInfo.openId);
+      if (!person || person.disabledAt) {
+        res.clearCookie(COOKIE_NAME, getSessionCookieOptions(req));
+        res.status(403).json({ error: "利用停止中のアカウントです。最高管理者へ確認してください" });
+        return;
+      }
       const sessionToken = await sdk.createSessionToken(userInfo.openId, {
         name: userInfo.name || "",
         expiresInMs: ONE_YEAR_MS,

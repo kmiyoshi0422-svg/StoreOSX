@@ -8,7 +8,7 @@ export function buildInternalStaffGroups(users: RosterUser[], bindings: Record<s
   const groups = new Map<string, StaffGroup>();
   const accountKeys = new Map(accounts.map(x => [x.userId, x.officerKey]));
   for (const user of users) {
-    const internal = canManageCases(user.role);
+    const internal = !user.disabledAt && canManageCases(user.role);
     if (!internal && !includeFormerStaff) continue;
     const rawKey = (user.email ? bindings[user.email.trim().toLowerCase()] : undefined) ?? accountKeys.get(user.id);
     const officerKey = OFFICER_KEYS.includes(rawKey as ResponsibleOfficerKey) ? rawKey as ResponsibleOfficerKey : null;
@@ -19,7 +19,7 @@ export function buildInternalStaffGroups(users: RosterUser[], bindings: Record<s
     else groups.set(key, { key, name: user.nameOverride || (!legacy && officerKey ? officerName(officerKey) : user.name || `User #${user.id}`),
       userIds: [user.id], canAssign: !legacy, pending: false, legacy });
   }
-  if (!groups.has('officer:kihara')) groups.set('officer:kihara', {key:'officer:kihara',name:'木原 新',userIds:[],canAssign:false,pending:true,legacy:false});
+  if (!groups.has('officer:kihara') && !users.some(user => (user.email ? bindings[user.email.trim().toLowerCase()] : undefined) === 'kihara' || accountKeys.get(user.id) === 'kihara')) groups.set('officer:kihara', {key:'officer:kihara',name:'木原 新',userIds:[],canAssign:false,pending:true,legacy:false});
   return Array.from(groups.values());
 }
 export function countStaffAssignments(groups: StaffGroup[], rows: AssignmentCountCase[]) {

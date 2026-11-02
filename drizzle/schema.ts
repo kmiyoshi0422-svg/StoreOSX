@@ -8,6 +8,7 @@ export const users = mysqlTable("users", {
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   nameOverride: varchar("name_override", { length: 128 }), // 最高管理者が設定した登録表示名。OAuth再取得で上書きしない
+  disabledAt: timestamp("disabled_at"), // 退職等の利用停止。過去の担当・操作履歴は物理削除しない
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["user", "executive", "admin", "owner", "partner", "customer"]).default("user").notNull(),
@@ -18,8 +19,24 @@ export const users = mysqlTable("users", {
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
-export type User = Omit<typeof users.$inferSelect, "nameOverride"> & { nameOverride?: string | null };
+export type User = Omit<typeof users.$inferSelect, "nameOverride" | "disabledAt"> & { nameOverride?: string | null; disabledAt?: Date | null };
 export type InsertUser = typeof users.$inferInsert;
+
+/** 未ログイン社員の事前登録。偽のOAuthアカウントを作らず、認証基盤の本人メールで一度だけ紐付け。 */
+export const staffRegistrations = mysqlTable("staff_registrations", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 128 }).notNull(),
+  email: varchar("email", { length: 320 }).notNull().unique(),
+  role: mysqlEnum("role", ["user", "admin", "executive"]).notNull(),
+  areaAccessMode: mysqlEnum("area_access_mode", ["all", "selected"]).default("all").notNull(),
+  allowedPrefectures: text("allowed_prefectures"),
+  state: mysqlEnum("state", ["pending", "active", "canceled"]).default("pending").notNull(),
+  version: int("version").default(1).notNull(),
+  userId: int("user_id").unique(),
+  createdBy: int("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
 
 /**
  * 案件テーブル（プレナス修理依頼）
@@ -1251,7 +1268,7 @@ export const caseInternalMemos = mysqlTable("case_internal_memos", {
 /** 最高管理者による担当情報・利用者区分の変更監査。元の案件/PDFや履歴とは独立。 */
 export const ownerManagementLogs = mysqlTable("owner_management_logs", {
   id: int("id").autoincrement().primaryKey(),
-  kind: mysqlEnum("kind", ["user_category", "case_assignment", "user_profile", "partner_profile"]).notNull(),
+  kind: mysqlEnum("kind", ["user_category", "case_assignment", "user_profile", "partner_profile", "user_lifecycle", "staff_registration"]).notNull(),
   targetId: int("target_id").notNull(),
   beforeJson: text("before_json").notNull(),
   afterJson: text("after_json").notNull(),

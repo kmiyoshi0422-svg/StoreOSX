@@ -13,7 +13,7 @@ export const publicProcedure = t.procedure;
 const requireUser = t.middleware(async opts => {
   const { ctx, next } = opts;
 
-  if (!ctx.user) {
+  if (!ctx.user || ctx.user.disabledAt) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
   }
 
@@ -31,7 +31,7 @@ export const adminProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
 
-    if (!ctx.user || !['admin', 'owner'].includes(ctx.user.role)) {
+    if (!ctx.user || ctx.user.disabledAt || !['admin', 'owner'].includes(ctx.user.role)) {
       throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
     }
 
@@ -47,7 +47,7 @@ export const adminProcedure = t.procedure.use(
 export const financialProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
-    if (!ctx.user || !["owner", "admin", "executive"].includes(ctx.user.role)) {
+    if (!ctx.user || ctx.user.disabledAt || !["owner", "admin", "executive"].includes(ctx.user.role)) {
       throw new TRPCError({ code: "FORBIDDEN", message: "金額情報の閲覧権限がありません" });
     }
     return next({ ctx: { ...ctx, user: ctx.user } });

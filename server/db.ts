@@ -46,6 +46,8 @@ import {
   routeAssignments,
   teamSettings,
   users,
+  staffRegistrations,
+  ownerManagementLogs,
   rainLeakInspections,
   rainLeakCheckItems,
   InsertRainLeakInspection,
@@ -156,9 +158,34 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       updateSet.lastSignedIn = new Date();
     }
 
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
-    });
+    // メールはOAuthサーバーから取得した本人情報のみ。クライアント申告メールによる権限付与APIは作らない。
+    if (user.email) {
+      const email = user.email.trim().toLowerCase();
+      await db.transaction(async tx => {
+        const [registration] = await tx.select().from(staffRegistrations).where(eq(staffRegistrations.email, email)).for('update');
+        if (registration?.state === 'canceled') throw new Error('この事前登録は取り消されています。最高管理者へ確認してください');
+        await tx.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
+        if (!registration) return;
+        const matches = await tx.select().from(users).where(sql`LOWER(TRIM(${users.email})) = ${email}`).for('update');
+        const person = matches.find(row => row.openId === user.openId);
+        if (matches.length !== 1 || !person) throw new Error('同じメールの別アカウントが存在します。最高管理者へ確認してください');
+        if (person.disabledAt) throw new Error('利用停止中です。最高管理者へ確認してください');
+        if (registration.state === 'active') {
+          if (registration.userId !== person.id) throw new Error('このメールは別の本人アカウントに紐付け済みです');
+          return; // 初回だけ反映。後日の役割や表示名変更を再ログインで巻き戻さない。
+        }
+        if (person.role === 'owner') throw new Error('最高管理者の本人アカウントは事前登録から変更できません');
+        await tx.update(users).set({ name: registration.name, nameOverride: registration.name, role: registration.role,
+          areaAccessMode: registration.areaAccessMode, allowedPrefectures: registration.allowedPrefectures }).where(eq(users.id, person.id));
+        await tx.update(staffRegistrations).set({ state: 'active', userId: person.id, version: registration.version + 1 }).where(eq(staffRegistrations.id, registration.id));
+        await tx.insert(ownerManagementLogs).values({ kind: 'staff_registration', targetId: registration.id,
+          beforeJson: JSON.stringify({ state: registration.state, userId: registration.userId, version: registration.version }),
+          afterJson: JSON.stringify({ state: 'active', userId: person.id, role: registration.role, version: registration.version + 1 }),
+          reason: `OAuth本人メールによる初回紐付け（事前承認者 #${registration.createdBy}）`, changedBy: person.id, changedByName: registration.name.slice(0, 128) });
+      });
+    } else {
+      await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
+    }
   } catch (error) {
     console.error("[Database] Failed to upsert user:", error);
     throw error;

@@ -393,6 +393,13 @@
       "when": 1793627616718,
       "tag": "0055_solid_slayback",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "5",
+      "when": 1793637313884,
+      "tag": "0056_bored_eddie_brock",
+      "breakpoints": true
     }
   ]
 }

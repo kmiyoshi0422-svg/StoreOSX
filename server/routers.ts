@@ -1,7 +1,9 @@
+import { assertNewCaseAssignee, requireActiveAssignee } from './assigneeValidation';
 import { COOKIE_NAME } from "@shared/const";
 import { DEFAULT_CHECKLIST } from "../shared/checklist-template";
 import { PARTNER_SHORT_IMPRESSION_MAX_LENGTH } from "../shared/short-impression";
 import { ownerPeopleRouter } from "./ownerPeopleRouter";
+import { staffAdministrationRouter } from "./staffAdministrationRouter";
 import { buildCaseAssigneeRoster, isExcludedCaseAssignee } from "../shared/caseAssigneeRoster";
 import { z } from "zod";
 import {
@@ -1086,6 +1088,7 @@ export const appRouter = router({
   }),
 
   ownerPeople: ownerPeopleRouter,
+  staffAdministration: staffAdministrationRouter,
   users: router({
     list: protectedProcedure.query(async ({ ctx }) => {
       const users = await getAllUsers();
@@ -1102,6 +1105,7 @@ export const appRouter = router({
         id: user.id,
         name: user.name,
         nameOverride: user.nameOverride,
+        disabledAt: user.disabledAt,
         email: user.email,
         areaAccessMode: user.areaAccessMode,
         allowedPrefectures: user.allowedPrefectures,
@@ -1550,6 +1554,7 @@ export const appRouter = router({
       if (!canAccessPrefecture(ctx.user, prefecture)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "このエリアの案件を登録する権限がありません" });
       }
+      await assertNewCaseAssignee(input.assigneeId, prefecture);
       if (!canViewInternalFinancials(ctx.user.role)) {
         const hasFinancialInput = INTERNAL_FINANCIAL_FIELDS.some(
           (field) => {
@@ -1623,14 +1628,8 @@ export const appRouter = router({
           }
           // 区分変更・退任後の既存担当は履歴として維持できる。新しい割当だけ資格を検証する。
           if (data.assigneeId !== null && data.assigneeId !== currentCase.assigneeId) {
-            const assignee = (await getAllUsers()).find((user) => user.id === data.assigneeId);
             const prefecture = data.prefecture === undefined ? currentCase.prefecture : data.prefecture;
-            if (isExcludedCaseAssignee(data.assigneeId) && data.assigneeId !== currentCase.assigneeId) {
-              throw new TRPCError({ code: "BAD_REQUEST", message: "この利用者は社内担当者の新規割当候補から除外されています" });
-            }
-            if (!assignee || !canManageCases(assignee.role) || !canAccessPrefecture(assignee, prefecture)) {
-              throw new TRPCError({ code: "BAD_REQUEST", message: "担当できないユーザーです。社員以上で案件エリアを閲覧できる担当者を選んでください" });
-            }
+            await assertNewCaseAssignee(data.assigneeId, prefecture);
           }
         }
         const includesSurveyImpression =
@@ -2059,6 +2058,7 @@ export const appRouter = router({
             if (!canAccessPrefecture(ctx.user, prefecture)) {
               throw new Error("このエリアの案件を登録する権限がありません");
             }
+            await assertNewCaseAssignee(row.assigneeId, prefecture);
             if (!canViewInternalFinancials(ctx.user.role)) {
               const hasFinancialInput = INTERNAL_FINANCIAL_FIELDS.some(
                 (field) => {
@@ -3930,6 +3930,7 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
+        if (input.assigneeId != null) await requireActiveAssignee(input.assigneeId);
         if (input.id) {
           await updateRouteAssignment(input.id, {
             team: input.team,
@@ -3980,13 +3981,17 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
-        await clearRouteAssignmentsInRange(input.start, input.end);
         // チーム設定から代表担当者を取得
         const teams = await listTeamSettings();
         const teamUser: Record<"A" | "B", number | null> = {
           A: teams.find((t) => t.team === "A")?.primaryUserId ?? null,
           B: teams.find((t) => t.team === "B")?.primaryUserId ?? null,
         };
+        // 既存ルートを消す前に、使用する代表担当者が停止中でないか検証する。
+        for (const team of Array.from(new Set(input.assignments.map(a => a.team)))) {
+          if (teamUser[team] != null) await requireActiveAssignee(teamUser[team]!);
+        }
+        await clearRouteAssignmentsInRange(input.start, input.end);
         for (const a of input.assignments) {
           await createRouteAssignment({
             caseId: a.caseId,

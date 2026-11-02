@@ -300,6 +300,9 @@ class SDKServer {
     if (!user) {
       throw ForbiddenError("User not found");
     }
+    if (user.disabledAt) {
+      throw ForbiddenError("利用停止中のアカウントです。最高管理者へ確認してください");
+    }
 
     await db.upsertUser({
       openId: user.openId,
