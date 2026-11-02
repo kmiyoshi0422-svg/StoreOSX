@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ResponsibilityAlert } from "@/components/ResponsibilityAlert";
 import { PartnerDeadlineDashboard } from "@/components/PartnerDeadlineDashboard";
+import { LostReasonChoices } from "@/components/CaseLostStatusDialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1194,32 +1195,23 @@ function AttentionCases({
         </div>
       </DialogContent>
     </Dialog>
-    <Dialog open={Boolean(lostRow)} onOpenChange={(open) => !open && setLostRow(null)}>
-      <DialogContent className="sm:max-w-lg">
+    <Dialog open={Boolean(lostRow)} onOpenChange={(open) => { if (!open && !markCaseLost.isPending) setLostRow(null); }}>
+      <DialogContent className="sm:max-w-lg max-h-[90dvh] overflow-y-auto" onEscapeKeyDown={e => { if (markCaseLost.isPending) e.preventDefault(); }} onInteractOutside={e => { if (markCaseLost.isPending) e.preventDefault(); }}>
         <DialogHeader>
           <DialogTitle>案件を失注にする</DialogTitle>
           <DialogDescription>
-            {lostRow ? `${lostRow.requestNumber} / ${lostRow.storeName}` : "対象案件"}を完了相当として要対応一覧から外します。失注タブからいつでも復活できます。
+            {lostRow ? `${lostRow.requestNumber} / ${lostRow.storeName}` : "対象案件"}を要対応一覧から外します。工事完了日や担当者は変更しません。失注タブからいつでも復活できます。
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 pt-2">
-          <div>
-            <label className="text-sm font-medium">失注理由</label>
-            <Select value={lostReason} onValueChange={(value) => setLostReason(value as typeof lostReason)}>
-              <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="高額なため">① 高額なため</SelectItem>
-                <SelectItem value="対応に不備">② 対応に不備（遅いなど）</SelectItem>
-                <SelectItem value="別業者手配">③ 別業者手配</SelectItem>
-                <SelectItem value="その他">④ その他</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <LostReasonChoices value={lostReason} onChange={setLostReason} disabled={markCaseLost.isPending} />
           <div>
             <label htmlFor="lost-reason-detail" className="text-sm font-medium">補足{lostReason === "その他" ? "（必須）" : "（任意）"}</label>
             <Textarea
               id="lost-reason-detail"
               value={lostReasonDetail}
+              maxLength={1000}
+              disabled={markCaseLost.isPending}
               onChange={(event) => setLostReasonDetail(event.target.value)}
               placeholder="具体的な理由や再提出時の注意点を入力"
               className="mt-1.5 min-h-24"

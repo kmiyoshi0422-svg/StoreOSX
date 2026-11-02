@@ -70,10 +70,12 @@ describe("経過案件3区分ダッシュボード", () => {
   });
 
   it("失注理由を4分類から選び、失注タブから即時復活できる", () => {
-    expect(homeSource).toContain("① 高額なため");
-    expect(homeSource).toContain("② 対応に不備（遅いなど）");
-    expect(homeSource).toContain("③ 別業者手配");
-    expect(homeSource).toContain("④ その他");
+    const choicesSource = readFileSync("shared/caseLost.ts", "utf8");
+    expect(choicesSource).toContain("① 高額なため");
+    expect(choicesSource).toContain("② 対応に不備（遅いなど）");
+    expect(choicesSource).toContain("③ 別業者手配");
+    expect(choicesSource).toContain("④ その他");
+    expect(homeSource).toContain("<LostReasonChoices");
     expect(homeSource).toContain("trpc.dashboard.markCaseLost.useMutation");
     expect(homeSource).toContain("trpc.dashboard.reviveLostCase.useMutation");
     expect(homeSource).toContain("復活する");

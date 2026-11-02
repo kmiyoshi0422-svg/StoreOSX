@@ -367,7 +367,7 @@ describe("dashboard lost and revive", () => {
     dbMocks.createPartnerAssignmentNotification.mockResolvedValue(1);
   });
 
-  it("社員は理由付きで失注にし、完了相当日時と直前状態を保存できる", async () => {
+  it("社員は理由付きで失注にし、失注日時と直前状態を保存できる", async () => {
     const caller = appRouter.createCaller(createContext("user"));
     await expect(caller.dashboard.markCaseLost({
       caseId: 101,
@@ -377,13 +377,14 @@ describe("dashboard lost and revive", () => {
 
     expect(dbMocks.updateCase).toHaveBeenCalledWith(101, expect.objectContaining({
       status: "失注",
-      completedAt: expect.any(Date),
       lostReason: "対応に不備",
       lostReasonDetail: "初動対応に時間を要した",
       lostAt: expect.any(Date),
       lostBy: 10,
       preLostStatus: "見積中",
     }));
+    expect(dbMocks.updateCase.mock.calls[0][1]).not.toHaveProperty("completedAt");
+    expect(dbMocks.updateCase.mock.calls[0][1]).not.toHaveProperty("progressStage");
     expect(dbMocks.createStatusLog).toHaveBeenCalledWith(expect.objectContaining({
       fromStatus: "見積中",
       toStatus: "失注",
@@ -422,7 +423,6 @@ describe("dashboard lost and revive", () => {
     });
     expect(dbMocks.updateCase).toHaveBeenCalledWith(101, {
       status: "施工待ち",
-      completedAt: null,
       lostReason: null,
       lostReasonDetail: null,
       lostAt: null,

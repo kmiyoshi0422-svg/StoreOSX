@@ -825,7 +825,6 @@ export const appRouter = router({
         const lostAt = new Date();
         await updateCase(input.caseId, {
           status: "失注",
-          completedAt: lostAt,
           lostReason: input.reason,
           lostReasonDetail: input.reasonDetail?.trim() || null,
           lostAt,
@@ -867,13 +866,12 @@ export const appRouter = router({
         if (caseData.status !== "失注") {
           throw new TRPCError({ code: "BAD_REQUEST", message: "失注案件ではありません" });
         }
-        const restorableStatuses = ["受付", "現調中", "見積中", "施工待ち", "施工中"] as const;
+        const restorableStatuses = ["受付", "現調中", "見積中", "施工待ち", "施工中", "完了", "クローズ"] as const;
         const previousStatus = restorableStatuses.includes(caseData.preLostStatus as typeof restorableStatuses[number])
           ? caseData.preLostStatus as typeof restorableStatuses[number]
           : "受付";
         await updateCase(input.caseId, {
           status: previousStatus,
-          completedAt: null,
           lostReason: null,
           lostReasonDetail: null,
           lostAt: null,
@@ -1654,6 +1652,12 @@ export const appRouter = router({
         if (data.progressStage != null || data.status != null) {
           const current = await getCaseById(input.id);
           if (current) {
+            if (data.status != null && data.status !== current.status && (data.status === "失注" || current.status === "失注")) {
+              throw new TRPCError({ code: "BAD_REQUEST", message: "失注・復活は理由入力と確認付きの専用操作から行ってください" });
+            }
+            if (current.status === "失注" && data.progressStage != null && data.progressStage !== current.progressStage) {
+              throw new TRPCError({ code: "BAD_REQUEST", message: "失注中の進捗変更はできません。先に失注前の状態へ復活してください" });
+            }
             const resolved = resolveStageStatus({
               currentStage: (current.progressStage as ProgressStage) ?? "未対応",
               currentStatus: (current.status as CaseStatus) ?? "受付",
@@ -2324,7 +2328,7 @@ export const appRouter = router({
           const items = await import("./db").then((m) => m.getChecklistItemById(input.id));
           if (items && input.checked) {
             const caseData = await getCaseById(items.caseId);
-            if (caseData) {
+            if (caseData && caseData.status !== "失注") {
               const all = await getChecklistByCaseId(items.caseId);
               const phaseItems = all.filter((i) => i.phase === items.phase);
               const allChecked = phaseItems.length > 0 && phaseItems.every((i) => i.checked);
@@ -2396,7 +2400,7 @@ export const appRouter = router({
             const items = await import("./db").then((m) => m.getChecklistItemById(input.ids[0]));
             if (items) {
               const caseData = await getCaseById(items.caseId);
-              if (caseData) {
+              if (caseData && caseData.status !== "失注") {
                 const all = await getChecklistByCaseId(items.caseId);
                 const phaseItems = all.filter((i) => i.phase === items.phase);
                 const allChecked = phaseItems.length > 0 && phaseItems.every((i) => i.checked);
@@ -5973,6 +5977,9 @@ JSONスキーマに従って回答してください。`,
         const caseData = await getCaseById(input.caseId);
         if (!caseData) throw new TRPCError({ code: 'NOT_FOUND', message: '案件が見つかりません' });
         await assertCaseAccess(caseData, ctx.user);
+        if (caseData.status === "失注") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "失注中の完了報告はできません。先に失注前の状態へ復活してください" });
+        }
         // 写真をS3にアップロード
         const uploadedUrls: string[] = [];
         for (const photo of input.photos) {

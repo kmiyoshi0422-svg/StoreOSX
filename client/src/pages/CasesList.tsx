@@ -30,6 +30,8 @@ import { CaseAssigneeSelect } from "@/components/CaseAssigneeSelect";
 import { CaseResponseDateEditor } from "@/components/CaseResponseDateEditor";
 import { CaseResponsibilitySelect } from "@/components/CaseResponsibilitySelect";
 import { RESPONSIBLE_OFFICERS } from "@shared/caseResponsibility";
+import { CaseLostStatusDialog, type CaseLostAction } from "@/components/CaseLostStatusDialog";
+import { REVIVE_LOST_OPTION } from "@shared/caseLost";
 import { useLocation } from "wouter";
 import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -74,6 +76,7 @@ const STATUS_COLORS: Record<string, string> = {
   施工中: "bg-orange-50 text-orange-700 border-orange-200",
   完了: "bg-emerald-50 text-emerald-700 border-emerald-200",
   クローズ: "bg-zinc-100 text-zinc-600 border-zinc-200",
+  失注: "bg-rose-50 text-rose-700 border-rose-200",
 };
 const URGENCY_COLORS: Record<string, string> = {
   S: "bg-red-600 text-white",
@@ -144,6 +147,7 @@ export default function CasesList() {
   const { data: assignableUsers = [] } = trpc.users.assignable.useQuery(undefined, { enabled: canAssign });
   const userMap = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
   const utils = trpc.useUtils();
+  const [lostAction, setLostAction] = useState<CaseLostAction | null>(null);
 
   const updateStatusMutation = trpc.cases.update.useMutation({
     onSuccess: () => {
@@ -155,18 +159,28 @@ export default function CasesList() {
 
   const handleStatusChange = useCallback(
     (caseId: number, newStatus: string) => {
+      if (!canAssign && !isPartner) return;
       if (isPartner && !editableIds?.includes(caseId)) return;
+      const row = cases.find(c => c.id === caseId);
+      if (!row) return;
+      if (newStatus === "失注" || newStatus === REVIVE_LOST_OPTION) {
+        if (!canAssign || (newStatus === "失注" && row.status === "失注")) return;
+        setLostAction({ caseId, requestNumber: row.requestNumber, storeName: row.storeName, mode: newStatus === "失注" ? "lost" : "revive" });
+        return;
+      }
+      if (row.status === "失注") { toast.error("先に失注前の状態へ復活してください"); return; }
       updateStatusMutation.mutate({ id: caseId, data: { status: newStatus as any } });
     },
-    [updateStatusMutation, editableIds, isPartner]
+    [updateStatusMutation, editableIds, isPartner, canAssign, cases]
   );
 
   const handleStageChange = useCallback(
     (caseId: number, newStage: string) => {
       if (isPartner && !editableIds?.includes(caseId)) return;
+      if (cases.find(c => c.id === caseId)?.status === "失注") { toast.error("先に失注前の状態へ復活してください"); return; }
       updateStatusMutation.mutate({ id: caseId, data: { progressStage: newStage as any }, forceStage: true });
     },
-    [updateStatusMutation, editableIds, isPartner]
+    [updateStatusMutation, editableIds, isPartner, cases]
   );
 
   // URLクエリを初期フィルタとして読み込む（ダッシュボードKPIからの遷移用）
@@ -204,6 +218,10 @@ export default function CasesList() {
   const [cardPage, setCardPage] = useState(1);
   // 折り畳んだ地方ラベルの集合（デフォルトは全展開）
   const [collapsedRegions, setCollapsedRegions] = useState<Set<string>>(new Set());
+  const renderStatusOptions = (status: string) => <>
+    {CASE_STATUSES.filter(s => canAssign || s !== "失注" || status === "失注").map(s => <SelectItem key={s} value={s} className="text-xs" disabled={status === "失注" && s !== "失注"}>{s}</SelectItem>)}
+    {canAssign && status === "失注" && <SelectItem value={REVIVE_LOST_OPTION} className="text-xs">失注前の状態へ復活</SelectItem>}
+  </>;
   const toggleRegion = (label: string) =>
     setCollapsedRegions((prev) => {
       const next = new Set(prev);
@@ -378,6 +396,7 @@ export default function CasesList() {
 
   return (
     <div className="space-y-6">
+      <CaseLostStatusDialog action={lostAction} onClose={() => setLostAction(null)} onUpdated={() => utils.cases.listSummary.invalidate()} />
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between border-b border-border/60 pb-6">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-2">Cases</p>
@@ -717,7 +736,7 @@ export default function CasesList() {
                   <Select
                     value={(c.progressStage as string) ?? "未対応"}
                     onValueChange={(v) => handleStageChange(c.id, v)}
-                    disabled={isPartner && !editableIds?.includes(c.id)}
+                    disabled={!canAssign && (!isPartner || !editableIds?.includes(c.id) || c.status === "失注")}
                   >
                     <SelectTrigger
                       className={`h-6 w-auto min-w-[60px] px-2 text-[9px] font-medium border ${STAGE_BADGE[(c.progressStage as ProgressStage) ?? "未対応"]} shrink-0`}
@@ -736,7 +755,7 @@ export default function CasesList() {
                   <Select
                     value={c.status}
                     onValueChange={(v) => handleStatusChange(c.id, v)}
-                    disabled={isPartner && !editableIds?.includes(c.id)}
+                    disabled={!canAssign && (!isPartner || !editableIds?.includes(c.id) || c.status === "失注")}
                   >
                     <SelectTrigger
                       className={`h-6 w-auto min-w-[70px] px-2 text-[9px] font-medium border ${STATUS_COLORS[c.status]} shrink-0`}
@@ -745,11 +764,7 @@ export default function CasesList() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {CASE_STATUSES.map((s) => (
-                        <SelectItem key={s} value={s} className="text-xs">
-                          {s}
-                        </SelectItem>
-                      ))}
+                      {renderStatusOptions(c.status)}
                     </SelectContent>
                   </Select>
                   <span className="text-sm font-medium truncate min-w-0 flex-1">{c.storeName}</span>
@@ -818,8 +833,11 @@ export default function CasesList() {
                         <span className="px-3 py-2 w-[60px] shrink-0">
                           <span className={`inline-flex h-5 min-w-5 px-1 items-center justify-center rounded text-[9px] font-bold ${URGENCY_COLORS[c.urgency]}`}>{c.urgency}</span>
                         </span>
-                        <span className="px-3 py-2 w-[100px] shrink-0">
-                          <span className={`inline-block h-6 px-2 text-[9px] font-medium border rounded leading-6 ${STATUS_COLORS[c.status]}`}>{c.status}</span>
+                        <span className="px-3 py-2 w-[100px] shrink-0" onClick={e => e.stopPropagation()}>
+                          <Select value={c.status} onValueChange={value => handleStatusChange(c.id, value)} disabled={!canAssign && (!isPartner || !editableIds?.includes(c.id) || c.status === "失注")}>
+                            <SelectTrigger aria-label={`${c.requestNumber}のステータス`} className={`h-6 w-full px-1 text-[9px] font-medium border ${STATUS_COLORS[c.status]}`}><SelectValue /></SelectTrigger>
+                            <SelectContent>{renderStatusOptions(c.status)}</SelectContent>
+                          </Select>
                         </span>
                         <span className="px-3 py-2 font-medium truncate flex-1 min-w-0">{c.storeName}</span>
                         <span className="px-3 py-2 font-mono text-xs text-muted-foreground w-[120px] shrink-0 hidden md:inline">{c.requestNumber}</span>
@@ -889,7 +907,7 @@ export default function CasesList() {
                       <Select
                         value={stage}
                         onValueChange={(v) => { handleStageChange(c.id, v); }}
-                        disabled={isPartner && !editableIds?.includes(c.id)}
+                        disabled={!canAssign && (!isPartner || !editableIds?.includes(c.id) || c.status === "失注")}
                       >
                         <SelectTrigger
                           className={`h-5 w-auto min-w-[60px] px-1.5 text-[10px] font-medium border ${STAGE_BADGE[stage]}`}
@@ -908,7 +926,7 @@ export default function CasesList() {
                       <Select
                         value={c.status}
                         onValueChange={(v) => { handleStatusChange(c.id, v); }}
-                        disabled={isPartner && !editableIds?.includes(c.id)}
+                        disabled={!canAssign && (!isPartner || !editableIds?.includes(c.id) || c.status === "失注")}
                       >
                         <SelectTrigger
                           className={`h-5 w-auto min-w-[60px] px-1.5 text-[10px] font-medium border ${STATUS_COLORS[c.status]}`}
@@ -917,11 +935,7 @@ export default function CasesList() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {CASE_STATUSES.map((s) => (
-                            <SelectItem key={s} value={s} className="text-xs">
-                              {s}
-                            </SelectItem>
-                          ))}
+                          {renderStatusOptions(c.status)}
                         </SelectContent>
                       </Select>
                       <span className="text-[10px] font-mono text-muted-foreground">
@@ -992,7 +1006,7 @@ export default function CasesList() {
                         <Select
                           value={stage}
                           onValueChange={(v) => handleStageChange(c.id, v)}
-                          disabled={isPartner && !editableIds?.includes(c.id)}
+                          disabled={!canAssign && (!isPartner || !editableIds?.includes(c.id) || c.status === "失注")}
                         >
                           <SelectTrigger
                             className={`h-6 w-auto min-w-[70px] px-2 text-[10px] font-medium border ${STAGE_BADGE[stage]}`}
@@ -1011,7 +1025,7 @@ export default function CasesList() {
                         <Select
                           value={c.status}
                           onValueChange={(v) => handleStatusChange(c.id, v)}
-                          disabled={isPartner && !editableIds?.includes(c.id)}
+                          disabled={!canAssign && (!isPartner || !editableIds?.includes(c.id) || c.status === "失注")}
                         >
                           <SelectTrigger
                             className={`h-6 w-auto min-w-[70px] px-2 text-[10px] font-medium border ${STATUS_COLORS[c.status]}`}
@@ -1020,11 +1034,7 @@ export default function CasesList() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {CASE_STATUSES.map((s) => (
-                              <SelectItem key={s} value={s} className="text-xs">
-                                {s}
-                              </SelectItem>
-                            ))}
+                            {renderStatusOptions(c.status)}
                           </SelectContent>
                         </Select>
                         <Badge variant="secondary" className="text-[10px]">

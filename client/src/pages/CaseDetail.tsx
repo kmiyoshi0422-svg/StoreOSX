@@ -1,6 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { OwnerCaseAssignmentEditor } from "@/components/OwnerCaseAssignmentEditor";
+import { CaseLostStatusDialog, type CaseLostAction } from "@/components/CaseLostStatusDialog";
+import { REVIVE_LOST_OPTION } from "@shared/caseLost";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -532,6 +534,7 @@ function InfoTab({
   });
 
   const [editing, setEditing] = useState(false);
+  const [lostAction, setLostAction] = useState<CaseLostAction | null>(null);
   const [form, setForm] = useState({
     status: caseData.status,
     // 責任者は専用APIで保存し、この一般編集フォームでは変更しない。
@@ -555,6 +558,10 @@ function InfoTab({
       ? CATEGORY_MEDIUM_OPTIONS[form.categoryLarge]
       : [];
   const { data: responsibilityHistory = [] } = trpc.responsibility.history.useQuery({ caseId: caseData.id }, { enabled: canManageCase });
+  useEffect(() => {
+    if (!editing) setForm(p => ({ ...p, status: caseData.status, progressStage: (caseData.progressStage ?? "未対応") as never }));
+  }, [caseData.status, caseData.progressStage, editing]);
+  const openLostAction = (mode: "lost" | "revive") => setLostAction({ caseId: caseData.id, requestNumber: caseData.requestNumber, storeName: caseData.storeName, mode });
 
   const handleSave = () => {
     const { estimatedCost, ...nonFinancialForm } = form;
@@ -580,6 +587,7 @@ function InfoTab({
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
+      <CaseLostStatusDialog action={lostAction} onClose={() => setLostAction(null)} onUpdated={status => { setForm(p => ({ ...p, status: status as never })); onUpdated(); }} />
       <Card>
         <CardContent className="p-5 space-y-4">
           <div className="flex items-center justify-between">
@@ -603,6 +611,14 @@ function InfoTab({
             )}
           </div>
 
+          {canManageCase && <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">ステータス：{caseData.status}</Badge>
+            <Button type="button" size="sm" variant="outline" disabled={updateMutation.isPending} onClick={() => openLostAction(caseData.status === "失注" ? "revive" : "lost")}>
+              {caseData.status === "失注" ? "失注前の状態へ復活" : "失注にする"}
+            </Button>
+            {caseData.status === "失注" && <p className="text-xs text-muted-foreground w-full">失注理由：{caseData.lostReason || "未記録"}{caseData.lostReasonDetail ? ` / ${caseData.lostReasonDetail}` : ""}</p>}
+          </div>}
+
           {/* Partner向けステータス変更UI */}
           {isPartner && (
             <PartnerStatusChanger caseId={caseData.id} currentStatus={caseData.status} currentUrgency={caseData.urgency} onUpdated={onUpdated} />
@@ -614,6 +630,7 @@ function InfoTab({
                 <Label className="text-xs text-muted-foreground">進捗ステージ・フォルダ</Label>
                 <Select
                   value={form.progressStage}
+                  disabled={caseData.status === "失注"}
                   onValueChange={(v) =>
                     setForm((p) => {
                       const stage = v as ProgressStage;
@@ -638,7 +655,8 @@ function InfoTab({
                   <Label className="text-xs text-muted-foreground">ステータス</Label>
                   <Select
                     value={form.status}
-                    onValueChange={(v) =>
+                    onValueChange={(v) => {
+                      if (v === "失注" || v === REVIVE_LOST_OPTION) { openLostAction(v === "失注" ? "lost" : "revive"); return; }
                       setForm((p) => {
                         const status = v as CaseStatus;
                         const stage = syncStageFromStatus(
@@ -647,19 +665,21 @@ function InfoTab({
                         );
                         return { ...p, status: status as never, progressStage: stage as never };
                       })
-                    }
+                    }}
                   >
                     <SelectTrigger className="mt-1">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="受付">受付</SelectItem>
-                      <SelectItem value="現調中">現調中</SelectItem>
-                      <SelectItem value="見積中">見積中</SelectItem>
-                      <SelectItem value="施工待ち">施工待ち</SelectItem>
-                      <SelectItem value="施工中">施工中</SelectItem>
-                      <SelectItem value="完了">完了</SelectItem>
-                      <SelectItem value="クローズ">クローズ</SelectItem>
+                      <SelectItem value="受付" disabled={caseData.status === "失注"}>受付</SelectItem>
+                      <SelectItem value="現調中" disabled={caseData.status === "失注"}>現調中</SelectItem>
+                      <SelectItem value="見積中" disabled={caseData.status === "失注"}>見積中</SelectItem>
+                      <SelectItem value="施工待ち" disabled={caseData.status === "失注"}>施工待ち</SelectItem>
+                      <SelectItem value="施工中" disabled={caseData.status === "失注"}>施工中</SelectItem>
+                      <SelectItem value="完了" disabled={caseData.status === "失注"}>完了</SelectItem>
+                      <SelectItem value="クローズ" disabled={caseData.status === "失注"}>クローズ</SelectItem>
+                      <SelectItem value="失注" disabled={caseData.status === "失注"}>失注</SelectItem>
+                      {caseData.status === "失注" && <SelectItem value={REVIVE_LOST_OPTION}>失注前の状態へ復活</SelectItem>}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1602,7 +1622,7 @@ function PartnerStatusChanger({ caseId, currentStatus, currentUrgency, onUpdated
       <div className="flex flex-wrap items-center gap-3 p-3 rounded-lg border bg-muted/30">
         <div className="flex items-center gap-2">
           <Label className="text-xs text-muted-foreground whitespace-nowrap">ステータス</Label>
-          <Select value={currentStatus} onValueChange={handleStatusChange}>
+          <Select value={currentStatus} onValueChange={handleStatusChange} disabled={currentStatus === "失注" || updateMutation.isPending}>
             <SelectTrigger className="w-[130px]">
               <SelectValue />
             </SelectTrigger>
@@ -1614,6 +1634,7 @@ function PartnerStatusChanger({ caseId, currentStatus, currentUrgency, onUpdated
               <SelectItem value="施工中">施工中</SelectItem>
               <SelectItem value="完了">完了</SelectItem>
               <SelectItem value="クローズ">クローズ</SelectItem>
+              {currentStatus === "失注" && <SelectItem value="失注">失注</SelectItem>}
             </SelectContent>
           </Select>
         </div>
