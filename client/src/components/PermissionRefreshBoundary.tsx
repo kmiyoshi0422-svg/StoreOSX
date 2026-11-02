@@ -6,9 +6,9 @@ import { trpc } from '@/lib/trpc';
 export function PermissionRefreshBoundary({children}:{children:ReactNode}){
   const cache=useQueryClient();
   const isPublic=window.location.pathname.startsWith('/partner-view/');
-  const me=trpc.auth.me.useQuery(undefined,{enabled:!isPublic,retry:false,refetchInterval:30000,refetchOnWindowFocus:true});
+  const me=trpc.auth.me.useQuery(undefined,{enabled:!isPublic,retry:false,refetchInterval:30000,refetchIntervalInBackground:true,refetchOnWindowFocus:true});
   const previous=useRef<string|null>(null);const [refreshing,setRefreshing]=useState(false);
-  const key=me.data===undefined?undefined:me.data===null?'signed-out':JSON.stringify([me.data.id,me.data.role,me.data.areaAccessMode,me.data.allowedPrefectures]);
+  const key=me.data===undefined?undefined:me.data===null?'signed-out':JSON.stringify([me.data.id,me.data.name,me.data.role,me.data.areaAccessMode,me.data.allowedPrefectures,me.data.partnerAccessKey]);
   useEffect(()=>{
     if(key===undefined||isPublic)return;
     if(previous.current===null){previous.current=key;return;}

@@ -50,11 +50,13 @@ import {
 import { toast } from "sonner";
 
 type PersonRole = "owner" | "admin" | "executive" | "user" | "partner" | "customer";
+type EditableRole = "user" | "admin" | "executive" | "partner";
 type AccessMode = "all" | "selected";
 
 type OwnerPerson = {
   id: number;
   name: string | null;
+  nameOverride: string | null;
   email: string | null;
   role: PersonRole;
   areaAccessMode: AccessMode;
@@ -81,7 +83,7 @@ type OwnerPeopleResponse = {
 type ChangeCategoryInput = {
   userId: number;
   expectedRole: PersonRole;
-  role: "user" | "partner";
+  role: EditableRole;
   partnerId: number | null;
   expectedPartnerIds: number[];
   staffAreaAccessMode: AccessMode;
@@ -91,10 +93,23 @@ type ChangeCategoryInput = {
 
 type EditorState = {
   user: OwnerPerson;
-  nextRole: "user" | "partner";
+  nextRole: EditableRole;
   partnerId: number | null;
   accessMode: AccessMode;
   allowedPrefectures: Prefecture[];
+  reason: string;
+};
+
+type RenameUserInput = {
+  userId: number;
+  expectedName: string | null;
+  name: string;
+  reason: string;
+};
+
+type RenameEditorState = {
+  user: OwnerPerson;
+  name: string;
   reason: string;
 };
 
@@ -134,7 +149,7 @@ function parseAllowedPrefectures(value: string | null): Prefecture[] {
 }
 
 function personName(user: OwnerPerson) {
-  return user.name?.trim() || "名称未設定";
+  return user.nameOverride?.trim() || user.name?.trim() || "名称未設定";
 }
 
 function partnerLinkText(links: OwnerPerson["partnerLinks"]) {
@@ -146,6 +161,13 @@ function areaSummary(accessMode: AccessMode, prefectures: Prefecture[]) {
   return prefectures.length > 0 ? `${prefectures.join("、")}（${prefectures.length}県）` : "選択エリア未設定";
 }
 
+function roleAccessSummary(role: EditableRole) {
+  if (role === "admin" || role === "executive") {
+    return "金額を閲覧できます。利益は閲覧できません。";
+  }
+  return "金額は閲覧できません。";
+}
+
 export default function OwnerPeople() {
   const { user, loading: authLoading } = useAuth();
   const utils = trpc.useUtils();
@@ -154,10 +176,28 @@ export default function OwnerPeople() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmedPayload, setConfirmedPayload] = useState<ChangeCategoryInput | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [renameEditor, setRenameEditor] = useState<RenameEditorState | null>(null);
+  const [renameConfirmOpen, setRenameConfirmOpen] = useState(false);
+  const [confirmedRenamePayload, setConfirmedRenamePayload] = useState<RenameUserInput | null>(null);
+  const [renameSubmitError, setRenameSubmitError] = useState<string | null>(null);
 
   const peopleQuery = ownerPeopleApi.list.useQuery(undefined, {
     enabled: user?.role === "owner",
   });
+
+  const invalidatePeopleCaches = async () => {
+    await Promise.all([
+      utils.users.accessList.invalidate(),
+      utils.users.list.invalidate(),
+      utils.users.assignable.invalidate(),
+      utils.internalStaff.summary.invalidate(),
+      utils.internalStaff.assignments.invalidate(),
+      utils.responsibility.personal.invalidate(),
+      utils.ownerPeople.list.invalidate(),
+      utils.partners.list.invalidate(),
+      utils.auth.me.invalidate(),
+    ]);
+  };
 
   const changeCategory = ownerPeopleApi.changeCategory.useMutation({
     onSuccess: async () => {
@@ -165,19 +205,25 @@ export default function OwnerPeople() {
       setConfirmOpen(false);
       setEditor(null);
       setSubmitError(null);
-      await Promise.all([
-        utils.users.accessList.invalidate(),
-        utils.users.list.invalidate(),
-        utils.users.assignable.invalidate(),
-        utils.internalStaff.summary.invalidate(),
-        utils.internalStaff.assignments.invalidate(),
-        utils.responsibility.personal.invalidate(),
-        utils.ownerPeople.list.invalidate(),
-      ]);
+      await invalidatePeopleCaches();
     },
     onError: (error) => {
       setSubmitError(error.message);
       toast.error(`更新できませんでした: ${error.message}`);
+    },
+  });
+
+  const renameUser = ownerPeopleApi.renameUser.useMutation({
+    onSuccess: async (result) => {
+      toast.success(result.changed ? "登録名を更新しました。" : "登録名はすでに反映されています。");
+      setRenameConfirmOpen(false);
+      setRenameEditor(null);
+      setRenameSubmitError(null);
+      await invalidatePeopleCaches();
+    },
+    onError: (error) => {
+      setRenameSubmitError(error.message);
+      toast.error(`登録名を更新できませんでした: ${error.message}`);
     },
   });
 
@@ -189,7 +235,7 @@ export default function OwnerPeople() {
     if (!keyword) return people;
 
     return people.filter((person) => {
-      const searchable = [person.name ?? "", person.email ?? "", String(person.id)]
+      const searchable = [person.nameOverride ?? "", person.name ?? "", person.email ?? "", String(person.id)]
         .join(" ")
         .toLocaleLowerCase("ja-JP");
       return searchable.includes(keyword);
@@ -206,18 +252,29 @@ export default function OwnerPeople() {
   const selectedPartner = selectablePartners.find((partner) => partner.id === editor?.partnerId) ?? null;
   const editorAreas = editor?.allowedPrefectures ?? [];
   const isToPartner = editor?.nextRole === "partner";
-  const isToEmployee = editor?.nextRole === "user";
+  const isInternalRole = Boolean(editor && editor.nextRole !== "partner");
   const reasonLength = editor?.reason.trim().length ?? 0;
   const editorValid = Boolean(
     editor &&
       reasonLength >= 3 &&
       reasonLength <= 500 &&
       (editor.nextRole !== "partner" || editor.partnerId !== null) &&
-      (editor.nextRole !== "user" || editor.accessMode !== "selected" || editorAreas.length > 0),
+      (editor.nextRole === "partner" || editor.accessMode !== "selected" || editorAreas.length > 0),
+  );
+  const renameNameLength = renameEditor?.name.trim().length ?? 0;
+  const renameReasonLength = renameEditor?.reason.trim().length ?? 0;
+  const renameValid = Boolean(
+    renameEditor &&
+      renameNameLength >= 1 &&
+      renameNameLength <= 128 &&
+      renameReasonLength >= 3 &&
+      renameReasonLength <= 500,
   );
 
   const openEditor = (target: OwnerPerson) => {
-    const targetRole: "user" | "partner" = target.role === "partner" ? "user" : "partner";
+    if (target.role === "owner" || target.role === "customer" || target.id === user?.id) return;
+
+    const targetRole: EditableRole = target.role;
     const currentAreas = parseAllowedPrefectures(target.allowedPrefectures);
     const existingAvailableLink = partners.find(
       (partner) =>
@@ -236,6 +293,15 @@ export default function OwnerPeople() {
       reason: "",
     });
     setSubmitError(null);
+  };
+
+  const openRenameEditor = (target: OwnerPerson) => {
+    setRenameEditor({
+      user: target,
+      name: personName(target) === "名称未設定" ? "" : personName(target),
+      reason: "",
+    });
+    setRenameSubmitError(null);
   };
 
   const togglePrefecture = (prefecture: Prefecture, checked: boolean) => {
@@ -261,19 +327,55 @@ export default function OwnerPeople() {
       toast.error("担当会社のマスタを選択してください。");
       return;
     }
-    if (editor.nextRole === "user" && editor.accessMode === "selected" && editor.allowedPrefectures.length === 0) {
+    if (editor.nextRole !== "partner" && editor.accessMode === "selected" && editor.allowedPrefectures.length === 0) {
       toast.error("選択エリアの場合は、都道府県を1件以上選択してください。");
       return;
     }
 
     setSubmitError(null);
-    setConfirmedPayload({ userId: editor.user.id, expectedRole: editor.user.role, role: editor.nextRole, partnerId: editor.nextRole === "partner" ? editor.partnerId : null, expectedPartnerIds: editor.user.partnerLinks.map(link => link.id), staffAreaAccessMode: editor.nextRole === "user" ? editor.accessMode : "all", staffAllowedPrefectures: editor.nextRole === "user" ? [...editor.allowedPrefectures] : [], reason: editor.reason.trim() });
+    setConfirmedPayload({
+      userId: editor.user.id,
+      expectedRole: editor.user.role,
+      role: editor.nextRole,
+      partnerId: editor.nextRole === "partner" ? editor.partnerId : null,
+      expectedPartnerIds: editor.user.partnerLinks.map((link) => link.id),
+      staffAreaAccessMode: editor.nextRole === "partner" ? "all" : editor.accessMode,
+      staffAllowedPrefectures: editor.nextRole === "partner" ? [] : [...editor.allowedPrefectures],
+      reason: editor.reason.trim(),
+    });
     setConfirmOpen(true);
   };
 
   const executeChange = () => {
     if (!confirmedPayload || changeCategory.isPending) return;
     changeCategory.mutate(confirmedPayload);
+  };
+
+  const requestRenameConfirmation = () => {
+    if (!renameEditor) return;
+
+    if (renameNameLength < 1 || renameNameLength > 128) {
+      toast.error("登録名は1〜128文字で入力してください。");
+      return;
+    }
+    if (renameReasonLength < 3 || renameReasonLength > 500) {
+      toast.error("変更理由は3〜500文字で入力してください。");
+      return;
+    }
+
+    setRenameSubmitError(null);
+    setConfirmedRenamePayload({
+      userId: renameEditor.user.id,
+      expectedName: renameEditor.user.name,
+      name: renameEditor.name.trim(),
+      reason: renameEditor.reason.trim(),
+    });
+    setRenameConfirmOpen(true);
+  };
+
+  const executeRename = () => {
+    if (!confirmedRenamePayload || renameUser.isPending) return;
+    renameUser.mutate(confirmedRenamePayload);
   };
 
   if (authLoading) {
@@ -306,9 +408,9 @@ export default function OwnerPeople() {
     <div className="mx-auto max-w-7xl space-y-6" aria-label="利用者区分変更">
       <PageHeader
         eyebrow="OWNER CONTROL"
-        title="利用者区分の変更"
+        title="利用者管理"
         icon={<Users className="h-6 w-6 text-primary" />}
-        description="社員と協力業者の区分を変更します。既存案件の担当・業者情報は自動移管しません。金額の表示範囲が変わるため、必ず確認画面で内容を確認してください。"
+        description="登録名と利用者区分を管理します。既存案件の担当・業者情報は自動移管しません。金額の表示範囲が変わるため、必ず確認画面で内容を確認してください。"
         actions={
           <Button
             variant="outline"
@@ -328,8 +430,11 @@ export default function OwnerPeople() {
           <div>
             <p className="font-semibold">変更前に確認してください</p>
             <p className="mt-1 text-amber-900/90">
-              協力業者は引き続き全案件の概要を閲覧できますが、編集は担当会社の案件だけとなり、金額・社内情報は非公開になります。協力業者を社員にすると金額非公開の社員となり、閲覧エリアを指定します。役員・管理者を協力業者に変更すると、その役割も失われます。
+              協力業者は引き続き全案件の概要を閲覧できますが、編集は担当会社の案件だけとなり、金額・社内情報は非公開になります。社員・協力業者は金額を閲覧できません。管理者・役員は金額を閲覧できますが、利益は閲覧できません。管理者は全エリア、社員・役員は閲覧エリアを指定できます。
             </p>
+            <a href="/owner-partners" className="mt-2 inline-flex font-medium text-amber-950 underline underline-offset-4">
+              協力会社の登録名やログイン担当の入替
+            </a>
           </div>
         </CardContent>
       </Card>
@@ -385,6 +490,7 @@ export default function OwnerPeople() {
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {filteredPeople.map((person) => {
             const isLocked = person.role === "owner" || person.role === "customer";
+            const isSelf = person.id === user?.id;
             const isPartner = person.role === "partner";
             const areas = parseAllowedPrefectures(person.allowedPrefectures);
             return (
@@ -425,22 +531,34 @@ export default function OwnerPeople() {
                     </div>
                   </div>
 
-                  <div className="mt-5 flex items-center justify-between gap-2">
-                    {isLocked ? (
-                      <span className="text-xs text-muted-foreground">{person.role === "owner" ? "最高管理者は変更できません" : "顧客はこの画面では変更できません"}</span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">{isPartner ? "社員へ変更" : "協力業者へ変更"}</span>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="shrink-0 bg-background"
-                      disabled={isLocked}
-                      onClick={() => openEditor(person)}
-                    >
-                      <Settings2 className="mr-1.5 h-3.5 w-3.5" />
-                      変更
-                    </Button>
+                  <div className="mt-5 space-y-2 border-t pt-3">
+                    <p className="text-xs text-muted-foreground">
+                      {isSelf
+                        ? "自分自身の役割は変更できません"
+                        : isLocked
+                          ? person.role === "owner" ? "最高管理者の役割は変更できません" : "顧客の役割は変更できません"
+                          : isPartner ? "協力業者・社員・管理者・役員から選択できます" : "社員・管理者・役員・協力業者から選択できます"}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="bg-background"
+                        onClick={() => openRenameEditor(person)}
+                      >
+                        登録名を変更
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="bg-background"
+                        disabled={isLocked || isSelf}
+                        onClick={() => openEditor(person)}
+                      >
+                        <Settings2 className="mr-1.5 h-3.5 w-3.5" />
+                        役割を変更
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -462,7 +580,7 @@ export default function OwnerPeople() {
         <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto" showCloseButton={!changeCategory.isPending}>
           <DialogHeader>
             <DialogTitle>利用者区分を変更</DialogTitle>
-            <DialogDescription>保存はまだ行いません。内容を入力後、確認画面で確定します。</DialogDescription>
+            <DialogDescription>保存はまだ行いません。社員・管理者・役員・協力業者から選択後、確認画面で確定します。</DialogDescription>
           </DialogHeader>
 
           {editor && (
@@ -478,6 +596,28 @@ export default function OwnerPeople() {
                   <ArrowRight className="h-4 w-4 text-muted-foreground" />
                   <Badge variant="outline" className={ROLE_BADGE_CLASS[editor.nextRole]}>{ROLE_LABELS[editor.nextRole]}</Badge>
                 </div>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="next-role">変更後の利用者区分 <span className="text-destructive">*</span></Label>
+                <Select
+                  value={editor.nextRole}
+                  onValueChange={(value) => setEditor((current) => current ? {
+                    ...current,
+                    nextRole: value as EditableRole,
+                    partnerId: value === "partner" ? current.partnerId : null,
+                    accessMode: value === "admin" ? "all" : current.accessMode,
+                  } : current)}
+                >
+                  <SelectTrigger id="next-role" className="w-full bg-background"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="user">社員</SelectItem>
+                    <SelectItem value="admin">管理者</SelectItem>
+                    <SelectItem value="executive">役員</SelectItem>
+                    <SelectItem value="partner">協力業者</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">{roleAccessSummary(editor.nextRole)}</p>
               </div>
 
               {isToPartner && (
@@ -504,14 +644,15 @@ export default function OwnerPeople() {
                 </div>
               )}
 
-              {isToEmployee && (
+              {isInternalRole && (
                 <div className="space-y-4 rounded-lg border border-blue-200 bg-blue-50/40 p-4">
                   <div>
-                    <Label>社員としての閲覧エリア <span className="text-destructive">*</span></Label>
-                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">社員の金額は非公開です。閲覧対象を明示してください。旧業者案件はこの社員へ移しません。</p>
+                    <Label>{ROLE_LABELS[editor.nextRole]}としての閲覧エリア <span className="text-destructive">*</span></Label>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{roleAccessSummary(editor.nextRole)} 閲覧対象を明示してください。旧業者案件は社内案件へ移しません。</p>
                   </div>
                   <Select
                     value={editor.accessMode}
+                    disabled={editor.nextRole === "admin"}
                     onValueChange={(value) => setEditor((current) => current ? { ...current, accessMode: value as AccessMode } : current)}
                   >
                     <SelectTrigger className="w-full bg-background"><SelectValue /></SelectTrigger>
@@ -606,14 +747,18 @@ export default function OwnerPeople() {
               </div>
               <div className="grid gap-1 border-t pt-3">
                 <span className="text-xs text-muted-foreground">マスタ紐付け</span>
-                <span>{partnerLinkText(editor.user.partnerLinks)} <ArrowRight className="mx-1 inline h-3.5 w-3.5" /> {editor.nextRole === "partner" ? (selectedPartner?.name ?? "未選択") : "解除（社員へ変更）"}</span>
+                <span>{partnerLinkText(editor.user.partnerLinks)} <ArrowRight className="mx-1 inline h-3.5 w-3.5" /> {editor.nextRole === "partner" ? (selectedPartner?.name ?? "未選択") : `解除（${ROLE_LABELS[editor.nextRole]}へ変更）`}</span>
               </div>
-              {editor.nextRole === "user" && (
+              {editor.nextRole !== "partner" && (
                 <div className="grid gap-1 border-t pt-3">
-                  <span className="text-xs text-muted-foreground">社員の閲覧エリア（料金は非公開）</span>
+                  <span className="text-xs text-muted-foreground">{ROLE_LABELS[editor.nextRole]}の閲覧エリア</span>
                   <span>{areaSummary(editor.accessMode, editor.allowedPrefectures)}</span>
                 </div>
               )}
+              <div className="grid gap-1 border-t pt-3">
+                <span className="text-xs text-muted-foreground">金額・利益の表示</span>
+                <span>{roleAccessSummary(editor.nextRole)}</span>
+              </div>
               <div className="grid gap-1 border-t pt-3">
                 <span className="text-xs text-muted-foreground">変更理由</span>
                 <span className="whitespace-pre-wrap break-words">{editor.reason.trim()}</span>
@@ -632,6 +777,118 @@ export default function OwnerPeople() {
             <AlertDialogCancel disabled={changeCategory.isPending}>キャンセル</AlertDialogCancel>
             <Button onClick={executeChange} disabled={!editorValid || changeCategory.isPending}>
               {changeCategory.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />更新中…</> : "変更を確定する"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog
+        open={renameEditor !== null}
+        onOpenChange={(open) => {
+          if (!open && !renameUser.isPending) {
+            setRenameConfirmOpen(false);
+            setRenameEditor(null);
+            setRenameSubmitError(null);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto" showCloseButton={!renameUser.isPending}>
+          <DialogHeader>
+            <DialogTitle>登録名を変更</DialogTitle>
+            <DialogDescription>保存はまだ行いません。対象者と旧名・新名を確認してから確定します。</DialogDescription>
+          </DialogHeader>
+
+          {renameEditor && (
+            <fieldset className="space-y-5" disabled={renameConfirmOpen || renameUser.isPending}>
+              <div className="rounded-lg border bg-muted/35 p-4 text-sm">
+                <div className="grid gap-1">
+                  <strong>{personName(renameEditor.user)}</strong>
+                  <span className="font-mono text-xs text-muted-foreground">対象ID: {renameEditor.user.id}</span>
+                  <span className="text-xs text-muted-foreground">{renameEditor.user.email ?? "メールアドレス未設定"}</span>
+                </div>
+                <div className="mt-3 grid gap-1 border-t pt-3">
+                  <span className="text-xs text-muted-foreground">旧名</span>
+                  <span className="break-words">{personName(renameEditor.user)}</span>
+                </div>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="rename-name">新しい登録名 <span className="text-destructive">*</span></Label>
+                <Input
+                  id="rename-name"
+                  value={renameEditor.name}
+                  onChange={(event) => setRenameEditor((current) => current ? { ...current, name: event.target.value } : current)}
+                  maxLength={128}
+                  placeholder="登録名を入力"
+                />
+                <p className={`text-xs ${renameNameLength > 0 && (renameNameLength < 1 || renameNameLength > 128) ? "text-destructive" : "text-muted-foreground"}`}>1〜128文字（現在 {renameNameLength}文字）</p>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="rename-reason">変更理由 <span className="text-destructive">*</span></Label>
+                <Textarea
+                  id="rename-reason"
+                  value={renameEditor.reason}
+                  onChange={(event) => setRenameEditor((current) => current ? { ...current, reason: event.target.value } : current)}
+                  maxLength={500}
+                  rows={3}
+                  placeholder="例：登録情報を最新の氏名・会社名に更新するため"
+                />
+                <p className={`text-xs ${renameReasonLength > 0 && (renameReasonLength < 3 || renameReasonLength > 500) ? "text-destructive" : "text-muted-foreground"}`}>3〜500文字（現在 {renameReasonLength}文字）</p>
+              </div>
+            </fieldset>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" className="bg-background" disabled={renameUser.isPending} onClick={() => setRenameEditor(null)}>キャンセル</Button>
+            <Button disabled={!renameValid || renameUser.isPending} onClick={requestRenameConfirmation}>
+              内容を確認
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={renameConfirmOpen}
+        onOpenChange={(open) => {
+          if (!renameUser.isPending) setRenameConfirmOpen(open);
+        }}
+      >
+        <AlertDialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
+          <AlertDialogHeader>
+            <AlertDialogTitle>この内容で登録名を変更しますか？</AlertDialogTitle>
+            <AlertDialogDescription>ユーザーID、メールアドレス、旧名と新名を確認してから確定してください。</AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {renameEditor && (
+            <div className="space-y-4 rounded-lg border bg-muted/30 p-4 text-sm">
+              <div className="grid gap-1">
+                <span className="text-xs text-muted-foreground">対象</span>
+                <span className="font-mono text-xs">対象ID: {renameEditor.user.id}</span>
+                <span className="text-xs">{renameEditor.user.email ?? "メールアドレス未設定"}</span>
+              </div>
+              <div className="grid gap-1 border-t pt-3">
+                <span className="text-xs text-muted-foreground">登録名</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="break-words">{personName(renameEditor.user)}</span>
+                  <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <strong className="break-words">{renameEditor.name.trim()}</strong>
+                </div>
+              </div>
+              <div className="grid gap-1 border-t pt-3">
+                <span className="text-xs text-muted-foreground">変更理由</span>
+                <span className="whitespace-pre-wrap break-words">{renameEditor.reason.trim()}</span>
+              </div>
+            </div>
+          )}
+
+          {renameSubmitError && <p role="alert" className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{renameSubmitError}</p>}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={renameUser.isPending}>キャンセル</AlertDialogCancel>
+            <Button onClick={executeRename} disabled={!renameValid || renameUser.isPending}>
+              {renameUser.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />更新中…</> : "登録名の変更を確定する"}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

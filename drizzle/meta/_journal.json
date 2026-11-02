@@ -386,6 +386,13 @@
       "when": 1793588277359,
       "tag": "0054_faithful_red_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "5",
+      "when": 1793627616718,
+      "tag": "0055_solid_slayback",
+      "breakpoints": true
     }
   ]
 }

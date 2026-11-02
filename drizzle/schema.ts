@@ -7,6 +7,7 @@ export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
+  nameOverride: varchar("name_override", { length: 128 }), // 最高管理者が設定した登録表示名。OAuth再取得で上書きしない
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["user", "executive", "admin", "owner", "partner", "customer"]).default("user").notNull(),
@@ -17,7 +18,7 @@ export const users = mysqlTable("users", {
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
-export type User = typeof users.$inferSelect;
+export type User = Omit<typeof users.$inferSelect, "nameOverride"> & { nameOverride?: string | null };
 export type InsertUser = typeof users.$inferInsert;
 
 /**
@@ -1250,7 +1251,7 @@ export const caseInternalMemos = mysqlTable("case_internal_memos", {
 /** 最高管理者による担当情報・利用者区分の変更監査。元の案件/PDFや履歴とは独立。 */
 export const ownerManagementLogs = mysqlTable("owner_management_logs", {
   id: int("id").autoincrement().primaryKey(),
-  kind: mysqlEnum("kind", ["user_category", "case_assignment"]).notNull(),
+  kind: mysqlEnum("kind", ["user_category", "case_assignment", "user_profile", "partner_profile"]).notNull(),
   targetId: int("target_id").notNull(),
   beforeJson: text("before_json").notNull(),
   afterJson: text("after_json").notNull(),

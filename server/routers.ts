@@ -627,7 +627,13 @@ export const appRouter = router({
   internalMemo: caseInternalMemoRouter,
   internalStaff: internalStaffRouter,
   auth: router({
-    me: publicProcedure.query((opts) => opts.ctx.user),
+    me: publicProcedure.query(async ({ctx}) => {
+      if (!ctx.user) return null;
+      const partnerAccessKey = ctx.user.role === 'partner'
+        ? (await listPartners()).filter(p => p.userId === ctx.user!.id).map(p => p.id).sort((a,b) => a-b).join(',')
+        : '';
+      return {...ctx.user, partnerAccessKey};
+    }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -1095,6 +1101,7 @@ export const appRouter = router({
       return buildCaseAssigneeRoster(users.map((user) => ({
         id: user.id,
         name: user.name,
+        nameOverride: user.nameOverride,
         email: user.email,
         areaAccessMode: user.areaAccessMode,
         allowedPrefectures: user.allowedPrefectures,
@@ -1125,8 +1132,8 @@ export const appRouter = router({
         if (input.role !== target.role && ctx.user.role !== "owner") {
           throw new TRPCError({ code: "FORBIDDEN", message: "役割の変更は最高管理者のみ実行できます。管理者は閲覧エリアのみ変更できます" });
         }
-        if (input.role !== target.role && (input.role === "partner" || target.role === "partner")) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "社内／協力業者の区分変更は最高管理者の利用者区分管理から確認して実行してください" });
+        if (input.role !== target.role) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "役割変更は最高管理者の利用者区分管理から確認・理由記録付きで実行してください" });
         }
         if (ctx.user.id === input.id && !["admin", "owner"].includes(input.role)) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "自分自身の管理者権限は解除できません" });

@@ -209,7 +209,7 @@ export default function Partners() {
       isActive: form.isActive,
     };
     if (editingId) {
-      updateMut.mutate({ id: editingId, data: { ...payload, userId: form.userId } });
+      updateMut.mutate({ id: editingId, data: payload });
     } else {
       createMut.mutate(payload);
     }
@@ -340,15 +340,10 @@ export default function Partners() {
               </div>
               {editingId && (
                 <div className="grid gap-2">
-                  <Label>ログインユーザー紐付け（userId）</Label>
-                  <Input
-                    type="number"
-                    placeholder="ユーザーIDを入力（空欄で解除）"
-                    value={form.userId ?? ""}
-                    onChange={(e) => setForm({ ...form, userId: e.target.value ? Number(e.target.value) : null })}
-                  />
+                  <Label>現在のログインユーザーID</Label>
+                  <p className="text-sm">{form.userId ?? "未紐付け"}</p>
                   <p className="text-[11px] text-muted-foreground">
-                    この協力会社を特定のログインユーザーと紐付けると、そのユーザーが「協力業者」ロールでログインした際に担当案件のみ表示されます。
+                    ログイン担当の入替・解除は最高管理者の「協力会社の入替管理」で確認付きで行います。既存案件の編集権限にも反映されます。
                   </p>
                 </div>
               )}

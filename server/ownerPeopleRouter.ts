@@ -25,7 +25,7 @@ export const ownerPeopleRouter = router({
   list: ownerOnly.query(async () => {
     const db = await getDb(); if (!db) throw new TRPCError({ code:'INTERNAL_SERVER_ERROR' });
     const [allUsers, allPartners, allCases] = await Promise.all([
-      db.select({ id: users.id, name: users.name, email: users.email, role: users.role, areaAccessMode: users.areaAccessMode, allowedPrefectures: users.allowedPrefectures }).from(users),
+      db.select({ id: users.id, name: users.name, nameOverride: users.nameOverride, email: users.email, role: users.role, areaAccessMode: users.areaAccessMode, allowedPrefectures: users.allowedPrefectures }).from(users),
       db.select({ id: partners.id, name: partners.name, isActive: partners.isActive, userId: partners.userId }).from(partners),
       db.select({ assigneeId: cases.assigneeId, partnerId: cases.partnerId, status: cases.status }).from(cases),
     ]);
@@ -36,15 +36,15 @@ export const ownerPeopleRouter = router({
     }), partners: allPartners };
   }),
   changeCategory: ownerOnly.input(z.object({
-    userId: z.number().int().positive(), expectedRole: z.enum(APP_ROLES), role: z.enum(['user','partner']),
+    userId: z.number().int().positive(), expectedRole: z.enum(APP_ROLES), role: z.enum(['user','admin','executive','partner']),
     partnerId: z.number().int().positive().nullable(), expectedPartnerIds: z.array(z.number().int().positive()).max(100),
     staffAreaAccessMode: z.enum(['all','selected']), staffAllowedPrefectures: z.array(z.enum(PREFECTURES)).max(PREFECTURES.length),
     reason: z.string().trim().min(3, '変更理由を3文字以上入力してください').max(500),
   })).mutation(async ({ ctx, input }) => {
     if (input.userId === ctx.user.id) throw new TRPCError({ code:'FORBIDDEN', message:'自分自身の最高管理者権限は変更できません' });
     if (input.role==='partner' && input.partnerId===null) throw new TRPCError({ code:'BAD_REQUEST', message:'担当会社を選択してください' });
-    if (input.role==='user' && input.partnerId!==null) throw new TRPCError({ code:'BAD_REQUEST', message:'社員へ変更する場合、業者紐付けを解除してください' });
-    if (input.role==='user' && input.staffAreaAccessMode==='selected' && input.staffAllowedPrefectures.length===0) throw new TRPCError({ code:'BAD_REQUEST', message:'社員の閲覧エリアを選択してください' });
+    if (input.role!=='partner' && input.partnerId!==null) throw new TRPCError({ code:'BAD_REQUEST', message:'社内へ変更する場合、業者紐付けを解除してください' });
+    if (['user','executive'].includes(input.role) && input.staffAreaAccessMode==='selected' && input.staffAllowedPrefectures.length===0) throw new TRPCError({ code:'BAD_REQUEST', message:'閲覧エリアを選択してください' });
     const db=await getDb(); if(!db) throw new TRPCError({code:'INTERNAL_SERVER_ERROR'});
     return db.transaction(async tx=>{
       const [target]=await tx.select().from(users).where(eq(users.id,input.userId)).for('update');
@@ -57,7 +57,7 @@ export const ownerPeopleRouter = router({
       const selected=input.partnerId===null ? null : involved.find(p=>p.id===input.partnerId);
       if(input.role==='partner' && (!selected || !selected.isActive)) throw new TRPCError({code:'BAD_REQUEST',message:'有効な協力会社を選択してください'});
       if(selected && selected.userId!==null && selected.userId!==target.id) throw new TRPCError({code:'CONFLICT',message:'この協力会社は別のユーザーに紐付いています。自動で入れ替えることはできません'});
-      const areaAccessMode=input.role==='partner'?'all':input.staffAreaAccessMode;
+      const areaAccessMode=['partner','admin'].includes(input.role)?'all':input.staffAreaAccessMode;
       const allowedPrefectures=JSON.stringify(areaAccessMode==='selected'?Array.from(new Set(input.staffAllowedPrefectures)):[]);
       const before={role:target.role,areaAccessMode:target.areaAccessMode,allowedPrefectures:target.allowedPrefectures,partnerIds:oldLinks.map(p=>p.id).sort((a,b)=>a-b)};
       const after={role:input.role,areaAccessMode,allowedPrefectures,partnerIds:input.role==='partner'?[input.partnerId!]:[]};
@@ -94,7 +94,41 @@ export const ownerPeopleRouter = router({
       return {success:true,changed:true};
     });
   }),
-  history: ownerOnly.input(z.object({kind:z.enum(['user_category','case_assignment']),targetId:z.number().int().positive()})).query(async({input})=>{
+  renameUser: ownerOnly.input(z.object({userId:z.number().int().positive(),expectedName:z.string().nullable(),name:z.string().trim().min(1).max(128),reason:z.string().trim().min(3).max(500)})).mutation(async({ctx,input})=>{
+    const db=await getDb();if(!db)throw new TRPCError({code:'INTERNAL_SERVER_ERROR'});
+    return db.transaction(async tx=>{
+      const [target]=await tx.select().from(users).where(eq(users.id,input.userId)).for('update');
+      if(!target)throw new TRPCError({code:'NOT_FOUND'});
+      if(target.name!==input.expectedName)throw new TRPCError({code:'CONFLICT',message:'登録名が変更されています。最新情報を確認してください'});
+      if(target.name===input.name&&target.nameOverride===input.name)return {success:true,changed:false};
+      await tx.update(users).set({name:input.name,nameOverride:input.name}).where(eq(users.id,target.id));
+      await tx.insert(ownerManagementLogs).values({kind:'user_profile',targetId:target.id,beforeJson:JSON.stringify({name:target.name,nameOverride:target.nameOverride}),afterJson:JSON.stringify({name:input.name,nameOverride:input.name}),reason:input.reason,changedBy:ctx.user.id,changedByName:(ctx.user.name??`User #${ctx.user.id}`).slice(0,128)});
+      return {success:true,changed:true};
+    });
+  }),
+  companies: ownerOnly.query(async()=>{
+    const db=await getDb();if(!db)throw new TRPCError({code:'INTERNAL_SERVER_ERROR'});
+    const [companies,people,rows]=await Promise.all([db.select({id:partners.id,name:partners.name,isActive:partners.isActive,userId:partners.userId}).from(partners),db.select({id:users.id,name:users.name,email:users.email,role:users.role}).from(users),db.select({partnerId:cases.partnerId,status:cases.status}).from(cases)]);
+    return {companies:companies.map(p=>({...p,totalCases:rows.filter(c=>c.partnerId===p.id).length,activeCases:rows.filter(c=>c.partnerId===p.id&&isActive(c.status)).length})),users:people};
+  }),
+  updateCompany: ownerOnly.input(z.object({partnerId:z.number().int().positive(),expected:z.object({name:z.string(),isActive:z.boolean(),userId:z.number().int().positive().nullable()}),next:z.object({name:z.string().trim().min(1).max(255),isActive:z.boolean(),userId:z.number().int().positive().nullable()}),reason:z.string().trim().min(3).max(500)})).mutation(async({ctx,input})=>{
+    const db=await getDb();if(!db)throw new TRPCError({code:'INTERNAL_SERVER_ERROR'});
+    return db.transaction(async tx=>{
+      const [company]=await tx.select().from(partners).where(eq(partners.id,input.partnerId)).for('update');
+      if(!company)throw new TRPCError({code:'NOT_FOUND'});
+      const before={name:company.name,isActive:company.isActive,userId:company.userId};
+      if(JSON.stringify(before)!==JSON.stringify(input.expected))throw new TRPCError({code:'CONFLICT',message:'協力会社情報が変更されています。最新情報を再確認してください'});
+      if(input.next.userId!==null&&input.next.userId!==company.userId){
+        const [person]=await tx.select().from(users).where(eq(users.id,input.next.userId)).for('update');
+        if(!person||person.role!=='partner')throw new TRPCError({code:'BAD_REQUEST',message:'協力業者区分のログイン利用者を選択してください。社員・管理者の自動降格は行いません'});
+      }
+      if(JSON.stringify(before)===JSON.stringify(input.next))return {success:true,changed:false};
+      await tx.update(partners).set(input.next).where(eq(partners.id,company.id));
+      await tx.insert(ownerManagementLogs).values({kind:'partner_profile',targetId:company.id,beforeJson:JSON.stringify(before),afterJson:JSON.stringify(input.next),reason:input.reason,changedBy:ctx.user.id,changedByName:(ctx.user.name??`User #${ctx.user.id}`).slice(0,128)});
+      return {success:true,changed:true};
+    });
+  }),
+  history: ownerOnly.input(z.object({kind:z.enum(['user_category','case_assignment','user_profile','partner_profile']),targetId:z.number().int().positive()})).query(async({input})=>{
     const db=await getDb();if(!db)throw new TRPCError({code:'INTERNAL_SERVER_ERROR'});
     return db.select().from(ownerManagementLogs).where(and(eq(ownerManagementLogs.kind,input.kind),eq(ownerManagementLogs.targetId,input.targetId))).orderBy(desc(ownerManagementLogs.id)).limit(50);
   }),

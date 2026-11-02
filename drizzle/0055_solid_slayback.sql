@@ -1,0 +1,2 @@
+ALTER TABLE `owner_management_logs` MODIFY COLUMN `kind` enum('user_category','case_assignment','user_profile','partner_profile') NOT NULL;--> statement-breakpoint
+ALTER TABLE `users` ADD `name_override` varchar(128);

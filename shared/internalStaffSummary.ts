@@ -15,8 +15,8 @@ export function buildInternalStaffGroups(users: RosterUser[], bindings: Record<s
     const legacy = !internal || isExcludedCaseAssignee(user.id);
     const key = !legacy && officerKey ? `officer:${officerKey}` : `user:${user.id}`;
     const current = groups.get(key);
-    if (current) current.userIds.push(user.id);
-    else groups.set(key, { key, name: !legacy && officerKey ? officerName(officerKey) : user.name || `User #${user.id}`,
+    if (current) { current.userIds.push(user.id); if (user.nameOverride) current.name = user.nameOverride; }
+    else groups.set(key, { key, name: user.nameOverride || (!legacy && officerKey ? officerName(officerKey) : user.name || `User #${user.id}`),
       userIds: [user.id], canAssign: !legacy, pending: false, legacy });
   }
   if (!groups.has('officer:kihara')) groups.set('officer:kihara', {key:'officer:kihara',name:'木原 新',userIds:[],canAssign:false,pending:true,legacy:false});

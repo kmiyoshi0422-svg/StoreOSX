@@ -57,6 +57,7 @@ const AccessManagement = lazy(() => import("./pages/AccessManagement"));
 const MyCases = lazy(() => import("./pages/MyCases"));
 const InternalStaff = lazy(() => import("./pages/InternalStaff"));
 const OwnerPeople = lazy(() => import("./pages/OwnerPeople"));
+const OwnerPartners = lazy(() => import("./pages/OwnerPartners"));
 import { PermissionRefreshBoundary } from "./components/PermissionRefreshBoundary";
 
 // ─── Loading fallback ─────────────────────────────────────
@@ -86,6 +87,7 @@ function Router() {
                 <Route path={"/cases"} component={CasesList} />
                 <Route path={"/my-cases"} component={MyCases} />
                 <Route path={"/settings/people"} component={OwnerPeople} />
+                <Route path={"/owner-partners"} component={OwnerPartners} />
                 <Route path={"/internal-staff"} component={InternalStaff} />
                 <Route path={"/cases/new"} component={CaseNew} />
                 <Route path={"/cases/import"} component={CsvImport} />

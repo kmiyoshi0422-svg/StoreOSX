@@ -65,7 +65,8 @@ const menuItems: MenuItem[] = [
   { icon: BookMarked, label: "全角化除外辞書", path: "/settings/exclusions", hideForPartner: true, hideForCustomer: true },
   { icon: Sparkles, label: "所感AI設定", path: "/settings/impression", hideForPartner: true, hideForCustomer: true },
   { icon: ShieldCheck, label: "役割・閲覧エリア", path: "/settings/access", adminOnly: true },
-  { icon: ShieldCheck, label: "利用者区分の変更", path: "/settings/people", ownerOnly: true },
+  { icon: ShieldCheck, label: "利用者・登録名・役割管理", path: "/settings/people", ownerOnly: true },
+  { icon: Building2, label: "協力会社の入替管理", path: "/owner-partners", ownerOnly: true },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";

@@ -131,7 +131,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       if (value === undefined) return;
       const normalized = value ?? null;
       values[field] = normalized;
-      updateSet[field] = normalized;
+      updateSet[field] = field === 'name' ? sql`COALESCE(${users.nameOverride}, ${normalized})` : normalized;
     };
 
     textFields.forEach(assignNullable);
