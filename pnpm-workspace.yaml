@@ -1,0 +1,14 @@
+packages:
+  - '.'
+
+# Preserve the existing Manus router patch and build dependency setting.
+patchedDependencies:
+  wouter@3.7.1: patches/wouter@3.7.1.patch
+
+overrides:
+  tailwindcss>nanoid: 3.3.7
+  # Security fixes: same major versions; do not suppress audit advisories.
+  dompurify: 3.4.17
+  fast-xml-parser: 5.11.2
+  proxy-addr: 2.0.8
+  tar: 7.5.22
