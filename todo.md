@@ -1613,7 +1613,7 @@
 - [x] 現行lockfile監査でcritical 7件を再現し、6ライブラリの経路と公式修正版を特定。GitHub Dependabot詳細APIは403のため個別警告との照合・閉鎖確認は未検証と区別する
 - [x] DOMPurify 3.4.17・fast-xml-parser 5.11.2・proxy-addr 2.0.8・tar 7.5.22へ同一メジャー更新。Vitest 4.1.10で旧Tinypool依存2警告ごと除去。pnpm10.4／新環境双方の同一解決設定と既存Wouterパッチを維持。dismiss・監査除外・DB変更・実利用者権限変更なし
 - [x] 再監査critical 7→0（high65→51・moderate98→68・low21→8）。pnpm audit:criticalと監査不能時エラーを追加、凍結lock再インストール成功。既存72ファイル643テスト＋追加セキュリティ4テスト・型・本番ビルド成功。写真入り現調／完了PDFの390px保存・手入力owner／社員のPC／390px保存を実画面確認。実案件678件全列・会社49件全列・44ユーザーの権限／名前／業者リンクを保持、ログイン時刻のみ更新。テスト残存0
-- [x] df4035b3をGitHub StoreOSX mainへ同期し既存ドメインへ公開、デプロイ成功通知を確認。index-DkHDBnsu.js／CaseNew-D06-uPtm.js／CaseDetail-DALE-Rhy.js／CaseReport-Dxf_A0Za.js／CompletionReport-Bp0O4egK.js／PdfPreviewModal-DldMRgce.js／vendor-pdf-qUOlKPGf.jsは全7ファイル200・JavaScript・SHA256一致。開発サービスも再起動し認証API正常。GitHub push表示の重大7件は当時なお残存、個別Dependabot詳細は403で閉鎖未確認と明記し、ローカルcritical0と混同しない。高51等は別途対応
+- [x] df4035b3をGitHub StoreOSX mainへ同期し既存ドメインへ公開、デプロイ成功通知を確認。index-DkHDBnsu.js／CaseNew-D06-uPtm.js／CaseDetail-DALE-Rhy.js／CaseReport-Dxf_A0Za.js／CompletionReport-Bp0O4egK.js／PdfPreviewModal-DldMRgce.js／vendor-pdf-qUOlKPGf.jsは全7ファイル200・JavaScript・SHA256一致。開発サービスも再起動し認証API正常。最終記録68f942c0のpushでGitHub再集計127件（high50・moderate69・low8、critical0）を確認し、当初の重大7件表示から解消。個別API詳細は403で未取得、GitHub集計とローカル監査（high51・moderate68・low8）は別の集計として記録
 ## 手入力の案件登録ができない追加申告（2026-11-03）
 - [x] PDFとは別経路でCaseNew→登録API→DB保存を確認。最高管理者PC・社員390pxでAPI200・詳細遷移・保存済み合成2案件を確認し関連データごと清掃。セキュリティ修正版でも登録成功、実案件の代理登録や不要な業務ロジック変更はしない
 - [ ] 今回の実画面のエラー文／スクリーンショット、依頼番号・店舗名の確認待ち。現在は再現せず原因未特定のため、手入力登録障害を修正済みとは断定しない
