@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, FilePlus, ClipboardList, Upload, Wallet, BarChart3, Briefcase, FileSearch, FileText, Users, Building2, Gauge, Receipt, TrendingUp, MapPinned, Images, BookMarked, Sparkles, Droplets, Library, GanttChart, Activity, List, SendHorizontal, CheckCircle2, FileClock, ShieldCheck, Calculator } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, FilePlus, ClipboardList, Upload, Wallet, BarChart3, Briefcase, FileSearch, FileText, Users, Building2, Gauge, Receipt, TrendingUp, MapPinned, Images, BookMarked, Sparkles, Droplets, Library, GanttChart, Activity, List, SendHorizontal, CheckCircle2, FileClock, ShieldCheck, Calculator, Smartphone } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -64,6 +64,7 @@ const menuItems: MenuItem[] = [
   { icon: Activity, label: "効果測定", path: "/effectiveness", financialOnly: true },
   { icon: BookMarked, label: "全角化除外辞書", path: "/settings/exclusions", hideForPartner: true, hideForCustomer: true },
   { icon: Sparkles, label: "所感AI設定", path: "/settings/impression", hideForPartner: true, hideForCustomer: true },
+  { icon: Smartphone, label: "モバイル連携端末", path: "/settings/mobile-devices" },
   { icon: ShieldCheck, label: "役割・閲覧エリア", path: "/settings/access", adminOnly: true },
   { icon: ShieldCheck, label: "利用者・登録名・役割管理", path: "/settings/people", ownerOnly: true },
   { icon: Users, label: "社員追加・退職管理", path: "/settings/staff", ownerOnly: true },

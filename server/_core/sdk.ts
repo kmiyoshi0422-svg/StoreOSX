@@ -6,6 +6,11 @@ import type { Request } from "express";
 import { SignJWT, jwtVerify } from "jose";
 import type { User } from "../../drizzle/schema";
 import * as db from "../db";
+import {
+  authenticateMobileAccessToken,
+  drizzleMobileAuthStore,
+  selectAuthCredential,
+} from "../mobileAuth";
 import { ENV } from "./env";
 import type {
   ExchangeTokenRequest,
@@ -257,6 +262,16 @@ class SDKServer {
   }
 
   async authenticateRequest(req: Request): Promise<AuthenticatedUser> {
+    // モバイルアプリの端末トークン: セッション Cookie が無いときだけ使う（Cookie があれば従来どおり Cookie を優先）。
+    const credential = selectAuthCredential(req);
+    if (credential.kind === "mobile") {
+      const mobileUser = await authenticateMobileAccessToken(drizzleMobileAuthStore, credential.token);
+      if (!mobileUser) {
+        throw ForbiddenError("Invalid mobile access token");
+      }
+      return mobileUser;
+    }
+
     // Regular authentication flow
     const cookies = this.parseCookies(req.headers.cookie);
     const sessionCookie = cookies.get(COOKIE_NAME);

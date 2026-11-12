@@ -214,6 +214,7 @@ import { caseResponsibilityRouter } from "./caseResponsibilityRouter";
 import { caseDeadlineRouter } from "./caseDeadlineRouter";
 import { caseInternalMemoRouter } from "./caseInternalMemoRouter";
 import { internalStaffRouter } from "./internalStaffRouter";
+import { mobileDevicesRouter } from "./mobileDevicesRouter";
 import { OFFICER_KEYS } from "../shared/caseResponsibility";
 import { TRPCError } from "@trpc/server";
 import { adminProcedure, financialProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -628,6 +629,7 @@ export const appRouter = router({
   deadline: caseDeadlineRouter,
   internalMemo: caseInternalMemoRouter,
   internalStaff: internalStaffRouter,
+  mobileDevices: mobileDevicesRouter,
   auth: router({
     me: publicProcedure.query(async ({ctx}) => {
       if (!ctx.user) return null;

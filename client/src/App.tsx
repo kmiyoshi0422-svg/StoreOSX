@@ -59,7 +59,10 @@ const InternalStaff = lazy(() => import("./pages/InternalStaff"));
 const OwnerPeople = lazy(() => import("./pages/OwnerPeople"));
 const OwnerPartners = lazy(() => import("./pages/OwnerPartners"));
 const OwnerStaff = lazy(() => import("./pages/OwnerStaff"));
+const MobileLink = lazy(() => import("./pages/MobileLink"));
+const MobileDevices = lazy(() => import("./pages/MobileDevices"));
 import { PermissionRefreshBoundary } from "./components/PermissionRefreshBoundary";
+import MobileLinkResume from "./components/MobileLinkResume";
 
 // ─── Loading fallback ─────────────────────────────────────
 function PageLoader() {
@@ -79,6 +82,9 @@ function Router() {
           {(params) => <PartnerView token={String(params.token)} />}
         </Route>
 
+        {/* モバイルアプリの端末連携承認（サイドバーなし、未ログイン時は確認コードを保持してログインへ） */}
+        <Route path={"/mobile-link"} component={MobileLink} />
+
         {/* 社内向けダッシュボード */}
         <Route>
           <DashboardLayout>
@@ -89,6 +95,7 @@ function Router() {
                 <Route path={"/my-cases"} component={MyCases} />
                 <Route path={"/settings/people"} component={OwnerPeople} />
                 <Route path={"/settings/staff"} component={OwnerStaff} />
+                <Route path={"/settings/mobile-devices"} component={MobileDevices} />
                 <Route path={"/owner-partners"} component={OwnerPartners} />
                 <Route path={"/internal-staff"} component={InternalStaff} />
                 <Route path={"/cases/new"} component={CaseNew} />
@@ -186,7 +193,10 @@ function App() {
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <Toaster />
-          <PermissionRefreshBoundary><Router /></PermissionRefreshBoundary>
+          <PermissionRefreshBoundary>
+            <MobileLinkResume />
+            <Router />
+          </PermissionRefreshBoundary>
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

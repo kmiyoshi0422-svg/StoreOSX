@@ -8,6 +8,7 @@ import { registerStorageProxy } from "./storageProxy";
 import { registerCalendarFeedRoutes } from "../calendarFeedRoutes.js";
 import { registerZapierFileSyncRoutes } from "../zapierFileSyncRoutes.js";
 import { ensureZapierFileSyncSchema } from "../db.js";
+import { ensureMobileAuthSchema, registerMobileAuthRoutes } from "../mobileAuth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -37,6 +38,11 @@ async function startServer() {
   } catch (error) {
     console.error("Zapier file sync schema initialization failed:", error);
   }
+  try {
+    await ensureMobileAuthSchema();
+  } catch (error) {
+    console.error("Mobile device auth schema initialization failed:", error);
+  }
 
   const app = express();
   const server = createServer(app);
@@ -47,6 +53,7 @@ async function startServer() {
   registerOAuthRoutes(app);
   registerCalendarFeedRoutes(app);
   registerZapierFileSyncRoutes(app);
+  registerMobileAuthRoutes(app);
 
   // Scheduled tasks (Heartbeat callbacks)
   app.post("/api/scheduled/monthly-expense-report", async (_req, res) => {

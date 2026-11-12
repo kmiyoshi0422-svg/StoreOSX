@@ -1277,3 +1277,50 @@ export const ownerManagementLogs = mysqlTable("owner_management_logs", {
   changedByName: varchar("changed_by_name", { length: 128 }).notNull(),
   changedAt: timestamp("changed_at").defaultNow().notNull(),
 }, t => ({ targetIdx: index("idx_owner_management_target").on(t.kind, t.targetId) }));
+
+/**
+ * モバイルアプリの端末連携申請（RFC 8628 デバイス認可方式）。
+ * device_code は端末だけが持つ秘密値のため、DBには SHA-256 ハッシュだけを保存する。
+ * user_code は利用者が Web 画面で確かめる 8 文字の確認コード（ハイフンなしで保存）。
+ */
+export const mobileDeviceGrants = mysqlTable("mobile_device_grants", {
+  id: int("id").autoincrement().primaryKey(),
+  deviceCodeHash: varchar("device_code_hash", { length: 64 }).notNull(),
+  userCode: varchar("user_code", { length: 8 }).notNull(),
+  deviceName: varchar("device_name", { length: 120 }).notNull(),
+  platform: varchar("platform", { length: 20 }).notNull(),
+  status: mysqlEnum("status", ["pending", "approved", "denied", "consumed"]).default("pending").notNull(),
+  userId: int("user_id"),
+  decidedAt: timestamp("decided_at"),
+  expiresAt: timestamp("expires_at").notNull(),
+  lastPolledAt: timestamp("last_polled_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  uniqDeviceCode: unique("uniq_mobile_grant_device_code").on(t.deviceCodeHash),
+  uniqUserCode: unique("uniq_mobile_grant_user_code").on(t.userCode),
+  expiresIdx: index("idx_mobile_grant_expires").on(t.expiresAt),
+}));
+export type MobileDeviceGrant = typeof mobileDeviceGrants.$inferSelect;
+
+/**
+ * モバイル端末トークン。平文トークンは端末にだけ渡し、DBにはハッシュと表示用の先頭数文字だけを保存する。
+ * 認証時は users の役割・閲覧エリア・利用停止をそのまま適用する。
+ */
+export const mobileAccessTokens = mysqlTable("mobile_access_tokens", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull(),
+  grantId: int("grant_id"),
+  tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+  tokenPrefix: varchar("token_prefix", { length: 12 }).notNull(),
+  deviceName: varchar("device_name", { length: 120 }).notNull(),
+  platform: varchar("platform", { length: 20 }).notNull(),
+  lastUsedAt: timestamp("last_used_at"),
+  expiresAt: timestamp("expires_at").notNull(),
+  revokedAt: timestamp("revoked_at"),
+  revokedBy: int("revoked_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  uniqTokenHash: unique("uniq_mobile_token_hash").on(t.tokenHash),
+  userIdx: index("idx_mobile_token_user").on(t.userId),
+}));
+export type MobileAccessToken = typeof mobileAccessTokens.$inferSelect;
