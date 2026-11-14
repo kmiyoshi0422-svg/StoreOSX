@@ -67,6 +67,7 @@ const menuItems: MenuItem[] = [
   { icon: ShieldCheck, label: "役割・閲覧エリア", path: "/settings/access", adminOnly: true },
   { icon: ShieldCheck, label: "利用者・登録名・役割管理", path: "/settings/people", ownerOnly: true },
   { icon: Users, label: "社員追加・退職管理", path: "/settings/staff", ownerOnly: true },
+  { icon: Users, label: "案件責任者の入替", path: "/settings/responsibility", ownerOnly: true },
   { icon: Building2, label: "協力会社の入替管理", path: "/owner-partners", ownerOnly: true },
 ];
 

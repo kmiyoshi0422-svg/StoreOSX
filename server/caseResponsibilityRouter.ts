@@ -5,21 +5,17 @@ import { cases, partners, users, appSettings, responsibleOfficerAccounts, caseRe
 import { getDb, getCaseById } from './db';
 import { protectedProcedure, router } from './_core/trpc';
 import { canManageCases, canAccessPrefecture, canViewInternalFinancials, filterCasesByArea, redactTextWithAmounts } from '../shared/accessPolicy';
-import { OFFICER_KEYS, RESPONSIBLE_OFFICERS, requiresResponsibilityAlert, summarizePersonalCases } from '../shared/caseResponsibility';
+import { requiresResponsibilityAlert, summarizePersonalCases } from '../shared/caseResponsibility';
 
-export async function getConfirmedOfficer(userId: number) {
-  const db = await getDb(); if (!db) throw new TRPCError({ code:'INTERNAL_SERVER_ERROR',message:'DBへ接続できません' });
-  const [record] = await db.select().from(responsibleOfficerAccounts).where(eq(responsibleOfficerAccounts.userId,userId)).limit(1);
-  if(record)return record.officerKey;
-  const [account]=await db.select({email:users.email,role:users.role}).from(users).where(eq(users.id,userId)).limit(1);
-  if(!account?.email||!canManageCases(account.role))return null;
-  const [setting]=await db.select({value:appSettings.settingValue}).from(appSettings).where(eq(appSettings.settingKey,'responsibility.confirmedEmailBindings')).limit(1);
-  let bindings:Record<string,string>={};try{bindings=JSON.parse(setting?.value??'{}');}catch{return null;}
-  const key=bindings[account.email.toLowerCase()];
-  if(!OFFICER_KEYS.includes(key as typeof OFFICER_KEYS[number]))return null;
-  const officerKey=key as typeof OFFICER_KEYS[number];
-  await db.insert(responsibleOfficerAccounts).values({userId,officerKey}).onDuplicateKeyUpdate({set:{officerKey}});
-  return officerKey;
+import { loadOfficerRoster, officerDirectory, assertCurrentOfficer, type RosterDb } from './responsibilityRosterStore';
+import { rosterAdminProcedures } from './responsibilityRosterAdmin';
+
+export async function getConfirmedOfficer(userId: number, transactionDb?: RosterDb) {
+  const db = transactionDb ?? await getDb(); if (!db) throw new TRPCError({ code:'INTERNAL_SERVER_ERROR',message:'DBへ接続できません' });
+  const roster = await loadOfficerRoster(db);
+  const [account] = await db.select().from(users).where(eq(users.id,userId)).limit(1);
+  if (!account || account.disabledAt || !canManageCases(account.role)) return null;
+  return roster.current.find(member => member.userIds.includes(userId))?.key ?? null;
 }
 async function personalRows() {
   const db = await getDb(); if(!db)throw new TRPCError({code:'INTERNAL_SERVER_ERROR'});
@@ -32,10 +28,17 @@ async function personalRows() {
   }).from(cases).orderBy(desc(cases.createdAt));
 }
 export const caseResponsibilityRouter = router({
+  ...rosterAdminProcedures,
+  directory: protectedProcedure.query(async ({ctx}) => {
+    if(!canManageCases(ctx.user.role) && ctx.user.role !== 'partner') throw new TRPCError({code:'FORBIDDEN'});
+    const db=await getDb();if(!db)throw new TRPCError({code:'INTERNAL_SERVER_ERROR'});
+    return officerDirectory(db);
+  }),
   identity: protectedProcedure.query(async({ctx})=>({officerKey:canManageCases(ctx.user.role)?await getConfirmedOfficer(ctx.user.id):null})),
-  options: protectedProcedure.query(({ctx})=>{
+  options: protectedProcedure.query(async({ctx})=>{
     if(!canManageCases(ctx.user.role))throw new TRPCError({code:'FORBIDDEN'});
-    return RESPONSIBLE_OFFICERS;
+    const db=await getDb();if(!db)throw new TRPCError({code:'INTERNAL_SERVER_ERROR'});
+    return (await officerDirectory(db)).filter(member=>member.active);
   }),
   alerts: protectedProcedure.query(async({ctx})=>{
     if(!canManageCases(ctx.user.role))return { eligible:false,officerKey:null,count:0,rows:[] };
@@ -50,7 +53,7 @@ export const caseResponsibilityRouter = router({
     return {eligible:true,officerKey,count:rows.length,rows};
   }),
   bulkAssign: protectedProcedure.input(z.object({
-    caseIds:z.array(z.number().int().positive()).min(1).max(100), officerKey:z.enum(OFFICER_KEYS),
+    caseIds:z.array(z.number().int().positive()).min(1).max(100), officerKey:z.string().trim().min(1).max(32),
   })).mutation(async({ctx,input})=>{
     if(!canManageCases(ctx.user.role)||!await getConfirmedOfficer(ctx.user.id))
       throw new TRPCError({code:'FORBIDDEN',message:'一括割当は指定5名の本人アカウントだけが利用できます'});
@@ -58,6 +61,8 @@ export const caseResponsibilityRouter = router({
     if(ids.length!==input.caseIds.length)throw new TRPCError({code:'BAD_REQUEST',message:'選択案件が重複しています'});
     const db=await getDb();if(!db)throw new TRPCError({code:'INTERNAL_SERVER_ERROR'});
     return db.transaction(async tx=>{
+      await assertCurrentOfficer(tx,input.officerKey);
+      if (!await getConfirmedOfficer(ctx.user.id,tx)) throw new TRPCError({code:'FORBIDDEN',message:'責任者メンバーが入れ替わったため一括割当を停止しました。最新の一覧を確認してください'});
       const locked=await tx.select().from(cases).where(inArray(cases.id,ids)).orderBy(cases.id).for('update');
       if(locked.length!==ids.length)throw new TRPCError({code:'CONFLICT',message:'選択案件が削除されています。一覧を更新してください。変更は行っていません'});
       for(const row of locked){
@@ -69,12 +74,13 @@ export const caseResponsibilityRouter = router({
       return {success:true,count:ids.length,caseIds:ids};
     });
   }),
-  set: protectedProcedure.input(z.object({caseId:z.number().int().positive(),officerKey:z.enum(OFFICER_KEYS)})).mutation(async({ctx,input})=>{
+  set: protectedProcedure.input(z.object({caseId:z.number().int().positive(),officerKey:z.string().trim().min(1).max(32)})).mutation(async({ctx,input})=>{
     if(!canManageCases(ctx.user.role))throw new TRPCError({code:'FORBIDDEN',message:'案件責任者の選択は社員以上のみです'});
     const current=await getCaseById(input.caseId);if(!current)throw new TRPCError({code:'NOT_FOUND'});
     if(!canAccessPrefecture(ctx.user,current.prefecture))throw new TRPCError({code:'FORBIDDEN',message:'対象エリアの案件を変更できません'});
     const db=await getDb();if(!db)throw new TRPCError({code:'INTERNAL_SERVER_ERROR'});
     return db.transaction(async tx=>{
+      await assertCurrentOfficer(tx,input.officerKey);
       const [locked]=await tx.select().from(cases).where(eq(cases.id,input.caseId)).for('update');
       if(!locked)throw new TRPCError({code:'NOT_FOUND'});
       if(!canAccessPrefecture(ctx.user,locked.prefecture))throw new TRPCError({code:'FORBIDDEN'});
@@ -102,9 +108,11 @@ export const caseResponsibilityRouter = router({
       const ids=new Set(companies.map(x=>x.id));
       rows=rows.filter(row=>row.partnerId!=null&&ids.has(row.partnerId));
     }else {
-      const samePerson = officerKey ? await db.select({ id: responsibleOfficerAccounts.userId }).from(responsibleOfficerAccounts).where(eq(responsibleOfficerAccounts.officerKey, officerKey)) : [];
-      for (const item of samePerson) ownIds.add(item.id);
-      rows=filterCasesByArea(rows,ctx.user).filter(row=>(row.assigneeId!=null&&ownIds.has(row.assigneeId))||(officerKey!==null&&row.responsibleOfficer===officerKey));
+      const roster=await loadOfficerRoster(db);
+      const owned=[...roster.current,...roster.archived].filter(member=>member.userIds.includes(ctx.user.id));
+      const keys=new Set(owned.map(member=>member.key));
+      for(const member of owned)for(const id of member.userIds)ownIds.add(id);
+      rows=filterCasesByArea(rows,ctx.user).filter(row=>(row.assigneeId!=null&&ownIds.has(row.assigneeId))||(row.responsibleOfficer!=null&&keys.has(row.responsibleOfficer)));
     }
     const safe=rows.map(({partnerId,...row})=>({...row,
       isOwnAssignment: ctx.user.role === 'partner' || (row.assigneeId !== null && ownIds.has(row.assigneeId)),

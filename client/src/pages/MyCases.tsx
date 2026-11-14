@@ -1,3 +1,4 @@
+import { useResponsibilityDirectory } from '@/hooks/useResponsibilityDirectory';
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -26,7 +27,7 @@ import {
   type CaseDateField,
   type CaseDateFilter,
 } from "@shared/caseDateFilter";
-import { officerName, summarizePersonalCases } from "@shared/caseResponsibility";
+import { summarizePersonalCases } from "@shared/caseResponsibility";
 import { CASE_STATUSES, PROGRESS_STAGES } from "@shared/stageStatus";
 import {
   AlertCircle,
@@ -107,6 +108,7 @@ function CountPill({ count }: { count: number }) {
 }
 
 export default function MyCases() {
+  const {officerName} = useResponsibilityDirectory();
   const [, setLocation] = useLocation();
   const { user } = useAuth();
   const personalQuery = trpc.responsibility.personal.useQuery(undefined, { refetchInterval: 60_000 });

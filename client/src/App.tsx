@@ -58,6 +58,7 @@ const MyCases = lazy(() => import("./pages/MyCases"));
 const InternalStaff = lazy(() => import("./pages/InternalStaff"));
 const OwnerPeople = lazy(() => import("./pages/OwnerPeople"));
 const OwnerPartners = lazy(() => import("./pages/OwnerPartners"));
+const OwnerResponsibility = lazy(() => import("./pages/OwnerResponsibility"));
 const OwnerStaff = lazy(() => import("./pages/OwnerStaff"));
 import { PermissionRefreshBoundary } from "./components/PermissionRefreshBoundary";
 
@@ -89,6 +90,7 @@ function Router() {
                 <Route path={"/my-cases"} component={MyCases} />
                 <Route path={"/settings/people"} component={OwnerPeople} />
                 <Route path={"/settings/staff"} component={OwnerStaff} />
+                <Route path={"/settings/responsibility"} component={OwnerResponsibility} />
                 <Route path={"/owner-partners"} component={OwnerPartners} />
                 <Route path={"/internal-staff"} component={InternalStaff} />
                 <Route path={"/cases/new"} component={CaseNew} />

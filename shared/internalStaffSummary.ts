@@ -11,7 +11,7 @@ export function buildInternalStaffGroups(users: RosterUser[], bindings: Record<s
     const internal = !user.disabledAt && canManageCases(user.role);
     if (!internal && !includeFormerStaff) continue;
     const rawKey = (user.email ? bindings[user.email.trim().toLowerCase()] : undefined) ?? accountKeys.get(user.id);
-    const officerKey = OFFICER_KEYS.includes(rawKey as ResponsibleOfficerKey) ? rawKey as ResponsibleOfficerKey : null;
+    const officerKey = OFFICER_KEYS.includes(rawKey as typeof OFFICER_KEYS[number]) ? rawKey as ResponsibleOfficerKey : null;
     const legacy = !internal || isExcludedCaseAssignee(user.id);
     const key = !legacy && officerKey ? `officer:${officerKey}` : `user:${user.id}`;
     const current = groups.get(key);

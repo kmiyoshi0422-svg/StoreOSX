@@ -3,7 +3,7 @@ export const RESPONSIBLE_OFFICERS = [
   { key: 'kono', name: '河野 陽一郎' }, { key: 'miyoshi', name: '三好 慶' },
   { key: 'shindo', name: '新藤 雅樹' },
 ] as const;
-export type ResponsibleOfficerKey = typeof RESPONSIBLE_OFFICERS[number]['key'];
+export type ResponsibleOfficerKey = string;
 export const OFFICER_KEYS = ['kihara','noguchi','kono','miyoshi','shindo'] as const;
 export const RESPONSIBILITY_START_MS = Date.parse('2026-10-01T00:00:00+09:00');
 export const RESPONSIBILITY_DELAY_MS = 5 * 24 * 60 * 60 * 1000;

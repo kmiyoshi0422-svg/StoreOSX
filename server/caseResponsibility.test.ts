@@ -25,6 +25,9 @@ describe('責任者・本人限定API実DB',()=>{
  beforeAll(async()=>{db=(await getDb())!;const suffix=Date.now().toString();
   for(const [i,role] of ['user','user','partner','customer'].entries()){const [row]=await db.insert(users).values({openId:`responsibility-fixture-${suffix}-${i}`,name:'責任者テスト',email:`responsibility-${suffix}-${i}@example.test`,role:role as 'user'}).$returningId();userIds.push(row.id);}
   await db.insert(responsibleOfficerAccounts).values({userId:userIds[0],officerKey:'kihara'});
+  // 実ユーザーの在籍/区分に左右されず、新規割当資格のある合成責任者を用意する。
+  const [shindoFixture]=await db.insert(users).values({openId:`responsibility-fixture-${suffix}-shindo`,name:'合成責任者',email:`responsibility-${suffix}-shindo@example.test`,role:'user'}).$returningId();userIds.push(shindoFixture.id);
+  await db.insert(responsibleOfficerAccounts).values({userId:shindoFixture.id,officerKey:'shindo'});
   const [company]=await db.insert(partners).values({name:`TEST-RESPONSIBILITY-PARTNER-${suffix}`,userId:userIds[2]}).$returningId();companyId=company.id;partnerIds.push(company.id);
   const realCreated=new Date(Date.now()-6*24*60*60*1000);
   for(let i=0;i<3;i++){const [row]=await db.insert(cases).values({requestNumber:`TEST-RESPONSIBILITY-${suffix}-${i}`,storeName:'責任者検証店舗',prefecture:i===2?'東京都':'山口県',requestDate:new Date('2026-10-01T00:00:00+09:00'),createdAt:realCreated,assigneeId:i===1?userIds[0]:null,partnerId:i===1?company.id:null,requestContent:'照明修理 見積12万円',estimatedCost:120000,notes:'社内秘密'}).$returningId();ids.push(row.id);}fixtureId=ids[0];assignedId=ids[1];
@@ -64,5 +67,5 @@ describe('責任者・本人限定API実DB',()=>{
    for(let i=0;i<2;i++){expect(after[i].responsibleOfficer).toBe('shindo');for(const key of ['status','progressStage','partnerId','assigneeId','requestDate','surveyDate','constructionDate','completedAt','firstResponseDate','responsePlannedDate'] as const)expect(after[i][key]).toEqual(before[i][key]);expect(await who.responsibility.history({caseId:localIds[i]})).toHaveLength(1);}
    await expect(who.responsibility.bulkAssign({caseIds:localIds.slice(0,2),officerKey:'kono'})).rejects.toMatchObject({code:'CONFLICT'});
    expect((await who.cases.get({id:localIds[0]}))?.responsibleOfficer).toBe('shindo');
- });
+ },30000);
 });

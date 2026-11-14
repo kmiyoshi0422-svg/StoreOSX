@@ -1,3 +1,4 @@
+import { useResponsibilityDirectory } from '@/hooks/useResponsibilityDirectory';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { OwnerCaseAssignmentEditor } from "@/components/OwnerCaseAssignmentEditor";
@@ -120,7 +121,6 @@ import { EmergencySurveyDateCard } from "@/components/EmergencySurveyDateCard";
 import { CompletionDeadlineCard } from "@/components/CompletionDeadlineCard";
 import { CaseInternalMemoPanel } from "@/components/CaseInternalMemoPanel";
 import { CaseResponsibilitySelect } from "@/components/CaseResponsibilitySelect";
-import { officerName } from "@shared/caseResponsibility";
 
 
 const PhotosTab = React.lazy(() => import("./CaseDetailPhotosTab"));
@@ -557,6 +557,8 @@ function InfoTab({
     form.categoryLarge && CATEGORY_MEDIUM_OPTIONS[form.categoryLarge]
       ? CATEGORY_MEDIUM_OPTIONS[form.categoryLarge]
       : [];
+
+  const {officerName} = useResponsibilityDirectory();
   const { data: responsibilityHistory = [] } = trpc.responsibility.history.useQuery({ caseId: caseData.id }, { enabled: canManageCase });
   useEffect(() => {
     if (!editing) setForm(p => ({ ...p, status: caseData.status, progressStage: (caseData.progressStage ?? "未対応") as never }));

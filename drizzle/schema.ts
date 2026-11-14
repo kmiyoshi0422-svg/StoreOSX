@@ -95,7 +95,7 @@ export const cases = mysqlTable("cases", {
   urgency: mysqlEnum("urgency", ["S", "A", "B", "C"]).default("B").notNull(),
   // 担当者
   assigneeId: int("assigneeId"), // users.id
-  responsibleOfficer: mysqlEnum("responsible_officer", ["kihara", "noguchi", "kono", "miyoshi", "shindo"]), // 作業担当者とは独立した案件責任者
+  responsibleOfficer: varchar("responsible_officer", { length: 32 }), // 人物固有キー。入替時にも旧案件の責任者を保持
   // 見積（予算）
   estimatedCost: int("estimatedCost"), // 協力業者の見積金額合計＝原価（円）
   plenusQuoteAmount: int("plenusQuoteAmount"), // プレナスへ提出した見積金額＝売上/請求額（円）
@@ -1277,3 +1277,14 @@ export const ownerManagementLogs = mysqlTable("owner_management_logs", {
   changedByName: varchar("changed_by_name", { length: 128 }).notNull(),
   changedAt: timestamp("changed_at").defaultNow().notNull(),
 }, t => ({ targetIdx: index("idx_owner_management_target").on(t.kind, t.targetId) }));
+
+/** 最高管理者の責任者メンバー入替。旧案件の人物キーは変更しない。 */
+export const responsibilityRosterLogs = mysqlTable("responsibility_roster_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  beforeJson: text("before_json").notNull(),
+  afterJson: text("after_json").notNull(),
+  reason: varchar("reason", { length: 500 }).notNull(),
+  changedBy: int("changed_by").notNull(),
+  changedByName: varchar("changed_by_name", { length: 255 }).notNull(),
+  changedAt: timestamp("changed_at").defaultNow().notNull(),
+});

@@ -1,3 +1,4 @@
+import { isProtectedAppSetting } from "../shared/protectedAppSettings";
 import { assertNewCaseAssignee, requireActiveAssignee } from './assigneeValidation';
 import { COOKIE_NAME } from "@shared/const";
 import { DEFAULT_CHECKLIST } from "../shared/checklist-template";
@@ -214,7 +215,7 @@ import { caseResponsibilityRouter } from "./caseResponsibilityRouter";
 import { caseDeadlineRouter } from "./caseDeadlineRouter";
 import { caseInternalMemoRouter } from "./caseInternalMemoRouter";
 import { internalStaffRouter } from "./internalStaffRouter";
-import { OFFICER_KEYS } from "../shared/caseResponsibility";
+import { assertCurrentOfficer } from "./responsibilityRosterStore";
 import { TRPCError } from "@trpc/server";
 import { adminProcedure, financialProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { BUDGET_RATIO, calcBudget } from "../shared/budget";
@@ -470,7 +471,7 @@ const caseInputSchema = z.object({
     .default("未対応"),
   urgency: z.enum(["S", "A", "B", "C"]).default("B"),
   assigneeId: z.number().int().nullish(),
-  responsibleOfficer: z.enum(OFFICER_KEYS).nullish(),
+  responsibleOfficer: z.string().trim().min(1).max(32).nullish(),
   estimatedCost: z.number().int().nullish(),
   plenusQuoteAmount: z.number().int().nullish(),
   estimatedMaterialCost: z.number().int().nullish(),
@@ -1555,6 +1556,7 @@ export const appRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "このエリアの案件を登録する権限がありません" });
       }
       await assertNewCaseAssignee(input.assigneeId, prefecture);
+      if (input.responsibleOfficer) { const db = await getDb(); if (!db) throw new TRPCError({code:"INTERNAL_SERVER_ERROR"}); await assertCurrentOfficer(db,input.responsibleOfficer); }
       if (!canViewInternalFinancials(ctx.user.role)) {
         const hasFinancialInput = INTERNAL_FINANCIAL_FIELDS.some(
           (field) => {
@@ -2059,6 +2061,7 @@ export const appRouter = router({
               throw new Error("このエリアの案件を登録する権限がありません");
             }
             await assertNewCaseAssignee(row.assigneeId, prefecture);
+            if (row.responsibleOfficer) { const db = await getDb(); if (!db) throw new TRPCError({code:"INTERNAL_SERVER_ERROR"}); await assertCurrentOfficer(db,row.responsibleOfficer); }
             if (!canViewInternalFinancials(ctx.user.role)) {
               const hasFinancialInput = INTERNAL_FINANCIAL_FIELDS.some(
                 (field) => {
@@ -5183,15 +5186,18 @@ export const appRouter = router({
     get: staffOnlyProcedure
       .input(z.object({ key: z.string() }))
       .query(async ({ input, ctx }) => {
+        if (isProtectedAppSetting(input.key)) throw new TRPCError({code:"FORBIDDEN",message:"責任者メンバー設定は専用管理画面で確認してください"});
         const val = await getAppSetting(input.key);
         return { key: input.key, value: val };
       }),
     getAll: staffOnlyProcedure.query(async () => {
-      return getAllAppSettings();
+      const settings = await getAllAppSettings();
+      return Object.fromEntries(Object.entries(settings).filter(([key]) => !isProtectedAppSetting(key)));
     }),
     set: staffOnlyProcedure
       .input(z.object({ key: z.string(), value: z.unknown() }))
       .mutation(async ({ input }) => {
+        if (isProtectedAppSetting(input.key)) throw new TRPCError({code:"FORBIDDEN",message:"責任者メンバーは専用の監査付き管理画面で変更してください"});
         await setAppSetting(input.key, input.value);
         return { success: true };
       }),

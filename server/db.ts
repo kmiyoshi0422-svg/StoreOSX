@@ -1,3 +1,4 @@
+import { isProtectedAppSetting } from "../shared/protectedAppSettings";
 import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, like, or, sql } from "drizzle-orm";
 import { hasAllAreaAccess, parseAllowedPrefectures, type AreaAccessUser } from "../shared/accessPolicy";
 import { isEmergencySurveyCase } from "../shared/emergencySurveyDate";
@@ -494,6 +495,7 @@ export async function createCase(data: InsertCase, requestSource?: {
   if (!db) throw new Error("Database not available");
   if (requestSource || data.responsibleOfficer) {
     return db.transaction(async tx => {
+      if (data.responsibleOfficer) { const {assertCurrentOfficer} = await import("./responsibilityRosterStore"); await assertCurrentOfficer(tx,data.responsibleOfficer); }
       const result = await tx.insert(cases).values(data).$returningId();
       const id = result[0].id;
       if (requestSource) await tx.insert(caseRequestSources).values({
@@ -1632,6 +1634,7 @@ export async function getAppSetting<T = unknown>(key: string): Promise<T | null>
 
 /** 設定値を保存（JSON文字列化して保存） */
 export async function setAppSetting(key: string, value: unknown): Promise<void> {
+  if (isProtectedAppSetting(key)) throw new Error("責任者・本人確認設定は専用の監査付き管理APIで変更してください");
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const json = JSON.stringify(value);

@@ -1,3 +1,4 @@
+import { useResponsibilityDirectory } from '@/hooks/useResponsibilityDirectory';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,7 +14,7 @@ import {
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { useState } from "react";
-import { RESPONSIBLE_OFFICERS, type ResponsibleOfficerKey } from "@shared/caseResponsibility";
+import { type ResponsibleOfficerKey } from "@shared/caseResponsibility";
 import {
   CATEGORY_LARGE_OPTIONS,
   CATEGORY_MEDIUM_OPTIONS,
@@ -23,6 +24,7 @@ import { toast } from "sonner";
 import { ArrowLeft, Save, Wand2 } from "lucide-react";
 
 export default function CaseNew() {
+  const {officers} = useResponsibilityDirectory();
   const [, setLocation] = useLocation();
   const utils = trpc.useUtils();
   const createMutation = trpc.cases.create.useMutation({
@@ -408,7 +410,7 @@ export default function CaseNew() {
       </Card>
 
       {/* Submit */}
-      <Card><CardContent className="p-5 space-y-2"><Label>案件責任者（指定5名）</Label><Select value={form.responsibleOfficer ?? "__pending__"} onValueChange={value => update("responsibleOfficer", value === "__pending__" ? null : value as ResponsibleOfficerKey)}><SelectTrigger aria-label="登録時の案件責任者"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__pending__">未決定（後で必ず決定）</SelectItem>{RESPONSIBLE_OFFICERS.map(x => <SelectItem key={x.key} value={x.key}>{x.name}</SelectItem>)}</SelectContent></Select><p className="text-xs text-muted-foreground">作業担当とは別の責任者です。未決定の進行案件は、依頼日2026年10月1日以降・登録5日経過で指定5名へアラートが出ます。</p></CardContent></Card>
+      <Card><CardContent className="p-5 space-y-2"><Label>案件責任者（指定5名）</Label><Select value={form.responsibleOfficer ?? "__pending__"} onValueChange={value => update("responsibleOfficer", value === "__pending__" ? null : value as ResponsibleOfficerKey)}><SelectTrigger aria-label="登録時の案件責任者"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__pending__">未決定（後で必ず決定）</SelectItem>{officers.map(x => <SelectItem key={x.key} value={x.key} disabled={!x.eligible}>{x.name}</SelectItem>)}</SelectContent></Select><p className="text-xs text-muted-foreground">作業担当とは別の責任者です。未決定の進行案件は、依頼日2026年10月1日以降・登録5日経過で指定5名へアラートが出ます。</p></CardContent></Card>
       <div className="flex justify-end gap-3 pb-8">
         <Button variant="outline" onClick={() => setLocation("/cases")}>
           キャンセル

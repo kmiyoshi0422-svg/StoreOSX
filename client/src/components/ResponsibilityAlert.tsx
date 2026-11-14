@@ -1,3 +1,4 @@
+import { useResponsibilityDirectory } from '@/hooks/useResponsibilityDirectory';
 import { trpc } from '@/lib/trpc';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -6,7 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { CaseResponsibilitySelect } from './CaseResponsibilitySelect';
-import { RESPONSIBLE_OFFICERS, officerName, type ResponsibleOfficerKey } from '@shared/caseResponsibility';
+import { type ResponsibleOfficerKey } from '@shared/caseResponsibility';
 import { useLocation } from 'wouter';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -18,6 +19,7 @@ export function ResponsibilityAlert() {
   const [officer, setOfficer] = useState<ResponsibleOfficerKey | ''>('');
   const [confirm, setConfirm] = useState(false);
   const [confirmIds, setConfirmIds] = useState<number[]>([]);
+  const {officers,officerName}=useResponsibilityDirectory();
   const utils = trpc.useUtils();
   const { data, error, isLoading, refetch } = trpc.responsibility.alerts.useQuery(undefined, { refetchInterval: 60_000 });
   const mutation = trpc.responsibility.bulkAssign.useMutation({
@@ -44,12 +46,12 @@ export function ResponsibilityAlert() {
   const confirmationValid = confirmIds.length > 0 && confirmedRows.length === confirmIds.length;
   const toggle = (id: number, checked: boolean) => setSelected(current => checked ? Array.from(new Set([...current, id])).slice(0, 100) : current.filter(x => x !== id));
   return <Card className="border-orange-300 bg-orange-50/40" role="alert" aria-label="案件責任者未決定アラート"><CardContent className="p-4 md:p-5 space-y-4">
-    <div className="flex items-start gap-3"><AlertTriangle className="h-5 w-5 text-orange-700 shrink-0 mt-0.5" /><div><h2 className="font-semibold text-orange-900">担当者をきめてください — 案件責任者未決定 {data.count}件</h2><p className="text-xs text-muted-foreground mt-1">依頼日2026年10月1日以降・登録から5日経過。木原・野口・河野・三好・新藤のいずれかを責任者に決定してください。現在の作業担当者は変更しません。</p></div></div>
+    <div className="flex items-start gap-3"><AlertTriangle className="h-5 w-5 text-orange-700 shrink-0 mt-0.5" /><div><h2 className="font-semibold text-orange-900">担当者をきめてください — 案件責任者未決定 {data.count}件</h2><p className="text-xs text-muted-foreground mt-1">依頼日2026年10月1日以降・登録から5日経過。現在の責任者メンバー5名から責任者を決定してください。現在の作業担当者は変更しません。</p></div></div>
     <div className="flex flex-wrap gap-2 items-center rounded-lg border border-orange-200 bg-background/70 p-3">
       <Button size="sm" variant="outline" disabled={mutation.isPending} onClick={() => setSelected(current => Array.from(new Set([...current, ...visibleRows.map(x => x.id)])).slice(0, 100))}>このページを選択</Button>
       <Button size="sm" variant="ghost" disabled={!selected.length || mutation.isPending} onClick={() => setSelected([])}>選択解除</Button>
       <span className="text-xs" aria-live="polite">選択 {selectedRows.length}件 / 最大100件</span>
-      <Select value={officer} onValueChange={value => setOfficer(value as ResponsibleOfficerKey)} disabled={mutation.isPending}><SelectTrigger className="w-full sm:w-[190px] bg-background" aria-label="一括割当の案件責任者"><SelectValue placeholder="割り当てる責任者" /></SelectTrigger><SelectContent>{RESPONSIBLE_OFFICERS.map(x => <SelectItem key={x.key} value={x.key}>{x.name}</SelectItem>)}</SelectContent></Select>
+      <Select value={officer} onValueChange={value => setOfficer(value as ResponsibleOfficerKey)} disabled={mutation.isPending}><SelectTrigger className="w-full sm:w-[190px] bg-background" aria-label="一括割当の案件責任者"><SelectValue placeholder="割り当てる責任者" /></SelectTrigger><SelectContent>{officers.map(x => <SelectItem key={x.key} value={x.key} disabled={!x.eligible}>{x.name}</SelectItem>)}</SelectContent></Select>
       <Button size="sm" disabled={!selectedRows.length || !officer || mutation.isPending} onClick={() => { setConfirmIds(selectedRows.map(row => row.id)); setConfirm(true); }}>{mutation.isPending ? <><Loader2 className="h-4 w-4 animate-spin" />割当中…</> : '選択案件の責任者を一括割当'}</Button>
     </div>
     {visibleRows.map(row => <div key={row.id} className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between border-t border-orange-200/60 pt-3">

@@ -1,3 +1,4 @@
+import { useResponsibilityDirectory } from '@/hooks/useResponsibilityDirectory';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,7 +30,6 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { CaseAssigneeSelect } from "@/components/CaseAssigneeSelect";
 import { CaseResponseDateEditor } from "@/components/CaseResponseDateEditor";
 import { CaseResponsibilitySelect } from "@/components/CaseResponsibilitySelect";
-import { RESPONSIBLE_OFFICERS } from "@shared/caseResponsibility";
 import { CaseLostStatusDialog, type CaseLostAction } from "@/components/CaseLostStatusDialog";
 import { REVIVE_LOST_OPTION } from "@shared/caseLost";
 import { useLocation } from "wouter";
@@ -135,6 +135,7 @@ function storeKey(c: { storeCode: string | null; storeName: string }) {
 }
 
 export default function CasesList() {
+  const {directory} = useResponsibilityDirectory();
   const [, setLocation] = useLocation();
   const { user } = useAuth();
   const isPartner = user?.role === 'partner';
@@ -460,7 +461,7 @@ export default function CasesList() {
       </Tabs>
 
       {/* Filters */}
-      {canAssign && <div className="flex flex-wrap items-center gap-3"><Button variant="outline" size="sm" onClick={() => setLocation("/my-cases")}>自分の担当案件・個別集計</Button><Select value={responsibleFilter} onValueChange={setResponsibleFilter}><SelectTrigger aria-label="責任者で検索" className="w-[210px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">全案件責任者</SelectItem><SelectItem value="pending">責任者未決定</SelectItem>{RESPONSIBLE_OFFICERS.map(x => <SelectItem key={x.key} value={x.key}>{x.name}</SelectItem>)}</SelectContent></Select></div>}
+      {canAssign && <div className="flex flex-wrap items-center gap-3"><Button variant="outline" size="sm" onClick={() => setLocation("/my-cases")}>自分の担当案件・個別集計</Button><Select value={responsibleFilter} onValueChange={setResponsibleFilter}><SelectTrigger aria-label="責任者で検索" className="w-[210px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">全案件責任者</SelectItem><SelectItem value="pending">責任者未決定</SelectItem>{directory.map(x => <SelectItem key={x.key} value={x.key}>{x.name}</SelectItem>)}</SelectContent></Select></div>}
       <div className="flex flex-col md:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
